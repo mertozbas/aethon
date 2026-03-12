@@ -40,15 +40,38 @@ class SystemPromptComposer:
         if context_path.exists():
             layers.append(f"## Mevcut Baglam\n{context_path.read_text(encoding='utf-8')}")
 
-        # 4. SOP list (if available)
+        # 4. SOP list (built-in + workspace)
+        sop_names = []
+        try:
+            from strands_agents_sops import code_assist, pdd, codebase_summary
+            sop_names.extend(["code-assist", "pdd", "codebase-summary"])
+        except ImportError:
+            pass
         sops_dir = self.workspace / "sops"
         if sops_dir.exists():
-            sop_names = [f.stem.removesuffix(".sop") for f in sops_dir.glob("*.sop.md")]
-            if sop_names:
-                sop_list = "\n".join(f"- /{name}" for name in sop_names)
-                layers.append(f"## Kullanilabilir Komutlar\n{sop_list}")
+            for f in sops_dir.glob("*.sop.md"):
+                name = f.stem.removesuffix(".sop")
+                if name not in sop_names:
+                    sop_names.append(name)
+        if sop_names:
+            sop_list = "\n".join(f"- /{name}" for name in sop_names)
+            layers.append(
+                f"## Kullanilabilir SOP Komutlari\n"
+                f"Kullanici / ile baslayan komut yazarsa SOP tetiklenir:\n{sop_list}"
+            )
 
-        # 5. Session info
+        # 5. Agent delegation instructions
+        layers.append(
+            "## Agent Delegasyonu\n"
+            "Karmasik gorevlerde uzman agent'lari kullan:\n"
+            "- ask_coder: Kodlama gorevleri (kod yazma, test, debug)\n"
+            "- ask_researcher: Arastirma gorevleri (web arama, dokumantasyon)\n"
+            "- ask_analyst: Analiz gorevleri (veri analizi, rapor)\n"
+            "- ask_planner: Planlama gorevleri (gorev bolme, onceliklendirme)\n"
+            "Basit gorevleri kendin yap. Karmasik gorevlerde uygun uzmana devret."
+        )
+
+        # 6. Session info
         if session_id:
             layers.append(f"## Aktif Session\n{session_id}")
 

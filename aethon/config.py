@@ -83,6 +83,32 @@ class MemoryConfig(BaseModel):
     db_path: str = "~/.aethon/memory.sqlite"
 
 
+class MultiAgentConfig(BaseModel):
+    """Multi-agent system configuration."""
+
+    enabled: bool = True
+    max_handoffs: int = 10
+    max_iterations: int = 10
+    execution_timeout: float = 300.0
+    node_timeout: float = 120.0
+
+
+class SOPConfig(BaseModel):
+    """SOP execution configuration."""
+
+    enabled: bool = True
+    builtin_sops_enabled: bool = True
+
+
+class ApprovalConfig(BaseModel):
+    """Approval hook configuration (interrupt-based)."""
+
+    enabled: bool = False
+    requires_approval: list[str] = Field(
+        default_factory=lambda: ["shell", "file_write"]
+    )
+
+
 class SessionConfig(BaseModel):
     storage_dir: str = "~/.aethon/sessions"
     conversation_manager: str = "summarizing"
@@ -106,6 +132,9 @@ class AethonConfig(BaseModel):
     security: SecurityConfig = SecurityConfig()
     session: SessionConfig = SessionConfig()
     memory: MemoryConfig = MemoryConfig()
+    multi_agent: MultiAgentConfig = MultiAgentConfig()
+    sops: SOPConfig = SOPConfig()
+    approval: ApprovalConfig = ApprovalConfig()
     paths: PathsConfig = PathsConfig()
 
     @classmethod

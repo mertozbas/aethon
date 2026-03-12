@@ -43,6 +43,24 @@ def start(config: str):
     if cfg.memory.enabled:
         _check_embedding_model(cfg)
 
+    # Multi-agent durumu
+    if cfg.multi_agent.enabled:
+        console.print("  Multi-Agent: [green]aktif[/]")
+    else:
+        console.print("  Multi-Agent: [dim]devre disi[/]")
+
+    # SOP durumu
+    if cfg.sops.enabled:
+        try:
+            from aethon.sops.runner import SOPRunner
+
+            sop_dirs = [str(Path(cfg.paths.workspace).expanduser() / "sops")]
+            runner = SOPRunner(sop_dirs, cfg.sops.builtin_sops_enabled)
+            sop_count = len(runner.list_sops())
+            console.print(f"  SOP'lar: [green]{sop_count} adet[/]")
+        except Exception:
+            console.print("  SOP'lar: [yellow]yuklenemedi[/]")
+
     # Etkin kanallari listele
     _print_channels(cfg)
 

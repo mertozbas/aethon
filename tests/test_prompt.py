@@ -57,7 +57,7 @@ def test_compose_with_sops(workspace_with_sops):
     """SOP list included in prompt."""
     composer = SystemPromptComposer(str(workspace_with_sops))
     prompt = composer.compose()
-    assert "Kullanilabilir Komutlar" in prompt
+    assert "Kullanilabilir SOP Komutlari" in prompt
     assert "/morning-brief" in prompt
     assert "/weekly-report" in prompt
 

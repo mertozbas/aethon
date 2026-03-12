@@ -2,7 +2,10 @@
 
 import pytest
 
-from aethon.config import AethonConfig, PathsConfig, ModelConfig
+from aethon.config import (
+    AethonConfig, PathsConfig, ModelConfig, MultiAgentConfig, SOPConfig,
+    ApprovalConfig,
+)
 from aethon.agent.runtime import AethonRuntime
 from aethon.channels.base import InboundMessage
 
@@ -80,6 +83,110 @@ def test_hooks_list(runtime_config):
     assert len(hooks) > 0
     from aethon.agent.hooks.security import SecurityHookProvider
     assert isinstance(hooks[0], SecurityHookProvider)
+
+
+def test_runtime_with_multi_agent(tmp_path):
+    """Runtime creates with multi-agent enabled."""
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "SOUL.md").write_text("Test")
+    sops_dir = workspace / "sops"
+    sops_dir.mkdir()
+    sessions = tmp_path / "sessions"
+    sessions.mkdir()
+
+    config = AethonConfig(
+        model=ModelConfig(provider="ollama", model_id="qwen3-coder-next"),
+        multi_agent=MultiAgentConfig(enabled=True),
+        sops=SOPConfig(enabled=True),
+        paths=PathsConfig(
+            workspace=str(workspace),
+            sessions=str(sessions),
+            logs=str(tmp_path / "logs"),
+            memory_db=str(tmp_path / "memory.sqlite"),
+            credentials=str(tmp_path / "credentials"),
+        ),
+    )
+    runtime = AethonRuntime(config)
+    assert runtime.specialist_factory is not None
+    assert runtime.sop_runner is not None
+
+
+def test_tools_include_delegate(tmp_path):
+    """_get_tools includes delegate tools when multi-agent enabled."""
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "SOUL.md").write_text("Test")
+    sops_dir = workspace / "sops"
+    sops_dir.mkdir()
+    sessions = tmp_path / "sessions"
+    sessions.mkdir()
+
+    config = AethonConfig(
+        model=ModelConfig(provider="ollama", model_id="qwen3-coder-next"),
+        multi_agent=MultiAgentConfig(enabled=True),
+        paths=PathsConfig(
+            workspace=str(workspace),
+            sessions=str(sessions),
+            logs=str(tmp_path / "logs"),
+            memory_db=str(tmp_path / "memory.sqlite"),
+            credentials=str(tmp_path / "credentials"),
+        ),
+    )
+    runtime = AethonRuntime(config)
+    tools = runtime._get_tools()
+    tool_names = [getattr(t, "__name__", getattr(t, "tool_name", str(t))) for t in tools]
+    assert any("ask_coder" in str(name) for name in tool_names)
+
+
+def test_tools_no_delegate_when_disabled(tmp_path):
+    """_get_tools excludes delegate tools when multi-agent disabled."""
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "SOUL.md").write_text("Test")
+    sessions = tmp_path / "sessions"
+    sessions.mkdir()
+
+    config = AethonConfig(
+        model=ModelConfig(provider="ollama", model_id="qwen3-coder-next"),
+        multi_agent=MultiAgentConfig(enabled=False),
+        paths=PathsConfig(
+            workspace=str(workspace),
+            sessions=str(sessions),
+            logs=str(tmp_path / "logs"),
+            memory_db=str(tmp_path / "memory.sqlite"),
+            credentials=str(tmp_path / "credentials"),
+        ),
+    )
+    runtime = AethonRuntime(config)
+    tools = runtime._get_tools()
+    tool_names = [getattr(t, "__name__", getattr(t, "tool_name", str(t))) for t in tools]
+    assert not any("ask_coder" in str(name) for name in tool_names)
+
+
+def test_hooks_include_approval_when_enabled(tmp_path):
+    """_get_hooks includes ApprovalHookProvider when enabled."""
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "SOUL.md").write_text("Test")
+    sessions = tmp_path / "sessions"
+    sessions.mkdir()
+
+    config = AethonConfig(
+        model=ModelConfig(provider="ollama", model_id="qwen3-coder-next"),
+        approval=ApprovalConfig(enabled=True),
+        paths=PathsConfig(
+            workspace=str(workspace),
+            sessions=str(sessions),
+            logs=str(tmp_path / "logs"),
+            memory_db=str(tmp_path / "memory.sqlite"),
+            credentials=str(tmp_path / "credentials"),
+        ),
+    )
+    runtime = AethonRuntime(config)
+    hooks = runtime._get_hooks()
+    from aethon.agent.hooks.approval import ApprovalHookProvider
+    assert any(isinstance(h, ApprovalHookProvider) for h in hooks)
 
 
 @pytest.mark.asyncio

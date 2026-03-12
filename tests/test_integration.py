@@ -8,7 +8,10 @@ Requires Ollama to be running with qwen3-coder-next and nomic-embed-text.
 import pytest
 import asyncio
 
-from aethon.config import AethonConfig, PathsConfig, ModelConfig, MemoryConfig
+from aethon.config import (
+    AethonConfig, PathsConfig, ModelConfig, MemoryConfig,
+    MultiAgentConfig, SOPConfig,
+)
 from aethon.agent.runtime import AethonRuntime
 from aethon.gateway.router import MessageRouter
 from aethon.channels.base import InboundMessage
@@ -162,3 +165,107 @@ async def test_vector_memory_direct(integration_setup):
     deleted = memory.forget(mid)
     assert deleted is True
     assert memory.count() == 0
+
+
+# --- Phase 3 Integration Tests ---
+
+
+@pytest.fixture
+def phase3_setup(tmp_path):
+    """Full setup for Phase 3 integration tests."""
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "SOUL.md").write_text(
+        "Sen AETHON, kisa ve oz yanit veren bir AI asistansin."
+    )
+    (workspace / "TOOLS.md").write_text("Turkce yanit ver.")
+    sops_dir = workspace / "sops"
+    sops_dir.mkdir()
+    (sops_dir / "test-sop.sop.md").write_text(
+        "# Test SOP\n\n## Overview\nTest SOP aciklamasi.\n\n"
+        "## Steps\nKullaniciya 'Test SOP calisti' de.\n"
+    )
+    sessions = tmp_path / "sessions"
+    sessions.mkdir()
+    logs = tmp_path / "logs"
+    logs.mkdir()
+
+    config = AethonConfig(
+        model=ModelConfig(provider="ollama", model_id="qwen3-coder-next"),
+        memory=MemoryConfig(
+            enabled=True,
+            embedding_model="nomic-embed-text",
+            db_path=str(tmp_path / "memory.sqlite"),
+        ),
+        multi_agent=MultiAgentConfig(enabled=True),
+        sops=SOPConfig(enabled=True, builtin_sops_enabled=True),
+        paths=PathsConfig(
+            workspace=str(workspace),
+            sessions=str(sessions),
+            logs=str(logs),
+            memory_db=str(tmp_path / "memory.sqlite"),
+            credentials=str(tmp_path / "credentials"),
+        ),
+    )
+
+    runtime = AethonRuntime(config)
+    router = MessageRouter(config, runtime)
+    return config, runtime, router
+
+
+@pytest.mark.asyncio
+async def test_runtime_has_specialist_factory(phase3_setup):
+    """Runtime creates SpecialistFactory when multi_agent enabled."""
+    config, runtime, router = phase3_setup
+    assert runtime.specialist_factory is not None
+
+
+@pytest.mark.asyncio
+async def test_runtime_has_sop_runner(phase3_setup):
+    """Runtime creates SOPRunner when sops enabled."""
+    config, runtime, router = phase3_setup
+    assert runtime.sop_runner is not None
+
+
+@pytest.mark.asyncio
+async def test_sop_list_includes_builtins(phase3_setup):
+    """SOP list includes built-in SOPs."""
+    config, runtime, router = phase3_setup
+    sops = runtime.sop_runner.list_sops()
+    names = [s["name"] for s in sops]
+    assert "code-assist" in names
+    assert "pdd" in names
+
+
+@pytest.mark.asyncio
+async def test_sop_list_includes_custom(phase3_setup):
+    """SOP list includes custom SOPs."""
+    config, runtime, router = phase3_setup
+    sops = runtime.sop_runner.list_sops()
+    names = [s["name"] for s in sops]
+    assert "test-sop" in names
+
+
+@pytest.mark.asyncio
+async def test_custom_sop_command_detected(phase3_setup):
+    """Custom SOP command is detected by is_sop_command."""
+    config, runtime, router = phase3_setup
+    is_sop, name, user_input = runtime.sop_runner.is_sop_command("/test-sop merhaba")
+    assert is_sop is True
+    assert name == "test-sop"
+    assert user_input == "merhaba"
+
+
+@pytest.mark.asyncio
+async def test_delegate_tools_in_runtime(phase3_setup):
+    """Runtime tools include delegate tools."""
+    config, runtime, router = phase3_setup
+    tools = runtime._get_tools()
+    tool_names = [
+        getattr(t, "__name__", getattr(t, "tool_name", str(t)))
+        for t in tools
+    ]
+    assert any("ask_coder" in str(n) for n in tool_names)
+    assert any("ask_researcher" in str(n) for n in tool_names)
+    assert any("ask_analyst" in str(n) for n in tool_names)
+    assert any("ask_planner" in str(n) for n in tool_names)

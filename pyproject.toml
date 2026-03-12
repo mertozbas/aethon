@@ -47,7 +47,7 @@ memory = [
     "aiosqlite>=0.19.0",
 ]
 sops = [
-    "strands-agents-sops>=0.1.0",
+    "strands-agents-sops>=1.0.0",
 ]
 scheduler = [
     "apscheduler>=3.10.0",

@@ -4,7 +4,10 @@ import os
 import pytest
 from pathlib import Path
 
-from aethon.config import AethonConfig, ModelConfig, MemoryConfig, ChannelsConfig
+from aethon.config import (
+    AethonConfig, ModelConfig, MemoryConfig, ChannelsConfig,
+    MultiAgentConfig, SOPConfig, ApprovalConfig,
+)
 
 
 def test_config_defaults():
@@ -124,3 +127,70 @@ def test_config_with_memory_yaml(tmp_path):
     config = AethonConfig.load(str(config_file))
     assert config.memory.enabled is True
     assert config.memory.db_path == "/tmp/test_mem.sqlite"
+
+
+def test_multi_agent_config_defaults():
+    """MultiAgentConfig has correct defaults."""
+    config = AethonConfig()
+    assert config.multi_agent.enabled is True
+    assert config.multi_agent.max_handoffs == 10
+    assert config.multi_agent.max_iterations == 10
+    assert config.multi_agent.execution_timeout == 300.0
+    assert config.multi_agent.node_timeout == 120.0
+
+
+def test_multi_agent_config_custom():
+    """Custom MultiAgentConfig works."""
+    mc = MultiAgentConfig(
+        enabled=False,
+        max_handoffs=5,
+        execution_timeout=60.0,
+    )
+    assert mc.enabled is False
+    assert mc.max_handoffs == 5
+    assert mc.execution_timeout == 60.0
+
+
+def test_sop_config_defaults():
+    """SOPConfig has correct defaults."""
+    config = AethonConfig()
+    assert config.sops.enabled is True
+    assert config.sops.builtin_sops_enabled is True
+
+
+def test_sop_config_custom():
+    """Custom SOPConfig works."""
+    sc = SOPConfig(enabled=False, builtin_sops_enabled=False)
+    assert sc.enabled is False
+    assert sc.builtin_sops_enabled is False
+
+
+def test_approval_config_defaults():
+    """ApprovalConfig has correct defaults (disabled by default)."""
+    config = AethonConfig()
+    assert config.approval.enabled is False
+    assert "shell" in config.approval.requires_approval
+    assert "file_write" in config.approval.requires_approval
+
+
+def test_approval_config_custom():
+    """Custom ApprovalConfig works."""
+    ac = ApprovalConfig(
+        enabled=True,
+        requires_approval=["http_request"],
+    )
+    assert ac.enabled is True
+    assert "http_request" in ac.requires_approval
+
+
+def test_config_with_multi_agent_yaml(tmp_path):
+    """Config loads multi_agent section from YAML."""
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        "multi_agent:\n"
+        "  enabled: false\n"
+        "  max_handoffs: 3\n"
+    )
+    config = AethonConfig.load(str(config_file))
+    assert config.multi_agent.enabled is False
+    assert config.multi_agent.max_handoffs == 3
