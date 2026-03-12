@@ -1,7 +1,7 @@
 # AETHON — Urun Dokumani
 
 > **AETHON** — Autonomous Execution Through Harmonized Orchestrated Networks
-> Versiyon: 0.1.0 | Tarih: 2026-03-12
+> Versiyon: 1.0.0 | Tarih: 2026-03-12
 
 ---
 
@@ -14,6 +14,7 @@ AETHON, **kendi makinende calisan, tum mesajlasma kanallarindan erisilebilen, co
 - **Her yerden erisim** — WhatsApp, Telegram, Discord, Slack, WebChat, CLI
 - **Akilli takim** — tek agent degil, uzman agent takimi
 - **Yapilandirilmis is akislari** — SOP'lar ile tekrarlanabilir gorevler
+- **Guvenlik-oncelikli** — 7 katmanli guvenlik mimarisi
 
 ---
 
@@ -21,25 +22,23 @@ AETHON, **kendi makinende calisan, tum mesajlasma kanallarindan erisilebilen, co
 
 ### 2.1 Problem
 
-Mevcut AI asistan sistemleri (OpenClaw, vb.) su sorunlara sahip:
+Mevcut AI asistan sistemleri su sorunlara sahip:
 
 1. **Tek agent sinirlamasi** — Her seyi tek bir agent yapmaya calisiyor
-2. **Guvenlik aciklari** — CVE-2026-25253, 824+ zararli skill, WebSocket hijack
+2. **Guvenlik zafiyetleri** — Dis erisime acik portlar, dogrulanmamis araclar
 3. **Is akisi eksikligi** — Agent kendi basina karar veriyor, yapilandirilmis akis yok
 4. **Cikti dogrulamasi yok** — Agent ne uretirse o kabul ediliyor
-5. **Node.js ekosistemi** — ML/AI kutuphaneleri ile dogal uyumsuzluk
+5. **Gozlemlenebilirlik yok** — Neler oldugundan haberdar olunmuyor
 
 ### 2.2 Cozum
-
-AETHON bu sorunlarin hepsini cozer:
 
 | Problem | AETHON Cozumu |
 |---------|---------------|
 | Tek agent | Coklu uzman agent takimi (Swarm + Graph + Agent-as-Tool) |
-| Guvenlik aciklari | Loopback-only, marketplace yok, hook-tabanli policy |
+| Guvenlik zafiyetleri | Loopback-only, marketplace yok, hook-tabanli policy |
 | Is akisi eksikligi | SOP-gudumlu yapilandirilmis akislar |
 | Cikti dogrulamasi | Pydantic ile zorunlu yapilandirilmis cikti |
-| Node.js | Python 3.10+ — ML/AI ekosistemi ile dogal uyum |
+| Gozlemlenebilirlik | Telemetri dashboard + canli metrik stream |
 
 ### 2.3 Hedef Kullanici
 
@@ -59,7 +58,7 @@ AETHON bu sorunlarin hepsini cozer:
 | Kanal | Kutuphane | Baglanti |
 |-------|-----------|----------|
 | CLI | `prompt_toolkit` | Terminal stdin/stdout |
-| WebChat | `FastAPI` + `websockets` | HTTP/WS localhost:18790 |
+| WebChat | `FastAPI` + `websockets` | HTTP/WS localhost:8080 |
 | Telegram | `aiogram` 3.x | Bot Token (BotFather) |
 | Discord | `discord.py` 2.x | Bot Token (Developer Portal) |
 | Slack | `slack-bolt` | Bot Token + App Token (Socket Mode) |
@@ -69,14 +68,14 @@ Tum kanallar **ayni agent runtime**'a baglanir. Hangi kanaldan yazarsan yaz, ayn
 
 ### 3.2 Multi-Agent Takim
 
-OpenClaw tek bir agent (Pi) ile calisir. AETHON'da bir gorev geldiginde uzman bir takim devreye girer:
+Bir gorev geldiginde uzman bir takim devreye girer:
 
-| Agent | Uzmanlık | Kullandigi Tool'lar |
+| Agent | Uzmanlik | Kullandigi Tool'lar |
 |-------|----------|---------------------|
 | **Orchestrator** | Ana yonlendirici, gorev delegasyonu | Tum delegate tool'lar |
-| **Kodcu** | Kod yazma, test, debug, refactoring | `editor`, `shell`, `python_repl`, `file_write` |
+| **Kodcu** | Kod yazma, test, debug, refactoring | `editor`, `shell`, `file_write` |
 | **Arastirmaci** | Web arastirmasi, dokumantasyon okuma | `http_request`, `file_read`, `think` |
-| **Analist** | Veri analizi, grafik, rapor | `python_repl`, `calculator`, `file_write` |
+| **Analist** | Veri analizi, grafik, rapor | `file_write`, `think` |
 | **Planlayici** | Gorev bolme, onceliklendirme | `file_read`, `file_write`, `think` |
 
 **3 Calisma Modu:**
@@ -99,32 +98,76 @@ Tekrarlanan gorevler icin standart operasyon prosedurleri:
 
 **Ozel SOP yazma destegi** — Kendi is akislarini markdown olarak tanimlayabilirsin.
 
-### 3.4 Yapilandirilmis Cikti
+### 3.4 Zamanlayici (Scheduler)
 
-Agent'in ciktisi Pydantic modeli ile dogrulanir:
+Cron tabanli otomatik SOP tetikleme:
 
-```python
-class MeetingNote(BaseModel):
-    title: str
-    attendees: list[str]
-    action_items: list[ActionItem]
-    next_meeting: datetime
+```yaml
+scheduler:
+  enabled: true
+  jobs:
+    morning-brief:
+      cron: "0 9 * * 1-5"     # Hafta ici sabah 9
+      sop_name: "morning-brief"
+      channel: "telegram"
 ```
 
-Model bu formata uymak zorunda — hata varsa SDK otomatik olarak yeniden dener.
+Agent'a sozlu komut da verebilirsin: "Her gun sabah 9'da morning-brief calistir"
 
-### 3.5 Guvenlik-Oncelikli Tasarim
+### 3.5 Webhook Destegi
+
+Dis sistemlerden AETHON'u tetikleme:
+
+```bash
+# Kanal bazli
+curl -X POST http://localhost:8080/webhook/telegram \
+  -H "Content-Type: application/json" \
+  -d '{"text": "Merhaba"}'
+
+# SOP tetikleyici
+curl -X POST http://localhost:8080/webhook/trigger \
+  -d '{"sop_name": "code-assist", "text": "login ekranini yap"}'
+```
+
+HMAC-SHA256 secret ile guvenli webhook dogrulamasi desteklenir.
+
+### 3.6 Web Dashboard
+
+Tarayicidan AETHON'u izle: `http://localhost:8080/dashboard`
+
+- **Oturumlar** — Aktif session'lari gor
+- **Hafiza** — Uzun vadeli hafiza iceriklerini ara
+- **Telemetri** — Tool/Model cagri istatistikleri
+- **Zamanlanmis Gorevler** — Cron job'lari gor
+- **Canli Metrikler** — WebSocket ile gercek zamanli akis
+
+### 3.7 MCP Entegrasyonu
+
+Model Context Protocol ile dis araclari bagla:
+
+```yaml
+mcp:
+  enabled: true
+  servers:
+    - command: "npx"
+      args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+```
+
+MCP sunucularinin tool'lari otomatik olarak agent'a eklenir.
+
+### 3.8 Guvenlik-Oncelikli Tasarim
 
 | Katman | Koruma |
 |--------|--------|
 | Ag | Gateway sadece 127.0.0.1 — dis erisim imkansiz |
-| Tool | BeforeToolCallEvent hook'u ile tehlikeli islemler engellenir |
+| Kimlik | Allowlist-tabanli sender dogrulama |
+| Tool | SecurityHookProvider ile tehlikeli islemler engellenir |
 | Dosya | Workspace-only erisim — diger dizinlere erisim engellenir |
-| Hafiza | Yazma oncesi hassas bilgi tespiti |
+| Hafiza | MemoryGuardHook ile hassas bilgi tespiti (API key, password, token) |
 | Icerik | Dis kaynaklardan gelen icerik filtreleme |
-| Onay | Tehlikeli tool'lar icin Interrupt ile kullanici onayi |
+| Onay | ApprovalHookProvider ile Interrupt bazli kullanici onayi |
 
-### 3.6 Hafiza Sistemi
+### 3.9 Hafiza Sistemi
 
 | Katman | Teknoloji | Omur |
 |--------|-----------|------|
@@ -132,43 +175,51 @@ Model bu formata uymak zorunda — hata varsa SDK otomatik olarak yeniden dener.
 | Session Hafizasi | FileSessionManager | Session boyunca |
 | Uzun Vadeli Hafiza | SQLite + Ollama Embeddings | Aylar/yillar |
 
+Embedding LRU cache ile ayni text'ler icin tekrar API cagrisi yapmaz.
+
+### 3.10 Telemetri ve Gozlemlenebilirlik
+
+- **TelemetryHookProvider** — Her tool ve model cagrisini izler
+- **Metrikler** — Cagri sayisi, ortalama sure, hata sayisi
+- **WebSocket Stream** — Canli metrik akisi `/ws/telemetry`
+- **Dashboard API** — `/api/telemetry` ile JSON erisi
+
+### 3.11 CONTEXT.md Otomatik Guncelleme
+
+Agent calismasi sirasinda mevcut baglami otomatik gunceller:
+
+```
+Kullanici: "Mevcut projem HashTrade v2"
+AETHON: update_context("proje", "HashTrade v2") → CONTEXT.md guncellenir
+```
+
 ---
 
 ## 4. Teknoloji Yigini
 
 ### 4.1 Cekirdek
 
-| Bilesken | Teknoloji |
-|----------|-----------|
+| Bilesen | Teknoloji |
+|---------|-----------|
 | **Dil** | Python 3.10+ |
 | **Agent Framework** | Strands Agents SDK |
 | **LLM** | Qwen3-Coder-Next (Ollama uzerinden) |
 | **Model Provider** | OllamaModel (Strands SDK dahili) |
 | **Multi-Agent** | Strands Swarm + GraphBuilder |
-| **SOP** | strands-agents-sops |
 | **Tool Ekosistemi** | strands-agents-tools (47+ tool) |
 
 ### 4.2 Altyapi
 
-| Bilesken | Teknoloji |
-|----------|-----------|
+| Bilesen | Teknoloji |
+|---------|-----------|
 | **Async Runtime** | Python asyncio |
 | **Web Framework** | FastAPI + Uvicorn |
 | **WebSocket** | websockets / FastAPI WS |
 | **CLI** | prompt_toolkit + rich + click |
 | **Config** | PyYAML + Pydantic |
-| **Veritabani** | SQLite (aiosqlite) |
+| **Veritabani** | SQLite |
 | **Zamanlayici** | APScheduler |
-| **Gozlemlenebilirlik** | OpenTelemetry (Strands dahili) |
-
-### 4.3 Kanal Kutuphaneleri
-
-| Kanal | Kutuphane | Versiyon |
-|-------|-----------|---------|
-| Telegram | aiogram | 3.x |
-| Discord | discord.py | 2.x |
-| Slack | slack-bolt | 1.18+ |
-| WhatsApp | neonize / whatsapp-web.js bridge | - |
+| **Gozlemlenebilirlik** | TelemetryHookProvider + Dashboard |
 
 ---
 
@@ -189,41 +240,9 @@ Model bu formata uymak zorunda — hata varsa SDK otomatik olarak yeniden dener.
 - Top-P: 0.95
 - Top-K: 40
 
-**Strands Entegrasyonu:**
-```python
-from strands.models import OllamaModel
-
-model = OllamaModel(
-    host="http://localhost:11434",
-    model_id="qwen3-coder-next",
-    temperature=1.0,
-    top_p=0.95,
-    options={"top_k": 40}
-)
-```
-
 ---
 
-## 6. OpenClaw ile Karsilastirma
-
-| Ozellik | OpenClaw | AETHON |
-|---------|----------|--------|
-| **Runtime** | Node.js 22+ | Python 3.10+ |
-| **Agent** | Pi (4 tool) | Strands Agent (47+ tool) |
-| **Multi-Agent** | YOK | Swarm + Graph + Agent-as-Tool |
-| **SOP/Workflow** | YOK | 5 dahili + ozel SOP yazma |
-| **Structured Output** | YOK | Pydantic dogrulama |
-| **Tool Tanimlama** | SKILL.md (markdown) | @tool (Python — tip guvenligi) |
-| **Kanallar** | 22+ | 6 (moduler, genisletilebilir) |
-| **Guvenlik** | CVE'ler, zararli skill'ler | Tasarimdan guvenli |
-| **Gozlemlenebilirlik** | Sinirli | OpenTelemetry dahili |
-| **Ses** | ElevenLabs TTS/STT | Bidi Streaming (deneysel) |
-| **Human-in-the-Loop** | Sinirli | Interrupt mekanizmasi |
-| **Model Provider** | Coklu (Pi-tabanli) | 11+ provider |
-
----
-
-## 7. Kullanim Senaryolari
+## 6. Kullanim Senaryolari
 
 ### Senaryo 1: Kod Gelistirme
 ```
@@ -243,7 +262,7 @@ AETHON:
   → Kullaniciya rapor gonderilir
 ```
 
-### Senaryo 3: Sabah Brifing
+### Senaryo 3: Otomatik Sabah Brifing
 ```
 Cron (09:00): /morning-brief SOP tetiklenir
 AETHON:
@@ -252,60 +271,59 @@ AETHON:
   → Brifing formatlanir ve Telegram'dan gonderilir
 ```
 
-### Senaryo 4: Proje Planlama
+### Senaryo 4: Webhook ile Entegrasyon
 ```
-Kullanici (CLI): "/pdd yeni e-ticaret backend"
+CI/CD Pipeline: POST /webhook/trigger {"sop_name":"codebase-summary"}
 AETHON:
-  → PDD SOP calisir
-  → Planlayici: Gereksinimleri toplar
-  → Kodcu: Teknik tasarim dokumani olusturur
-  → Sonuc workspace'e kaydedilir
+  → codebase-summary SOP tetiklenir
+  → Rapor olusturulur
+  → Sonuc Slack'e gonderilir
 ```
 
 ---
 
-## 8. Proje Sinirlamalari
+## 7. Proje Sinirlamalari
 
-### 8.1 Bilinli Kisitlamalar
+### 7.1 Bilinli Kisitlamalar
 - **Tek kullanici** — Coklu kullanici destegi yok (gerekmiyor)
 - **Lokal calisma** — Bulut deploy yok (guvenlik icin)
-- **6 kanal** — OpenClaw'un 22 kanali yok ama en onemli 6'si var
+- **6 kanal** — En onemli 6 mesajlasma kanali destekleniyor
 - **Ollama bagimli** — Model degisikligi icin Ollama gerekli
 
-### 8.2 Model Sinirlamalari
+### 7.2 Model Sinirlamalari
 - Qwen3-Coder-Next **sadece non-thinking** modunda calisir
 - 80B model — Mac'te RAM kullanimi yuksek olabilir
 - Tool calling guvenilirligi Ollama native API'ye bagimli
 
-### 8.3 Bilinen Riskler
-- WhatsApp adaptoru (neonize) kararlilik sorunu yasayabilir
-- Ollama embedding API performansi buyuk veri setlerinde sinirli
-- Multi-agent Swarm modunda token tuketimi yuksek olabilir
+---
+
+## 8. Basari Kriterleri — TAMAMLANDI
+
+### MVP (Faz 1) ✅
+- [x] CLI'dan AETHON ile konusabilme
+- [x] WebChat'ten AETHON ile konusabilme
+- [x] Ollama + Qwen3-Coder-Next calisiyor
+- [x] Temel tool'lar calisiyor (file_read, file_write, shell, editor)
+- [x] Session yonetimi calisiyor (konusma gecmisi korunuyor)
+- [x] Guvenlik hook'lari aktif
+
+### Tam Urun (Faz 4) ✅
+- [x] Tum 6 kanal destegi (CLI, WebChat, Telegram, Discord, Slack, WhatsApp)
+- [x] Multi-agent takim calisiyor (Orchestrator, Kodcu, Arastirmaci, Analist, Planlayici)
+- [x] SOP'lar calisiyor (3 dahili + ozel SOP destegi)
+- [x] Uzun vadeli hafiza calisiyor (SQLite + Ollama Embeddings)
+- [x] Zamanlayici calisiyor (APScheduler + cron)
+- [x] Dashboard calisiyor (7 API + WebSocket + UI)
+- [x] Webhook destegi calisiyor (HMAC-SHA256)
+- [x] Telemetri calisiyor (TelemetryHookProvider + canli stream)
+- [x] MemoryGuard calisiyor (hassas bilgi engelleme)
+- [x] MCP entegrasyonu calisiyor (dis tool sunuculari)
+- [x] Performans optimizasyonlari (LRU cache, embedding cache, model warm-up)
+- [x] **294 test geciyor**
 
 ---
 
-## 9. Basari Kriterleri
-
-### MVP (Faz 1 Sonu)
-- [ ] CLI'dan AETHON ile konusabilme
-- [ ] WebChat'ten AETHON ile konusabilme
-- [ ] Ollama + Qwen3-Coder-Next calisiyor
-- [ ] Temel tool'lar calisiyor (file_read, file_write, shell, editor)
-- [ ] Session yonetimi calisiyor (konusma gecmisi korunuyor)
-- [ ] Guvenlik hook'lari aktif
-
-### Tam Urun (Faz 4 Sonu)
-- [ ] Tum 6 kanal calisiyor
-- [ ] Multi-agent takim calisiyor
-- [ ] SOP'lar calisiyor
-- [ ] Uzun vadeli hafiza calisiyor
-- [ ] Zamanlayici calisiyor
-- [ ] Dashboard calisiyor
-- [ ] Performans kabul edilebilir seviyede
-
----
-
-## 10. Sozluk
+## 9. Sozluk
 
 | Terim | Aciklama |
 |-------|----------|
@@ -319,3 +337,7 @@ AETHON:
 | **Adapter** | Belirli bir mesajlasma platformu ile iletisim kurma modulu |
 | **Workspace** | Agent'in calisma dizini (SOUL.md, TOOLS.md, SOP'lar) |
 | **Orchestrator** | Gorevleri uygun uzman agent'lara yonlendiren ana agent |
+| **MCP** | Model Context Protocol — dis araclari agent'a baglamak icin standart |
+| **Webhook** | HTTP POST ile dis sistemlerden tetikleme noktasi |
+| **Telemetri** | Agent performansini izleme ve olcme mekanizmasi |
+| **MemoryGuard** | Hafizaya hassas bilgi yazilmasini engelleyen guvenlik katmani |

@@ -5,6 +5,7 @@ Creates and manages Strands Agent instances per session.
 
 import asyncio
 import logging
+from collections import OrderedDict
 from pathlib import Path
 
 from strands import Agent
@@ -29,11 +30,15 @@ class AethonRuntime:
         self.config = config
         self.model = create_model(config.model)
         self.prompt_composer = SystemPromptComposer(config.paths.workspace)
-        self.agents: dict[str, Agent] = {}
+        self._session_cache_size = config.performance.session_cache_size
+        self.agents: OrderedDict[str, Agent] = OrderedDict()
         self.memory = None
         self.specialist_factory = None
         self.sop_runner = None
         self.team_orchestrator = None
+        self._telemetry_hook = None
+        self._context_updater = None
+        self._mcp_loader = None
 
         # VectorMemory
         if getattr(config, "memory", None) and config.memory.enabled:
@@ -44,6 +49,7 @@ class AethonRuntime:
                     db_path=config.memory.db_path,
                     ollama_host=config.model.host,
                     model_id=config.memory.embedding_model,
+                    embedding_cache_size=config.performance.embedding_cache_size,
                 )
                 logger.info(
                     f"VectorMemory: aktif (model={config.memory.embedding_model})"
@@ -83,8 +89,46 @@ class AethonRuntime:
                 logger.warning(f"SOPRunner baslatma hatasi: {e}")
                 self.sop_runner = None
 
+        # TelemetryHookProvider
+        if config.telemetry.enabled:
+            try:
+                from aethon.agent.hooks.telemetry import TelemetryHookProvider
+
+                self._telemetry_hook = TelemetryHookProvider(
+                    max_history=config.telemetry.max_history,
+                )
+                logger.info("Telemetry: aktif")
+            except Exception as e:
+                logger.warning(f"Telemetry baslatma hatasi: {e}")
+
+        # ContextUpdater
+        try:
+            from aethon.agent.context_updater import ContextUpdater
+
+            context_path = str(
+                Path(config.paths.workspace).expanduser() / "CONTEXT.md"
+            )
+            self._context_updater = ContextUpdater(context_path)
+            logger.info("ContextUpdater: aktif")
+        except Exception as e:
+            logger.warning(f"ContextUpdater baslatma hatasi: {e}")
+
+        # MCP Tool Loader
+        if config.mcp.enabled and config.mcp.servers:
+            try:
+                from aethon.tools.mcp_integration import MCPToolLoader
+
+                self._mcp_loader = MCPToolLoader(config.mcp.servers)
+                self._mcp_loader.start()
+                logger.info(
+                    f"MCP: {len(self._mcp_loader.get_tools())} tool yuklendi"
+                )
+            except Exception as e:
+                logger.warning(f"MCP baslatma hatasi: {e}")
+                self._mcp_loader = None
+
     def _get_tools(self) -> list:
-        """Tool list — includes memory, delegate tools."""
+        """Tool list — includes memory, delegate, context, messaging, scheduler, MCP tools."""
         tools = [file_read, file_write, editor, shell, think, current_time]
         if self.memory:
             from aethon.tools.memory_tool import create_memory_tool
@@ -96,16 +140,60 @@ class AethonRuntime:
             )
 
             tools.extend([ask_coder, ask_researcher, ask_analyst, ask_planner])
+        if self._context_updater:
+            from aethon.tools.context_tool import create_context_tool
+
+            tools.append(create_context_tool(self._context_updater))
+        # send_message tool
+        try:
+            from aethon.tools.messaging import send_message
+
+            tools.append(send_message)
+        except Exception:
+            pass
+        # Scheduler tools
+        try:
+            from aethon.tools.scheduler import (
+                _scheduler_instance, schedule_task,
+                list_scheduled_jobs, remove_scheduled_job,
+            )
+
+            if _scheduler_instance:
+                tools.extend([schedule_task, list_scheduled_jobs, remove_scheduled_job])
+        except Exception:
+            pass
+        # MCP tools
+        if self._mcp_loader:
+            tools.extend(self._mcp_loader.get_tools())
         return tools
 
     def _get_hooks(self) -> list:
-        """Hook list — security + optional approval."""
+        """Hook list — security + memory_guard + telemetry + optional approval.
+
+        Hook order: Security -> MemoryGuard -> Telemetry -> Approval
+        """
         hooks = [
             SecurityHookProvider(
                 workspace=self.config.paths.workspace,
                 blocked_commands=self.config.security.blocked_commands,
             ),
         ]
+        # MemoryGuardHook
+        if self.config.memory_guard.enabled:
+            try:
+                from aethon.agent.hooks.memory_guard import MemoryGuardHookProvider
+
+                hooks.append(
+                    MemoryGuardHookProvider(
+                        custom_patterns=self.config.memory_guard.custom_patterns,
+                    )
+                )
+            except Exception as e:
+                logger.warning(f"MemoryGuard baslatma hatasi: {e}")
+        # TelemetryHook
+        if self._telemetry_hook:
+            hooks.append(self._telemetry_hook)
+        # ApprovalHook
         if self.config.approval.enabled:
             from aethon.agent.hooks.approval import ApprovalHookProvider
 
@@ -116,34 +204,64 @@ class AethonRuntime:
         return hooks
 
     def get_or_create_agent(self, session_id: str) -> Agent:
-        """Get or create agent for a session."""
-        if session_id not in self.agents:
-            system_prompt = self.prompt_composer.compose(session_id)
+        """Get or create agent for a session.
 
-            session_mgr = FileSessionManager(
-                session_id=session_id,
-                storage_dir=str(
-                    Path(self.config.session.storage_dir).expanduser()
-                ),
-            )
+        Uses LRU cache: moves accessed session to end, evicts oldest when full.
+        Evicted sessions persist on disk via FileSessionManager.
+        """
+        if session_id in self.agents:
+            self.agents.move_to_end(session_id)
+            return self.agents[session_id]
 
-            conv_mgr = SummarizingConversationManager(
-                summary_ratio=self.config.session.summary_ratio,
-                preserve_recent_messages=self.config.session.preserve_recent_messages,
-            )
+        # Evict oldest if cache full
+        if len(self.agents) >= self._session_cache_size:
+            evicted_id, _ = self.agents.popitem(last=False)
+            logger.debug(f"Session evicted from cache: {evicted_id}")
 
-            self.agents[session_id] = Agent(
-                model=self.model,
-                system_prompt=system_prompt,
-                tools=self._get_tools(),
-                session_manager=session_mgr,
-                conversation_manager=conv_mgr,
-                hooks=self._get_hooks(),
-                agent_id="main",
-                name="AETHON",
-            )
+        system_prompt = self.prompt_composer.compose(session_id)
+
+        session_mgr = FileSessionManager(
+            session_id=session_id,
+            storage_dir=str(
+                Path(self.config.session.storage_dir).expanduser()
+            ),
+        )
+
+        conv_mgr = SummarizingConversationManager(
+            summary_ratio=self.config.session.summary_ratio,
+            preserve_recent_messages=self.config.session.preserve_recent_messages,
+        )
+
+        self.agents[session_id] = Agent(
+            model=self.model,
+            system_prompt=system_prompt,
+            tools=self._get_tools(),
+            session_manager=session_mgr,
+            conversation_manager=conv_mgr,
+            hooks=self._get_hooks(),
+            agent_id="main",
+            name="AETHON",
+        )
 
         return self.agents[session_id]
+
+    def warm_up(self):
+        """Warm up the model with a dummy request.
+
+        Creates a temporary agent, sends 'Merhaba', discards.
+        Helps reduce first-request latency.
+        """
+        try:
+            logger.info("Model warm-up baslatiliyor...")
+            agent = Agent(
+                model=self.model,
+                system_prompt="Sadece 'Merhaba!' de.",
+                tools=[],
+            )
+            agent("Merhaba")
+            logger.info("Model warm-up tamamlandi")
+        except Exception as e:
+            logger.warning(f"Model warm-up hatasi: {e}")
 
     def _process_sync(self, message: InboundMessage, session_id: str) -> str:
         """Process message synchronously (called from executor)."""

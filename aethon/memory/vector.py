@@ -8,6 +8,7 @@ import json
 import math
 import sqlite3
 from datetime import datetime
+from functools import lru_cache
 from pathlib import Path
 
 import requests
@@ -16,13 +17,22 @@ import requests
 class VectorMemory:
     """SQLite + Ollama embedding based long-term memory."""
 
-    def __init__(self, db_path: str, ollama_host: str, model_id: str):
+    def __init__(self, db_path: str, ollama_host: str, model_id: str,
+                 embedding_cache_size: int = 100):
         self.db_path = Path(db_path).expanduser()
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self.db = sqlite3.connect(str(self.db_path), check_same_thread=False)
         self.ollama_host = ollama_host.rstrip("/")
         self.model_id = model_id
+        self._embedding_cache_size = embedding_cache_size
         self._create_tables()
+
+        # Create cached embedding function
+        @lru_cache(maxsize=embedding_cache_size)
+        def _cached_embedding(text: str) -> tuple:
+            return tuple(self._get_embedding_raw(text))
+
+        self._cached_embedding = _cached_embedding
 
     def _create_tables(self):
         self.db.execute("""
@@ -116,7 +126,14 @@ class VectorMemory:
         self.db.close()
 
     def _get_embedding(self, text: str) -> list[float]:
-        """Get embedding from Ollama /api/embed endpoint."""
+        """Get embedding with LRU cache support.
+
+        Returns list[float] from cached tuple.
+        """
+        return list(self._cached_embedding(text))
+
+    def _get_embedding_raw(self, text: str) -> list[float]:
+        """Get embedding from Ollama /api/embed endpoint (uncached)."""
         response = requests.post(
             f"{self.ollama_host}/api/embed",
             json={"model": self.model_id, "input": text},

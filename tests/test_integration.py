@@ -1,7 +1,8 @@
-"""Integration tests for AETHON Phase 1 + Phase 2.
+"""Integration tests for AETHON Phase 1 + Phase 2 + Phase 3 + Phase 4.
 
 Tests the full pipeline: Config -> Runtime -> Router -> Response.
 Phase 2 adds VectorMemory and session isolation tests.
+Phase 4 adds TelemetryHook, MemoryGuard, Context, Scheduler, Dashboard tests.
 Requires Ollama to be running with qwen3-coder-next and nomic-embed-text.
 """
 
@@ -10,7 +11,8 @@ import asyncio
 
 from aethon.config import (
     AethonConfig, PathsConfig, ModelConfig, MemoryConfig,
-    MultiAgentConfig, SOPConfig,
+    MultiAgentConfig, SOPConfig, TelemetryConfig, MemoryGuardConfig,
+    SchedulerConfig, DashboardConfig, WebhookConfig, PerformanceConfig,
 )
 from aethon.agent.runtime import AethonRuntime
 from aethon.gateway.router import MessageRouter
@@ -269,3 +271,115 @@ async def test_delegate_tools_in_runtime(phase3_setup):
     assert any("ask_researcher" in str(n) for n in tool_names)
     assert any("ask_analyst" in str(n) for n in tool_names)
     assert any("ask_planner" in str(n) for n in tool_names)
+
+
+# --- Phase 4 Integration Tests ---
+
+
+@pytest.fixture
+def phase4_setup(tmp_path):
+    """Full setup for Phase 4 integration tests."""
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "SOUL.md").write_text(
+        "Sen AETHON, kisa ve oz yanit veren bir AI asistansin."
+    )
+    (workspace / "TOOLS.md").write_text("Turkce yanit ver.")
+    (workspace / "CONTEXT.md").write_text("# Mevcut Baglam\n\nTest baglami.\n")
+    sops_dir = workspace / "sops"
+    sops_dir.mkdir()
+    (sops_dir / "test-sop.sop.md").write_text(
+        "# Test SOP\n\n## Overview\nTest SOP.\n\n## Steps\nTest.\n"
+    )
+    sessions = tmp_path / "sessions"
+    sessions.mkdir()
+    logs = tmp_path / "logs"
+    logs.mkdir()
+
+    config = AethonConfig(
+        model=ModelConfig(provider="ollama", model_id="qwen3-coder-next"),
+        memory=MemoryConfig(
+            enabled=True,
+            embedding_model="nomic-embed-text",
+            db_path=str(tmp_path / "memory.sqlite"),
+        ),
+        multi_agent=MultiAgentConfig(enabled=True),
+        sops=SOPConfig(enabled=True, builtin_sops_enabled=True),
+        telemetry=TelemetryConfig(enabled=True, max_history=1000),
+        memory_guard=MemoryGuardConfig(enabled=True),
+        scheduler=SchedulerConfig(enabled=True),
+        dashboard=DashboardConfig(enabled=True),
+        webhook=WebhookConfig(enabled=True),
+        performance=PerformanceConfig(
+            session_cache_size=5,
+            embedding_cache_size=50,
+        ),
+        paths=PathsConfig(
+            workspace=str(workspace),
+            sessions=str(sessions),
+            logs=str(logs),
+            memory_db=str(tmp_path / "memory.sqlite"),
+            credentials=str(tmp_path / "credentials"),
+        ),
+    )
+
+    runtime = AethonRuntime(config)
+    return config, runtime
+
+
+@pytest.mark.asyncio
+async def test_runtime_has_telemetry_hook(phase4_setup):
+    """Runtime creates TelemetryHook when telemetry enabled."""
+    config, runtime = phase4_setup
+    assert runtime._telemetry_hook is not None
+    assert hasattr(runtime._telemetry_hook, "get_summary")
+    assert hasattr(runtime._telemetry_hook, "get_metrics")
+
+
+@pytest.mark.asyncio
+async def test_runtime_hooks_include_telemetry(phase4_setup):
+    """Runtime hooks include TelemetryHook."""
+    config, runtime = phase4_setup
+    hooks = runtime._get_hooks()
+    hook_types = [type(h).__name__ for h in hooks]
+    assert "TelemetryHookProvider" in hook_types
+
+
+@pytest.mark.asyncio
+async def test_runtime_hooks_include_memory_guard(phase4_setup):
+    """Runtime hooks include MemoryGuardHook."""
+    config, runtime = phase4_setup
+    hooks = runtime._get_hooks()
+    hook_types = [type(h).__name__ for h in hooks]
+    assert "MemoryGuardHookProvider" in hook_types
+
+
+@pytest.mark.asyncio
+async def test_runtime_has_context_updater(phase4_setup):
+    """Runtime creates ContextUpdater."""
+    config, runtime = phase4_setup
+    assert runtime._context_updater is not None
+
+
+@pytest.mark.asyncio
+async def test_runtime_tools_include_context(phase4_setup):
+    """Runtime tools include update_context."""
+    config, runtime = phase4_setup
+    tools = runtime._get_tools()
+    tool_names = [
+        getattr(t, "__name__", getattr(t, "tool_name", str(t)))
+        for t in tools
+    ]
+    assert any("context" in str(n).lower() for n in tool_names)
+
+
+@pytest.mark.asyncio
+async def test_runtime_tools_include_send_message(phase4_setup):
+    """Runtime tools include send_message."""
+    config, runtime = phase4_setup
+    tools = runtime._get_tools()
+    tool_names = [
+        getattr(t, "__name__", getattr(t, "tool_name", str(t)))
+        for t in tools
+    ]
+    assert any("send_message" in str(n) for n in tool_names)

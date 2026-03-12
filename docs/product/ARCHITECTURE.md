@@ -226,11 +226,15 @@ result = agent("Merhaba, bugun ne yapacagiz?")
 
 | Bilesken | Teknoloji | Aciklama |
 |----------|-----------|----------|
-| Vektor Hafiza | SQLite + Ollama `/api/embed` | Uzun vadeli semantik hafiza |
-| Session | FileSessionManager | Konusma gecmisi (JSON dosyalari) |
+| Vektor Hafiza | SQLite + Ollama `/api/embed` | Uzun vadeli semantik hafiza (LRU embedding cache) |
+| Session | FileSessionManager | Konusma gecmisi (LRU session cache) |
 | Config | PyYAML + Pydantic | `~/.aethon/config.yaml` |
 | Model | **Multi-Provider Factory** | Ollama, OpenAI, Anthropic, Bedrock, Gemini, LiteLLM, Mistral |
 | Zamanlayici | APScheduler | Cron-tabanli SOP tetikleme |
+| Telemetri | TelemetryHookProvider | Tool/model metrik toplama (deque) |
+| Dashboard | FastAPI + Vanilla JS | Web izleme paneli + WebSocket stream |
+| Webhook | FastAPI | HTTP webhook endpoint'leri |
+| MCP | strands MCPClient | Harici MCP sunucu entegrasyonu |
 
 ---
 
@@ -340,11 +344,15 @@ AETHON'un system prompt'u katmanli olarak birlestilir:
 | Tool | Dosya | Aciklama |
 |------|-------|----------|
 | `ask_coder` | `aethon/tools/delegate.py` | Kodlama gorevini kodcu agent'a devret |
-| `ask_researcher` | `aethon/tools/delegate.py` | Arastirma gorevini arastirmaci agent'a devret |
-| `ask_analyst` | `aethon/tools/delegate.py` | Analiz gorevini analist agent'a devret |
-| `send_message` | `aethon/tools/messaging.py` | Belirli kanala mesaj gonder |
-| `schedule_task` | `aethon/tools/scheduler.py` | Zamanlanmis gorev olustur |
+| `ask_researcher` | `aethon/tools/delegate.py` | Arastirma gorevini arastirmaciya devret |
+| `ask_analyst` | `aethon/tools/delegate.py` | Analiz gorevini analiste devret |
+| `ask_planner` | `aethon/tools/delegate.py` | Planlama gorevini planlayiciya devret |
 | `manage_memory` | `aethon/tools/memory_tool.py` | Uzun vadeli hafizayi yonet |
+| `update_context` | `aethon/tools/context_tool.py` | CONTEXT.md baglamini yonet |
+| `send_message` | `aethon/tools/messaging.py` | Baska kanala mesaj gonder |
+| `schedule_task` | `aethon/tools/scheduler.py` | Cron tabanli gorev zamanla |
+| `list_scheduled_jobs` | `aethon/tools/scheduler.py` | Zamanlanmis gorevleri listele |
+| `remove_scheduled_job` | `aethon/tools/scheduler.py` | Zamanlanmis gorevi kaldir |
 
 ### 5.2 Tool Tanimlama Deseni
 
@@ -371,19 +379,24 @@ Her tool cagrisi su pipeline'dan gecer:
 Model "tool_use" uretir
         │
         ▼
-┌───────────────────┐
-│ BeforeToolCallEvent│
-│                   │
-│ SecurityHook:     │
-│  - Workspace check│
-│  - Blocked cmds   │
-│                   │
-│ ApprovalHook:     │
-│  - Interrupt?     │
-│                   │
-│ TelemetryHook:    │
-│  - Timer baslat   │
-└────────┬──────────┘
+┌────────────────────┐
+│ BeforeToolCallEvent │
+│                     │
+│ 1. SecurityHook:    │  Tehlikeli komut + workspace kontrol
+│    - Blocked cmds   │
+│    - Workspace check│
+│                     │
+│ 2. MemoryGuardHook: │  Hassas bilgi korumasi
+│    - API key/pass   │  (sadece manage_memory store'u)
+│    - Token/SSH/PEM  │
+│    - Kredi karti    │
+│                     │
+│ 3. TelemetryHook:   │  Zamanlama baslat
+│    - Timer baslat   │
+│                     │
+│ 4. ApprovalHook:    │  Kullanici onayi
+│    - Interrupt?     │
+└────────┬────────────┘
          │
          ▼
 ┌───────────────────┐
@@ -391,17 +404,17 @@ Model "tool_use" uretir
 └────────┬──────────┘
          │
          ▼
-┌───────────────────┐
-│ AfterToolCallEvent│
-│                   │
-│ TelemetryHook:    │
-│  - Timer durdur   │
-│  - Logla          │
-│                   │
-│ MemoryHook:       │
-│  - Otomatik kayit │
-└───────────────────┘
+┌────────────────────┐
+│ AfterToolCallEvent  │
+│                     │
+│ TelemetryHook:      │
+│  - Timer durdur     │
+│  - Metrik logla     │
+│  - Hata takibi      │
+└─────────────────────┘
 ```
+
+**Hook Sirasi:** Security → MemoryGuard → Telemetry → Approval. Security tehlikeli operasyonlari engeller, MemoryGuard hassas veriyi korur, Telemetry gecen her seyi kaydeder, Approval son kullanici onayini ister.
 
 ---
 
@@ -562,12 +575,19 @@ class SecurityConfig(BaseModel):
 
 class AethonConfig(BaseModel):
     model: ModelConfig
-    channels: dict[str, ChannelConfig]
+    channels: ChannelsConfig
     security: SecurityConfig
     memory: MemoryConfig
     session: SessionConfig
     sops: SOPConfig
     multi_agent: MultiAgentConfig
+    telemetry: TelemetryConfig       # Metrik toplama
+    memory_guard: MemoryGuardConfig  # Hassas bilgi korumasi
+    scheduler: SchedulerConfig       # Cron-tabanli SOP zamanlama
+    dashboard: DashboardConfig       # Web izleme paneli
+    webhook: WebhookConfig           # HTTP webhook desteği
+    mcp: MCPConfig                   # MCP sunucu entegrasyonu
+    performance: PerformanceConfig   # LRU cache + model warm-up
     paths: PathsConfig
 ```
 
@@ -596,47 +616,52 @@ aethon/                                  # Proje kaynak kodu
   ├── aethon/
   │   ├── __init__.py
   │   ├── __main__.py                   # python -m aethon
-  │   ├── config.py                     # AethonConfig
+  │   ├── config.py                     # AethonConfig (17 config modeli)
   │   ├── gateway/
-  │   │   ├── server.py                 # AethonGateway
-  │   │   └── router.py                # MessageRouter
+  │   │   ├── server.py                 # AethonGateway (lifecycle yonetimi)
+  │   │   ├── router.py                # MessageRouter (session + auth)
+  │   │   └── webhooks.py             # Webhook endpoint'leri
   │   ├── channels/
   │   │   ├── base.py                   # ChannelAdapter, InboundMessage, OutboundMessage
   │   │   ├── cli.py                    # CLIAdapter
-  │   │   ├── webchat.py               # WebChatAdapter
+  │   │   ├── webchat.py               # WebChatAdapter (FastAPI + WS)
   │   │   ├── telegram.py              # TelegramAdapter
   │   │   ├── discord_adapter.py       # DiscordAdapter
   │   │   ├── slack_adapter.py         # SlackAdapter
   │   │   └── whatsapp.py             # WhatsAppAdapter
   │   ├── agent/
-  │   │   ├── runtime.py               # AethonRuntime
+  │   │   ├── runtime.py               # AethonRuntime (LRU cache + warm-up)
+  │   │   ├── model_factory.py         # Multi-provider model factory
   │   │   ├── prompt.py                # SystemPromptComposer
   │   │   ├── specialists.py           # SpecialistFactory
   │   │   ├── teams.py                 # TeamOrchestrator
+  │   │   ├── context_updater.py       # CONTEXT.md otomatik guncelleme
   │   │   └── hooks/
   │   │       ├── security.py          # SecurityHookProvider
   │   │       ├── approval.py          # ApprovalHookProvider
   │   │       ├── telemetry.py         # TelemetryHookProvider
-  │   │       └── memory_guard.py      # MemoryGuardHook
+  │   │       └── memory_guard.py      # MemoryGuardHookProvider
   │   ├── tools/
-  │   │   ├── delegate.py              # ask_coder, ask_researcher, ask_analyst
+  │   │   ├── delegate.py              # ask_coder, ask_researcher, ask_analyst, ask_planner
+  │   │   ├── memory_tool.py           # manage_memory
+  │   │   ├── context_tool.py          # update_context
   │   │   ├── messaging.py             # send_message
-  │   │   ├── scheduler.py             # schedule_task
-  │   │   └── memory_tool.py           # manage_memory
+  │   │   ├── scheduler.py             # schedule_task, list/remove jobs
+  │   │   └── mcp_integration.py       # MCPToolLoader
   │   ├── memory/
-  │   │   └── vector.py                # VectorMemory
-  │   ├── session/
-  │   │   └── manager.py               # AethonSessionManager
+  │   │   └── vector.py                # VectorMemory (embedding LRU cache)
   │   ├── sops/
-  │   │   └── runner.py                # SOPRunner
+  │   │   ├── runner.py                # SOPRunner
+  │   │   └── builtin/                 # Dahili SOP dosyalari
   │   └── ui/
-  │       └── dist/                    # WebChat frontend
+  │       ├── __init__.py
+  │       └── dashboard.py             # Web dashboard + API endpoint'leri
   ├── workspace/                        # Varsayilan workspace sablonu
   │   ├── SOUL.md
   │   ├── TOOLS.md
   │   ├── CONTEXT.md
   │   └── sops/
-  └── tests/
+  └── tests/                            # 294 test
 ```
 
 ---
@@ -649,8 +674,8 @@ aethon
   │   └── strands-agents-tools # 47+ tool
   │   └── strands-agents-sops  # SOP sistemi
   │
-  ├── fastapi + uvicorn        # WebChat + API
-  │   └── websockets           # WS destegi
+  ├── fastapi + uvicorn        # WebChat + Dashboard + Webhook + API
+  │   └── websockets           # WS destegi (chat + telemetri)
   │
   ├── aiogram                  # Telegram
   ├── discord.py               # Discord
@@ -662,7 +687,8 @@ aethon
   │
   ├── pyyaml + pydantic        # Config
   ├── aiosqlite                # Veritabani
-  └── apscheduler              # Zamanlayici
+  ├── apscheduler              # Zamanlayici
+  └── mcp (optional)           # MCP sunucu entegrasyonu
 ```
 
 ---
@@ -674,9 +700,42 @@ aethon
 | Ollama | 11434 | `/api/chat`, `/api/embed` | HTTP |
 | WebChat | 18790 | `/ws/chat` | WebSocket |
 | WebChat UI | 18790 | `/ui` | HTTP (statik) |
-| API | 18790 | `/api/status`, `/api/sessions` | HTTP REST |
+| Dashboard | 18790 | `/dashboard` | HTTP |
+| Dashboard API | 18790 | `/api/sessions`, `/api/memory`, `/api/config`, `/api/telemetry`, `/api/scheduler/jobs` | HTTP REST |
+| Hafiza Arama | 18790 | `/api/memory/search` | HTTP POST |
+| Telemetri Stream | 18790 | `/ws/telemetry` | WebSocket |
+| Webhook (Kanal) | 18790 | `/webhook/{channel}` | HTTP POST |
+| Webhook (Tetik) | 18790 | `/webhook/trigger` | HTTP POST |
 | Telegram | - | Bot API polling | HTTPS (outbound) |
 | Discord | - | Gateway WebSocket | WSS (outbound) |
 | Slack | - | Socket Mode | WSS (outbound) |
 
 **Onemli:** Tum yerelde dinleyen servisler `127.0.0.1` adresine baglidir. `0.0.0.0` KULLANILMAZ.
+
+---
+
+## 12. Performans Optimizasyonlari
+
+### 12.1 Session LRU Cache
+
+```
+Runtime.agents: OrderedDict (LRU cache)
+
+Erisim:                          Tasma:
+┌───────────┐ move_to_end()     ┌───────────┐ popitem(last=False)
+│ session_A │ ──────────────▶   │ en_eski   │ ──────────────▶ Disk'e kaydet
+│ session_B │                   │ session_B │
+│ session_C │                   │ session_C │
+└───────────┘                   │ session_A │
+                                └───────────┘
+```
+
+Varsayilan boyut: 10 session. Evict edilen session'lar disk'te kalir (FileSessionManager), tekrar erisince yuklenir.
+
+### 12.2 Embedding LRU Cache
+
+Tekrarlayan hafiza sorgulari icin `lru_cache` ile embedding sonuclari onbelleklenir. Varsayilan boyut: 100 embedding.
+
+### 12.3 Model Warm-up
+
+Baslangiçta dummy "Merhaba" istegi gondererek ilk kullanici mesajindaki gecikmeyi azaltir.

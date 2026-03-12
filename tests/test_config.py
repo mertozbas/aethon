@@ -7,6 +7,8 @@ from pathlib import Path
 from aethon.config import (
     AethonConfig, ModelConfig, MemoryConfig, ChannelsConfig,
     MultiAgentConfig, SOPConfig, ApprovalConfig,
+    TelemetryConfig, MemoryGuardConfig, SchedulerConfig,
+    DashboardConfig, WebhookConfig, MCPConfig, PerformanceConfig,
 )
 
 
@@ -194,3 +196,144 @@ def test_config_with_multi_agent_yaml(tmp_path):
     config = AethonConfig.load(str(config_file))
     assert config.multi_agent.enabled is False
     assert config.multi_agent.max_handoffs == 3
+
+
+# --- Phase 4 Config Tests ---
+
+
+def test_telemetry_config_defaults():
+    """TelemetryConfig has correct defaults."""
+    config = AethonConfig()
+    assert config.telemetry.enabled is True
+    assert config.telemetry.max_history == 10000
+
+
+def test_telemetry_config_custom():
+    """Custom TelemetryConfig works."""
+    tc = TelemetryConfig(enabled=False, max_history=500)
+    assert tc.enabled is False
+    assert tc.max_history == 500
+
+
+def test_memory_guard_config_defaults():
+    """MemoryGuardConfig has correct defaults."""
+    config = AethonConfig()
+    assert config.memory_guard.enabled is True
+    assert config.memory_guard.custom_patterns == []
+
+
+def test_memory_guard_config_custom():
+    """Custom MemoryGuardConfig works."""
+    mc = MemoryGuardConfig(
+        enabled=True,
+        custom_patterns=[r"custom_secret=\S+"],
+    )
+    assert mc.custom_patterns == [r"custom_secret=\S+"]
+
+
+def test_scheduler_config_defaults():
+    """SchedulerConfig has correct defaults."""
+    config = AethonConfig()
+    assert config.scheduler.enabled is True
+    assert config.scheduler.default_channel == "telegram"
+    assert config.scheduler.jobs == {}
+
+
+def test_scheduler_config_custom():
+    """Custom SchedulerConfig works."""
+    sc = SchedulerConfig(
+        enabled=True,
+        default_channel="slack",
+        jobs={"morning": {"cron": "0 9 * * 1-5", "sop": "morning-brief"}},
+    )
+    assert sc.default_channel == "slack"
+    assert "morning" in sc.jobs
+
+
+def test_dashboard_config_defaults():
+    """DashboardConfig has correct defaults."""
+    config = AethonConfig()
+    assert config.dashboard.enabled is True
+
+
+def test_dashboard_config_custom():
+    """Custom DashboardConfig works."""
+    dc = DashboardConfig(enabled=False)
+    assert dc.enabled is False
+
+
+def test_webhook_config_defaults():
+    """WebhookConfig has correct defaults."""
+    config = AethonConfig()
+    assert config.webhook.enabled is True
+    assert config.webhook.secret == ""
+
+
+def test_webhook_config_custom():
+    """Custom WebhookConfig works."""
+    wc = WebhookConfig(enabled=True, secret="my-secret-key")
+    assert wc.secret == "my-secret-key"
+
+
+def test_mcp_config_defaults():
+    """MCPConfig has correct defaults (disabled by default)."""
+    config = AethonConfig()
+    assert config.mcp.enabled is False
+    assert config.mcp.servers == []
+
+
+def test_mcp_config_custom():
+    """Custom MCPConfig works."""
+    mc = MCPConfig(
+        enabled=True,
+        servers=[{"name": "test", "command": "python", "args": ["-m", "server"]}],
+    )
+    assert mc.enabled is True
+    assert len(mc.servers) == 1
+    assert mc.servers[0]["name"] == "test"
+
+
+def test_performance_config_defaults():
+    """PerformanceConfig has correct defaults."""
+    config = AethonConfig()
+    assert config.performance.model_warmup is True
+    assert config.performance.session_cache_size == 10
+    assert config.performance.embedding_cache_size == 100
+
+
+def test_performance_config_custom():
+    """Custom PerformanceConfig works."""
+    pc = PerformanceConfig(
+        model_warmup=False,
+        session_cache_size=5,
+        embedding_cache_size=50,
+    )
+    assert pc.model_warmup is False
+    assert pc.session_cache_size == 5
+
+
+def test_config_with_phase4_yaml(tmp_path):
+    """Config loads Phase 4 sections from YAML."""
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        "telemetry:\n"
+        "  enabled: true\n"
+        "  max_history: 5000\n"
+        "scheduler:\n"
+        "  enabled: true\n"
+        "  default_channel: discord\n"
+        "  jobs:\n"
+        "    morning:\n"
+        "      cron: '0 9 * * 1-5'\n"
+        "      sop: morning-brief\n"
+        "mcp:\n"
+        "  enabled: true\n"
+        "  servers:\n"
+        "    - name: custom\n"
+        "      command: python\n"
+    )
+    config = AethonConfig.load(str(config_file))
+    assert config.telemetry.max_history == 5000
+    assert config.scheduler.default_channel == "discord"
+    assert "morning" in config.scheduler.jobs
+    assert config.mcp.enabled is True

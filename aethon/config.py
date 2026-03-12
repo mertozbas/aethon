@@ -109,6 +109,56 @@ class ApprovalConfig(BaseModel):
     )
 
 
+class TelemetryConfig(BaseModel):
+    """Telemetry hook configuration."""
+
+    enabled: bool = True
+    max_history: int = 10000
+
+
+class MemoryGuardConfig(BaseModel):
+    """Memory guard hook configuration."""
+
+    enabled: bool = True
+    custom_patterns: list[str] = Field(default_factory=list)
+
+
+class SchedulerConfig(BaseModel):
+    """APScheduler configuration."""
+
+    enabled: bool = True
+    default_channel: str = "telegram"
+    jobs: dict = Field(default_factory=dict)
+
+
+class DashboardConfig(BaseModel):
+    """Web dashboard configuration."""
+
+    enabled: bool = True
+
+
+class WebhookConfig(BaseModel):
+    """Webhook endpoint configuration."""
+
+    enabled: bool = True
+    secret: str = ""
+
+
+class MCPConfig(BaseModel):
+    """MCP server integration configuration."""
+
+    enabled: bool = False
+    servers: list[dict] = Field(default_factory=list)
+
+
+class PerformanceConfig(BaseModel):
+    """Performance optimization configuration."""
+
+    model_warmup: bool = True
+    session_cache_size: int = 10
+    embedding_cache_size: int = 100
+
+
 class SessionConfig(BaseModel):
     storage_dir: str = "~/.aethon/sessions"
     conversation_manager: str = "summarizing"
@@ -135,6 +185,13 @@ class AethonConfig(BaseModel):
     multi_agent: MultiAgentConfig = MultiAgentConfig()
     sops: SOPConfig = SOPConfig()
     approval: ApprovalConfig = ApprovalConfig()
+    telemetry: TelemetryConfig = TelemetryConfig()
+    memory_guard: MemoryGuardConfig = MemoryGuardConfig()
+    scheduler: SchedulerConfig = SchedulerConfig()
+    dashboard: DashboardConfig = DashboardConfig()
+    webhook: WebhookConfig = WebhookConfig()
+    mcp: MCPConfig = MCPConfig()
+    performance: PerformanceConfig = PerformanceConfig()
     paths: PathsConfig = PathsConfig()
 
     @classmethod

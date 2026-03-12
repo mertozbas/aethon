@@ -28,6 +28,11 @@ class AethonGateway:
         self.adapters: dict[str, object] = {}
         self._tasks: list[asyncio.Task] = []
         self._shutdown_event = asyncio.Event()
+        self._scheduler = None
+
+        # Set global gateway reference for send_message tool
+        from aethon.tools.messaging import set_gateway
+        set_gateway(self)
 
     async def start(self):
         """Start all enabled channel adapters.
@@ -117,6 +122,65 @@ class AethonGateway:
             except ValueError as e:
                 logger.warning(f"WhatsApp: {e}")
 
+        # Scheduler
+        if self.config.scheduler.enabled and self.runtime.sop_runner:
+            try:
+                from aethon.tools.scheduler import AethonScheduler, set_scheduler
+
+                self._scheduler = AethonScheduler(
+                    self.runtime.sop_runner,
+                    self.runtime,
+                    self.config.scheduler.default_channel,
+                )
+                # Load pre-configured jobs from config
+                for job_id, job_cfg in self.config.scheduler.jobs.items():
+                    self._scheduler.add_job(
+                        job_id,
+                        job_cfg.get("cron", "0 9 * * *"),
+                        job_cfg.get("sop_name", ""),
+                        job_cfg.get("channel", ""),
+                    )
+                set_scheduler(self._scheduler)
+                self._scheduler.start()
+                logger.info("Zamanlayici: aktif")
+            except Exception as e:
+                logger.warning(f"Zamanlayici hatasi: {e}")
+
+        # Webhook support on WebChat app
+        if self.config.webhook.enabled and "webchat" in self.adapters:
+            try:
+                from aethon.gateway.webhooks import setup_webhooks
+
+                setup_webhooks(
+                    self.adapters["webchat"].app,
+                    self.router,
+                    self.config.webhook.secret,
+                )
+                logger.info("Webhook: aktif")
+            except Exception as e:
+                logger.warning(f"Webhook hatasi: {e}")
+
+        # Dashboard on WebChat app
+        if self.config.dashboard.enabled and "webchat" in self.adapters:
+            try:
+                from aethon.ui.dashboard import setup_dashboard
+
+                setup_dashboard(
+                    self.adapters["webchat"].app,
+                    self.runtime,
+                    self.config,
+                )
+                logger.info("Dashboard: aktif")
+            except Exception as e:
+                logger.warning(f"Dashboard hatasi: {e}")
+
+        # Model warm-up
+        if self.config.performance.model_warmup:
+            try:
+                self.runtime.warm_up()
+            except Exception as e:
+                logger.warning(f"Warm-up hatasi: {e}")
+
         if not coroutines:
             raise RuntimeError("Hicbir kanal etkin degil!")
 
@@ -145,8 +209,24 @@ class AethonGateway:
             self._shutdown_event.set()
 
     async def shutdown(self):
-        """Gracefully stop all adapters and cancel remaining tasks."""
+        """Gracefully stop all adapters, scheduler, and MCP clients."""
         logger.info("AETHON kapatiliyor...")
+
+        # Stop scheduler
+        if self._scheduler:
+            try:
+                self._scheduler.stop()
+                logger.info("Zamanlayici durduruldu")
+            except Exception as e:
+                logger.warning(f"Zamanlayici durdurma hatasi: {e}")
+
+        # Stop MCP clients
+        if self.runtime._mcp_loader:
+            try:
+                self.runtime._mcp_loader.stop()
+                logger.info("MCP sunuculari durduruldu")
+            except Exception as e:
+                logger.warning(f"MCP durdurma hatasi: {e}")
 
         # Stop each adapter with a timeout
         for name, adapter in self.adapters.items():

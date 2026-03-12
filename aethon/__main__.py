@@ -61,6 +61,36 @@ def start(config: str):
         except Exception:
             console.print("  SOP'lar: [yellow]yuklenemedi[/]")
 
+    # Scheduler durumu
+    if cfg.scheduler.enabled:
+        console.print("  Zamanlayici: [green]aktif[/]")
+    else:
+        console.print("  Zamanlayici: [dim]devre disi[/]")
+
+    # Telemetry durumu
+    if cfg.telemetry.enabled:
+        console.print("  Telemetri: [green]aktif[/]")
+    else:
+        console.print("  Telemetri: [dim]devre disi[/]")
+
+    # Dashboard durumu
+    if cfg.dashboard.enabled and cfg.channels.webchat.enabled:
+        console.print(
+            f"  Dashboard: [green]http://127.0.0.1:{cfg.channels.webchat.port}/dashboard[/]"
+        )
+
+    # Webhook durumu
+    if cfg.webhook.enabled and cfg.channels.webchat.enabled:
+        console.print(
+            f"  Webhook: [green]http://127.0.0.1:{cfg.channels.webchat.port}/webhook/{{channel}}[/]"
+        )
+
+    # MCP durumu
+    if cfg.mcp.enabled:
+        console.print(f"  MCP: [green]{len(cfg.mcp.servers)} sunucu[/]")
+    else:
+        console.print("  MCP: [dim]devre disi[/]")
+
     # Etkin kanallari listele
     _print_channels(cfg)
 
