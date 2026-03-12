@@ -1,19 +1,19 @@
-# AETHON — Teknik Mimari Dokumani
+# AETHON — Technical Architecture Document
 
-> Versiyon: 0.1.0 | Tarih: 2026-03-12
-> Bu dokuman AETHON'un teknik mimarisini, veri akislarini ve bilesken iliskilerini detayli olarak tanimlar.
+> Version: 0.1.0 | Date: 2026-03-12
+> This document describes AETHON's technical architecture, data flows, and component relationships in detail.
 
 ---
 
-## 1. Yuksek Seviye Mimari
+## 1. High-Level Architecture
 
 ```
 ╔══════════════════════════════════════════════════════════════════════╗
-║                          AETHON SISTEMI                             ║
+║                          AETHON SYSTEM                               ║
 ╠══════════════════════════════════════════════════════════════════════╣
 ║                                                                      ║
 ║  ┌───────────────────────────────────────────────────────────────┐  ║
-║  │                      GATEWAY KATMANI                           │  ║
+║  │                      GATEWAY LAYER                              │  ║
 ║  │              (Python asyncio + aiohttp)                        │  ║
 ║  │                                                                │  ║
 ║  │  ┌──────┐ ┌──────┐ ┌───────┐ ┌─────┐ ┌───────┐ ┌─────┐     │  ║
@@ -30,7 +30,7 @@
 ║                    └─────────┬─────────┘                            ║
 ║                              │                                       ║
 ║  ┌───────────────────────────▼───────────────────────────────────┐  ║
-║  │                     AGENT KATMANI                               │  ║
+║  │                     AGENT LAYER                                  │  ║
 ║  │                                                                  │  ║
 ║  │  ┌────────────────────────────────────────────────────────┐    │  ║
 ║  │  │              AETHON RUNTIME                              │   │  ║
@@ -50,17 +50,17 @@
 ║  │         ┌────────────────────┼────────────────────┐             │  ║
 ║  │         │                    │                    │              │  ║
 ║  │    ┌────▼─────┐      ┌──────▼──────┐     ┌──────▼──────┐      │  ║
-║  │    │ Kodcu    │      │ Arastirmaci │     │  Analist    │       │  ║
+║  │    │ Coder    │      │ Researcher  │     │  Analyst    │       │  ║
 ║  │    │ Agent    │      │ Agent       │     │  Agent      │       │  ║
 ║  │    └──────────┘      └─────────────┘     └─────────────┘       │  ║
 ║  └───────────────────────────────────────────────────────────────┘  ║
 ║                              │                                       ║
 ║  ┌───────────────────────────▼───────────────────────────────────┐  ║
-║  │                    ALTYAPI KATMANI                               │  ║
+║  │                    INFRASTRUCTURE LAYER                          │  ║
 ║  │                                                                  │  ║
 ║  │  ┌──────────┐ ┌────────────┐ ┌────────┐ ┌──────────────────┐  │  ║
-║  │  │ Vektor   │ │ File       │ │ YAML   │ │ OllamaModel     │  │  ║
-║  │  │ Hafiza   │ │ Session    │ │ Config │ │ (LLM Provider)  │  │  ║
+║  │  │ Vector   │ │ File       │ │ YAML   │ │ OllamaModel     │  │  ║
+║  │  │ Memory   │ │ Session    │ │ Config │ │ (LLM Provider)  │  │  ║
 ║  │  │ (SQLite) │ │ Manager    │ │        │ │                  │  │  ║
 ║  │  └──────────┘ └────────────┘ └────────┘ └──────────────────┘  │  ║
 ║  └───────────────────────────────────────────────────────────────┘  ║
@@ -70,17 +70,17 @@
 
 ---
 
-## 2. Katman Detaylari
+## 2. Layer Details
 
-### 2.1 Gateway Katmani
+### 2.1 Gateway Layer
 
-**Sorumluluk:** Dis dunyadan gelen mesajlari almak, normalize etmek ve agent katmanina iletmek. Agent'in yanitlarini uygun kanala geri gondermek.
+**Responsibility:** Receive messages from the outside world, normalize them, and forward them to the agent layer. Send the agent's responses back to the appropriate channel.
 
-**Bileskenler:**
+**Components:**
 
-| Bilesken | Sinif | Dosya |
-|----------|-------|-------|
-| Gateway Sunucu | `AethonGateway` | `aethon/gateway/server.py` |
+| Component | Class | File |
+|-----------|-------|------|
+| Gateway Server | `AethonGateway` | `aethon/gateway/server.py` |
 | Message Router | `MessageRouter` | `aethon/gateway/router.py` |
 | Base Adapter | `ChannelAdapter` (ABC) | `aethon/channels/base.py` |
 | CLI Adapter | `CLIAdapter` | `aethon/channels/cli.py` |
@@ -90,15 +90,15 @@
 | Slack Adapter | `SlackAdapter` | `aethon/channels/slack_adapter.py` |
 | WhatsApp Adapter | `WhatsAppAdapter` | `aethon/channels/whatsapp.py` |
 
-**Mesaj Modelleri:**
+**Message Models:**
 
 ```python
 @dataclass
 class InboundMessage:
     channel: str               # "cli", "webchat", "telegram", ...
-    sender_id: str             # Kanal-spesifik kullanici ID
-    sender_name: str           # Goruntulenen isim
-    text: str                  # Mesaj metni
+    sender_id: str             # Channel-specific user ID
+    sender_name: str           # Display name
+    text: str                  # Message text
     media: list[MediaAttachment] = field(default_factory=list)
     reply_to: str | None = None
     thread_id: str | None = None
@@ -125,20 +125,20 @@ class MediaAttachment:
 
 ### 2.2 Message Router
 
-**Sorumluluk:** Gelen mesaji session'a esle, kimlik dogrula, agent runtime'a ilet.
+**Responsibility:** Map the incoming message to a session, verify identity, and forward to the agent runtime.
 
 ```
 InboundMessage
      │
      ▼
 ┌─────────────┐
-│ Auth Check   │──▶ Allowlist kontrolu (tek kullanici, sender_id dogrulama)
+│ Auth Check   │──▶ Allowlist check (single user, sender_id verification)
 └──────┬──────┘
        │
        ▼
 ┌──────────────┐
-│ Session      │──▶ channel:sender_id → session_id eslestirmesi
-│ Resolver     │    Thread varsa: channel:thread_id
+│ Session      │──▶ channel:sender_id → session_id mapping
+│ Resolver     │    If thread exists: channel:thread_id
 └──────┬───────┘
        │
        ▼
@@ -151,28 +151,28 @@ InboundMessage
 OutboundMessage
 ```
 
-**Session ID Stratejisi:**
+**Session ID Strategy:**
 ```
-Ana konusma:  "main"
-Kanal DM:     "{channel}:{sender_id}"    → "telegram:12345678"
-Thread:       "{channel}:{thread_id}"     → "discord:thread_98765"
+Main conversation:  "main"
+Channel DM:        "{channel}:{sender_id}"    → "telegram:12345678"
+Thread:            "{channel}:{thread_id}"     → "discord:thread_98765"
 ```
 
-### 2.3 Agent Katmani
+### 2.3 Agent Layer
 
-**Sorumluluk:** LLM etkilesimi, tool calistirma, multi-agent orkestrasyon.
+**Responsibility:** LLM interaction, tool execution, multi-agent orchestration.
 
-**Ana Siniflar:**
+**Main Classes:**
 
-| Sinif | Sorumluluk |
-|-------|-----------|
-| `AethonRuntime` | Agent yasam dongusu yonetimi |
-| `SystemPromptComposer` | Katmanli system prompt olusturma |
-| `SpecialistFactory` | Uzman agent olusturma |
-| `TeamOrchestrator` | Multi-agent koordinasyonu |
-| `SOPRunner` | SOP yukleme ve calistirma |
+| Class | Responsibility |
+|-------|----------------|
+| `AethonRuntime` | Agent lifecycle management |
+| `SystemPromptComposer` | Layered system prompt composition |
+| `SpecialistFactory` | Specialist agent creation |
+| `TeamOrchestrator` | Multi-agent coordination |
+| `SOPRunner` | SOP loading and execution |
 
-**Strands Agent Entegrasyonu (Dogrulanmis API):**
+**Strands Agent Integration (Verified API):**
 
 ```python
 from strands import Agent
@@ -181,28 +181,28 @@ from strands.session import FileSessionManager
 from strands.agent.conversation_manager import SummarizingConversationManager
 from aethon.agent.model_factory import create_model
 
-# Model olusturma — config'deki provider'a gore otomatik
+# Model creation — automatic based on provider in config
 # provider: "ollama" → OllamaModel
 # provider: "openai" → OpenAIModel
 # provider: "anthropic" → AnthropicModel
 # provider: "bedrock" → BedrockModel
 # provider: "gemini" → GeminiModel
-# ... vb.
+# ... etc.
 model = create_model(config.model)
 
-# Session manager — her session icin ayri instance
+# Session manager — separate instance for each session
 session_mgr = FileSessionManager(
     session_id="telegram:12345678",
     storage_dir="~/.aethon/sessions"
 )
 
-# Conversation manager — context penceresi yonetimi
+# Conversation manager — context window management
 conv_mgr = SummarizingConversationManager(
-    summary_ratio=0.3,              # Mesajlarin %30'unu ozetle
-    preserve_recent_messages=10,     # Son 10 mesaji koru
+    summary_ratio=0.3,              # Summarize 30% of messages
+    preserve_recent_messages=10,     # Preserve last 10 messages
 )
 
-# Agent olusturma
+# Agent creation
 agent = Agent(
     model=model,
     system_prompt=composed_prompt,
@@ -214,157 +214,157 @@ agent = Agent(
     name="AETHON",
 )
 
-# Senkron cagri
+# Synchronous call
 result = agent("Merhaba, bugun ne yapacagiz?")
-# result.message → Son yanit mesaji
-# result.metrics → Token kullanimi, sure, vb.
+# result.message → Last response message
+# result.metrics → Token usage, duration, etc.
 ```
 
-### 2.4 Altyapi Katmani
+### 2.4 Infrastructure Layer
 
-**Sorumluluk:** Veri kaliciligi, yapilandirma, model erisimi.
+**Responsibility:** Data persistence, configuration, model access.
 
-| Bilesken | Teknoloji | Aciklama |
-|----------|-----------|----------|
-| Vektor Hafiza | SQLite + Ollama `/api/embed` | Uzun vadeli semantik hafiza (LRU embedding cache) |
-| Session | FileSessionManager | Konusma gecmisi (LRU session cache) |
+| Component | Technology | Description |
+|-----------|------------|-------------|
+| Vector Memory | SQLite + Ollama `/api/embed` | Long-term semantic memory (LRU embedding cache) |
+| Session | FileSessionManager | Conversation history (LRU session cache) |
 | Config | PyYAML + Pydantic | `~/.aethon/config.yaml` |
 | Model | **Multi-Provider Factory** | Ollama, OpenAI, Anthropic, Bedrock, Gemini, LiteLLM, Mistral |
-| Zamanlayici | APScheduler | Cron-tabanli SOP tetikleme |
-| Telemetri | TelemetryHookProvider | Tool/model metrik toplama (deque) |
-| Dashboard | FastAPI + Vanilla JS | Web izleme paneli + WebSocket stream |
-| Webhook | FastAPI | HTTP webhook endpoint'leri |
-| MCP | strands MCPClient | Harici MCP sunucu entegrasyonu |
+| Scheduler | APScheduler | Cron-based SOP triggering |
+| Telemetry | TelemetryHookProvider | Tool/model metric collection (deque) |
+| Dashboard | FastAPI + Vanilla JS | Web monitoring panel + WebSocket stream |
+| Webhook | FastAPI | HTTP webhook endpoints |
+| MCP | strands MCPClient | External MCP server integration |
 
 ---
 
-## 3. Veri Akisi (Uctan Uca)
+## 3. Data Flow (End-to-End)
 
 ```
-1. Kullanici Telegram'dan mesaj gonderir: "Bu projedeki hatalari bul"
+1. User sends a message from Telegram: "Bu projedeki hatalari bul"
    │
-2. TelegramAdapter mesaji alir, normalize eder:
+2. TelegramAdapter receives the message and normalizes it:
    │  → InboundMessage(channel="telegram", sender_id="12345678",
    │                    sender_name="Mert", text="Bu projedeki hatalari bul")
    │
 3. MessageRouter:
-   │  a. Auth: sender_id allowlist'te mi? → EVET
+   │  a. Auth: Is sender_id in the allowlist? → YES
    │  b. Session: "telegram:12345678" → session_id
-   │  c. Runtime'a ilet
+   │  c. Forward to runtime
    │
 4. AethonRuntime:
-   │  a. FileSessionManager'dan konusma gecmisini yukle
-   │  b. SystemPromptComposer: SOUL.md + TOOLS.md + CONTEXT.md + SOP listesi
-   │  c. Agent olustur/getir
+   │  a. Load conversation history from FileSessionManager
+   │  b. SystemPromptComposer: SOUL.md + TOOLS.md + CONTEXT.md + SOP list
+   │  c. Create/retrieve agent
    │  d. agent("Bu projedeki hatalari bul")
    │
 5. Strands Agent Event Loop:
-   │  a. Model cagrisi → Qwen3-Coder-Next
-   │  b. Model karar verir: ask_coder tool'unu cagir
-   │  c. BeforeToolCallEvent hook → SecurityHookProvider kontrol
-   │  d. Tool calisir: Kodcu Agent devreye girer
-   │  e. Kodcu Agent kendi tool loop'unu calistirir (shell, editor, vb.)
-   │  f. AfterToolCallEvent hook → Sonuc loglanir
-   │  g. Model tekrar cagirilir → son yaniti uretir
+   │  a. Model call → Qwen3-Coder-Next
+   │  b. Model decides: call the ask_coder tool
+   │  c. BeforeToolCallEvent hook → SecurityHookProvider check
+   │  d. Tool runs: Coder Agent takes over
+   │  e. Coder Agent runs its own tool loop (shell, editor, etc.)
+   │  f. AfterToolCallEvent hook → Result is logged
+   │  g. Model is called again → generates final response
    │  h. end_turn
    │
 6. AethonRuntime:
-   │  a. Session'a kaydet
-   │  b. Uzun vadeli hafizaya kaydet (gerekirse)
-   │  c. OutboundMessage olustur
+   │  a. Save to session
+   │  b. Save to long-term memory (if needed)
+   │  c. Create OutboundMessage
    │
 7. MessageRouter → TelegramAdapter:
    │  → OutboundMessage(channel="telegram", recipient_id="12345678",
    │                     text="3 hata bulundu ve duzeltildi: ...")
    │
-8. TelegramAdapter → Kullaniciya Telegram mesaji gonderilir
+8. TelegramAdapter → Telegram message is sent to the user
 ```
 
 ---
 
-## 4. System Prompt Mimari
+## 4. System Prompt Architecture
 
-AETHON'un system prompt'u katmanli olarak birlestilir:
+AETHON's system prompt is composed in layers:
 
 ```
 ┌─────────────────────────────────────┐
-│ Katman 1: SOUL.md                   │
-│ → Agent kisiligi ve davranis        │
-│   kurallari                         │
+│ Layer 1: SOUL.md                    │
+│ → Agent personality and behavior    │
+│   rules                             │
 ├─────────────────────────────────────┤
-│ Katman 2: TOOLS.md                  │
-│ → Kullanici tercihleri,             │
-│   konvansiyonlar                    │
+│ Layer 2: TOOLS.md                   │
+│ → User preferences,                │
+│   conventions                       │
 ├─────────────────────────────────────┤
-│ Katman 3: CONTEXT.md                │
-│ → Mevcut proje/is baglami          │
-│   (otomatik guncellenir)           │
+│ Layer 3: CONTEXT.md                 │
+│ → Current project/work context      │
+│   (automatically updated)           │
 ├─────────────────────────────────────┤
-│ Katman 4: SOP Listesi               │
-│ → Kullanilabilir SOP komutlari     │
-│   (sadece isim + aciklama)         │
+│ Layer 4: SOP List                   │
+│ → Available SOP commands            │
+│   (name + description only)         │
 ├─────────────────────────────────────┤
-│ Katman 5: Kanal Bilgisi             │
-│ → Aktif session ID, kanal adi      │
+│ Layer 5: Channel Information        │
+│ → Active session ID, channel name   │
 ├─────────────────────────────────────┤
-│ Katman 6: Zaman                     │
+│ Layer 6: Time                       │
 │ → datetime.now().isoformat()        │
 └─────────────────────────────────────┘
 ```
 
-**Dosya Konumlari:**
+**File Locations:**
 ```
 ~/.aethon/workspace/
-  ├── SOUL.md        → Kisilik (manuel duzenlenir)
-  ├── TOOLS.md       → Tercihler (manuel duzenlenir)
-  ├── CONTEXT.md     → Baglam (otomatik + manuel)
-  └── sops/          → SOP dosyalari
+  ├── SOUL.md        → Personality (manually edited)
+  ├── TOOLS.md       → Preferences (manually edited)
+  ├── CONTEXT.md     → Context (automatic + manual)
+  └── sops/          → SOP files
 ```
 
 ---
 
 ## 5. Tool Pipeline
 
-### 5.1 Tool Kategorileri
+### 5.1 Tool Categories
 
-**Strands Dahili Tool'lar (strands-agents-tools):**
+**Strands Built-in Tools (strands-agents-tools):**
 
-| Kategori | Tool'lar | Import |
-|----------|---------|--------|
-| Dosya | `file_read`, `file_write`, `editor` | `from strands_tools import file_read` |
+| Category | Tools | Import |
+|----------|-------|--------|
+| File | `file_read`, `file_write`, `editor` | `from strands_tools import file_read` |
 | Shell | `shell`, `python_repl` | `from strands_tools import shell` |
 | Web | `http_request` | `from strands_tools import http_request` |
-| Matematik | `calculator` | `from strands_tools import calculator` |
-| Dusunme | `think` | `from strands_tools import think` |
-| Zaman | `current_time` | `from strands_tools import current_time` |
-| Hafiza | `memory`, `mem0_memory` | `from strands_tools import memory` |
+| Math | `calculator` | `from strands_tools import calculator` |
+| Thinking | `think` | `from strands_tools import think` |
+| Time | `current_time` | `from strands_tools import current_time` |
+| Memory | `memory`, `mem0_memory` | `from strands_tools import memory` |
 
-**AETHON Ozel Tool'lar:**
+**AETHON Custom Tools:**
 
-| Tool | Dosya | Aciklama |
-|------|-------|----------|
-| `ask_coder` | `aethon/tools/delegate.py` | Kodlama gorevini kodcu agent'a devret |
-| `ask_researcher` | `aethon/tools/delegate.py` | Arastirma gorevini arastirmaciya devret |
-| `ask_analyst` | `aethon/tools/delegate.py` | Analiz gorevini analiste devret |
-| `ask_planner` | `aethon/tools/delegate.py` | Planlama gorevini planlayiciya devret |
-| `manage_memory` | `aethon/tools/memory_tool.py` | Uzun vadeli hafizayi yonet |
-| `update_context` | `aethon/tools/context_tool.py` | CONTEXT.md baglamini yonet |
-| `send_message` | `aethon/tools/messaging.py` | Baska kanala mesaj gonder |
-| `schedule_task` | `aethon/tools/scheduler.py` | Cron tabanli gorev zamanla |
-| `list_scheduled_jobs` | `aethon/tools/scheduler.py` | Zamanlanmis gorevleri listele |
-| `remove_scheduled_job` | `aethon/tools/scheduler.py` | Zamanlanmis gorevi kaldir |
+| Tool | File | Description |
+|------|------|-------------|
+| `ask_coder` | `aethon/tools/delegate.py` | Delegate a coding task to the coder agent |
+| `ask_researcher` | `aethon/tools/delegate.py` | Delegate a research task to the researcher |
+| `ask_analyst` | `aethon/tools/delegate.py` | Delegate an analysis task to the analyst |
+| `ask_planner` | `aethon/tools/delegate.py` | Delegate a planning task to the planner |
+| `manage_memory` | `aethon/tools/memory_tool.py` | Manage long-term memory |
+| `update_context` | `aethon/tools/context_tool.py` | Manage CONTEXT.md context |
+| `send_message` | `aethon/tools/messaging.py` | Send a message to another channel |
+| `schedule_task` | `aethon/tools/scheduler.py` | Schedule a cron-based task |
+| `list_scheduled_jobs` | `aethon/tools/scheduler.py` | List scheduled tasks |
+| `remove_scheduled_job` | `aethon/tools/scheduler.py` | Remove a scheduled task |
 
-### 5.2 Tool Tanimlama Deseni
+### 5.2 Tool Definition Pattern
 
 ```python
 from strands import tool
 
 @tool
 def ask_coder(task: str) -> str:
-    """Kodlama gorevini kodcu uzmanina devret.
+    """Delegate a coding task to the coder specialist.
 
     Args:
-        task: Kodlama gorevi aciklamasi
+        task: Coding task description
     """
     coder = get_specialist("coder")
     result = coder(task)
@@ -373,34 +373,34 @@ def ask_coder(task: str) -> str:
 
 ### 5.3 Hook Pipeline
 
-Her tool cagrisi su pipeline'dan gecer:
+Every tool call passes through this pipeline:
 
 ```
-Model "tool_use" uretir
+Model produces "tool_use"
         │
         ▼
 ┌────────────────────┐
 │ BeforeToolCallEvent │
 │                     │
-│ 1. SecurityHook:    │  Tehlikeli komut + workspace kontrol
+│ 1. SecurityHook:    │  Dangerous command + workspace check
 │    - Blocked cmds   │
 │    - Workspace check│
 │                     │
-│ 2. MemoryGuardHook: │  Hassas bilgi korumasi
-│    - API key/pass   │  (sadece manage_memory store'u)
+│ 2. MemoryGuardHook: │  Sensitive information protection
+│    - API key/pass   │  (only for manage_memory store)
 │    - Token/SSH/PEM  │
-│    - Kredi karti    │
+│    - Credit card    │
 │                     │
-│ 3. TelemetryHook:   │  Zamanlama baslat
-│    - Timer baslat   │
+│ 3. TelemetryHook:   │  Start timing
+│    - Start timer    │
 │                     │
-│ 4. ApprovalHook:    │  Kullanici onayi
+│ 4. ApprovalHook:    │  User approval
 │    - Interrupt?     │
 └────────┬────────────┘
          │
          ▼
 ┌───────────────────┐
-│   TOOL CALISIR    │
+│   TOOL EXECUTES   │
 └────────┬──────────┘
          │
          ▼
@@ -408,41 +408,41 @@ Model "tool_use" uretir
 │ AfterToolCallEvent  │
 │                     │
 │ TelemetryHook:      │
-│  - Timer durdur     │
-│  - Metrik logla     │
-│  - Hata takibi      │
+│  - Stop timer       │
+│  - Log metric       │
+│  - Error tracking   │
 └─────────────────────┘
 ```
 
-**Hook Sirasi:** Security → MemoryGuard → Telemetry → Approval. Security tehlikeli operasyonlari engeller, MemoryGuard hassas veriyi korur, Telemetry gecen her seyi kaydeder, Approval son kullanici onayini ister.
+**Hook Order:** Security → MemoryGuard → Telemetry → Approval. Security blocks dangerous operations, MemoryGuard protects sensitive data, Telemetry records everything that passes through, Approval requests final user confirmation.
 
 ---
 
-## 6. Multi-Agent Mimarisi
+## 6. Multi-Agent Architecture
 
-### 6.1 Agent-as-Tool (Varsayilan Mod)
+### 6.1 Agent-as-Tool (Default Mode)
 
 ```
-Kullanici mesaji
+User message
        │
        ▼
 ┌──────────────────┐
-│  ORCHESTRATOR    │  System Prompt: "Sen ana yonlendiricisin.
-│  (Ana Agent)     │  Gorevleri uzman agent'lara devret."
+│  ORCHESTRATOR    │  System Prompt: "You are the main router.
+│  (Main Agent)    │  Delegate tasks to specialist agents."
 │                  │
 │  Tools:          │
-│  - ask_coder     │──▶ Kodcu Agent (bagimsiz Strands Agent)
-│  - ask_researcher│──▶ Arastirmaci Agent
-│  - ask_analyst   │──▶ Analist Agent
+│  - ask_coder     │──▶ Coder Agent (independent Strands Agent)
+│  - ask_researcher│──▶ Researcher Agent
+│  - ask_analyst   │──▶ Analyst Agent
 │  - file_read     │
 │  - shell         │
 │  - think         │
 └──────────────────┘
 ```
 
-Model, hangi uzmanin gerektigine kendisi karar verir. Orchestrator basit gorevleri kendisi yapar, karmasik gorevleri devreder.
+The model decides on its own which specialist is needed. The Orchestrator handles simple tasks itself and delegates complex tasks.
 
-### 6.2 Swarm (Isbirligi Modu)
+### 6.2 Swarm (Collaboration Mode)
 
 ```python
 from strands.multiagent import Swarm
@@ -457,103 +457,103 @@ swarm = Swarm(
 )
 
 result = swarm("Bu projeyi planla ve implement et")
-# result.final_response → Son yanit
-# result.node_history → Hangi agent'lar calisti
+# result.final_response → Final response
+# result.node_history → Which agents ran
 ```
 
-Agent'lar birbirine handoff yapar. Orchestrator gorevi planlayiciya, planlayici kodcuya, vb. devreder.
+Agents hand off to each other. The Orchestrator delegates to the planner, the planner to the coder, and so on.
 
-### 6.3 Graph (Pipeline Modu)
+### 6.3 Graph (Pipeline Mode)
 
 ```python
 from strands.multiagent import GraphBuilder
 
 builder = GraphBuilder()
-plan_node = builder.add_node(planner, "planlama")
-research_node = builder.add_node(researcher, "arastirma")
-code_node = builder.add_node(coder, "kodlama")
+plan_node = builder.add_node(planner, "planning")
+research_node = builder.add_node(researcher, "research")
+code_node = builder.add_node(coder, "coding")
 
 builder.add_edge(plan_node, research_node)
 builder.add_edge(research_node, code_node)
-builder.set_entry_point("planlama")
+builder.set_entry_point("planning")
 
 graph = builder.build()
 result = graph("Yeni API endpoint implement et")
 ```
 
-Deterministik sirada calisir: Planlama → Arastirma → Kodlama
+Runs in a deterministic order: Planning → Research → Coding
 
 ---
 
-## 7. Hafiza Mimarisi
+## 7. Memory Architecture
 
-### 7.1 Uc Katmanli Hafiza
+### 7.1 Three-Layer Memory
 
 ```
 ┌─────────────────────────────────────────┐
-│           UZUN VADELI HAFIZA            │
+│           LONG-TERM MEMORY              │
 │     (SQLite + Ollama Embeddings)        │
 │                                         │
-│  Kullanici tercihleri, bilgiler,        │
-│  ogrenilen kaliplar                     │
-│  → Aylar/yillar boyunca kalir           │
-│  → Semantik arama ile erisilir          │
+│  User preferences, knowledge,           │
+│  learned patterns                       │
+│  → Persists for months/years            │
+│  → Accessed via semantic search         │
 ├─────────────────────────────────────────┤
-│           SESSION HAFIZA                │
+│           SESSION MEMORY                │
 │       (FileSessionManager)              │
 │                                         │
-│  Konusma gecmisi, agent state           │
-│  → Session boyunca kalir                │
-│  → JSON dosyalari olarak saklanir       │
+│  Conversation history, agent state      │
+│  → Persists for the session duration    │
+│  → Stored as JSON files                 │
 │                                         │
-│  Dizin:                                 │
+│  Directory:                             │
 │  sessions/session_{id}/                 │
 │    ├── session.json                     │
 │    └── agents/agent_{id}/              │
 │        ├── agent.json                   │
 │        └── messages/message_{n}.json    │
 ├─────────────────────────────────────────┤
-│          CALISMA HAFIZA                 │
+│          WORKING MEMORY                 │
 │   (SummarizingConversationManager)      │
 │                                         │
-│  Son 10 mesaj + onceki mesajlarin       │
-│  ozeti                                  │
-│  → Her model cagrisinda yenilenir       │
-│  → Context window'a sigar              │
+│  Last 10 messages + summary of          │
+│  previous messages                      │
+│  → Refreshed on each model call         │
+│  → Fits within the context window       │
 └─────────────────────────────────────────┘
 ```
 
-### 7.2 Vektor Hafiza Detayi
+### 7.2 Vector Memory Detail
 
 ```
-SQLite Tablo: memories
+SQLite Table: memories
 ┌────────┬─────────┬───────────┬──────────┬───────────┬────────────┐
 │ id     │ content │ category  │ embedding│ metadata  │ created_at │
 │ INTEGER│ TEXT    │ TEXT      │ TEXT     │ TEXT      │ TEXT       │
 │ PK     │         │           │ JSON     │ JSON      │ ISO 8601   │
 └────────┴─────────┴───────────┴──────────┴───────────┴────────────┘
 
-Embedding: Ollama /api/embed endpoint'i
-Arama: Cosine similarity (Python tarafinda hesaplanir)
+Embedding: Ollama /api/embed endpoint
+Search: Cosine similarity (computed on the Python side)
 ```
 
 ---
 
-## 8. Yapilandirma Mimarisi
+## 8. Configuration Architecture
 
-### 8.1 Config Hiyerarsisi
+### 8.1 Config Hierarchy
 
 ```
-1. Varsayilan degerler (Python kodu)
+1. Default values (Python code)
    │
-2. ~/.aethon/config.yaml (kullanici yapilandirmasi)
+2. ~/.aethon/config.yaml (user configuration)
    │
-3. Ortam degiskenleri (${TELEGRAM_BOT_TOKEN})
+3. Environment variables (${TELEGRAM_BOT_TOKEN})
    │
-4. CLI argumanlar (--port 8080)
+4. CLI arguments (--port 8080)
 ```
 
-### 8.2 Config Modeli (Pydantic)
+### 8.2 Config Model (Pydantic)
 
 ```python
 class ModelConfig(BaseModel):
@@ -566,7 +566,7 @@ class ModelConfig(BaseModel):
 
 class ChannelConfig(BaseModel):
     enabled: bool = False
-    # Kanal-spesifik alanlar alt sinifta
+    # Channel-specific fields in subclass
 
 class SecurityConfig(BaseModel):
     workspace_only: bool = True
@@ -581,46 +581,46 @@ class AethonConfig(BaseModel):
     session: SessionConfig
     sops: SOPConfig
     multi_agent: MultiAgentConfig
-    telemetry: TelemetryConfig       # Metrik toplama
-    memory_guard: MemoryGuardConfig  # Hassas bilgi korumasi
-    scheduler: SchedulerConfig       # Cron-tabanli SOP zamanlama
-    dashboard: DashboardConfig       # Web izleme paneli
-    webhook: WebhookConfig           # HTTP webhook desteği
-    mcp: MCPConfig                   # MCP sunucu entegrasyonu
+    telemetry: TelemetryConfig       # Metric collection
+    memory_guard: MemoryGuardConfig  # Sensitive information protection
+    scheduler: SchedulerConfig       # Cron-based SOP scheduling
+    dashboard: DashboardConfig       # Web monitoring panel
+    webhook: WebhookConfig           # HTTP webhook support
+    mcp: MCPConfig                   # MCP server integration
     performance: PerformanceConfig   # LRU cache + model warm-up
     paths: PathsConfig
 ```
 
 ---
 
-## 9. Dizin Yapisi
+## 9. Directory Structure
 
 ```
-~/.aethon/                              # Kullanici veri dizini
-  ├── config.yaml                       # Ana yapilandirma
-  ├── workspace/                        # Agent calisma alani
-  │   ├── SOUL.md                       # Kisilik
-  │   ├── TOOLS.md                      # Tercihler
-  │   ├── CONTEXT.md                    # Baglam
-  │   └── sops/                         # SOP dosyalari
-  ├── sessions/                         # Session verileri
+~/.aethon/                              # User data directory
+  ├── config.yaml                       # Main configuration
+  ├── workspace/                        # Agent workspace
+  │   ├── SOUL.md                       # Personality
+  │   ├── TOOLS.md                      # Preferences
+  │   ├── CONTEXT.md                    # Context
+  │   └── sops/                         # SOP files
+  ├── sessions/                         # Session data
   │   └── session_{id}/
   │       ├── session.json
   │       └── agents/
-  ├── memory.sqlite                     # Uzun vadeli hafiza
-  ├── logs/                             # Log dosyalari
-  └── credentials/                      # Token'lar (0600)
+  ├── memory.sqlite                     # Long-term memory
+  ├── logs/                             # Log files
+  └── credentials/                      # Tokens (0600)
 
-aethon/                                  # Proje kaynak kodu
+aethon/                                  # Project source code
   ├── pyproject.toml
   ├── aethon/
   │   ├── __init__.py
   │   ├── __main__.py                   # python -m aethon
-  │   ├── config.py                     # AethonConfig (17 config modeli)
+  │   ├── config.py                     # AethonConfig (17 config models)
   │   ├── gateway/
-  │   │   ├── server.py                 # AethonGateway (lifecycle yonetimi)
+  │   │   ├── server.py                 # AethonGateway (lifecycle management)
   │   │   ├── router.py                # MessageRouter (session + auth)
-  │   │   └── webhooks.py             # Webhook endpoint'leri
+  │   │   └── webhooks.py             # Webhook endpoints
   │   ├── channels/
   │   │   ├── base.py                   # ChannelAdapter, InboundMessage, OutboundMessage
   │   │   ├── cli.py                    # CLIAdapter
@@ -635,7 +635,7 @@ aethon/                                  # Proje kaynak kodu
   │   │   ├── prompt.py                # SystemPromptComposer
   │   │   ├── specialists.py           # SpecialistFactory
   │   │   ├── teams.py                 # TeamOrchestrator
-  │   │   ├── context_updater.py       # CONTEXT.md otomatik guncelleme
+  │   │   ├── context_updater.py       # CONTEXT.md automatic update
   │   │   └── hooks/
   │   │       ├── security.py          # SecurityHookProvider
   │   │       ├── approval.py          # ApprovalHookProvider
@@ -652,30 +652,30 @@ aethon/                                  # Proje kaynak kodu
   │   │   └── vector.py                # VectorMemory (embedding LRU cache)
   │   ├── sops/
   │   │   ├── runner.py                # SOPRunner
-  │   │   └── builtin/                 # Dahili SOP dosyalari
+  │   │   └── builtin/                 # Built-in SOP files
   │   └── ui/
   │       ├── __init__.py
-  │       └── dashboard.py             # Web dashboard + API endpoint'leri
-  ├── workspace/                        # Varsayilan workspace sablonu
+  │       └── dashboard.py             # Web dashboard + API endpoints
+  ├── workspace/                        # Default workspace template
   │   ├── SOUL.md
   │   ├── TOOLS.md
   │   ├── CONTEXT.md
   │   └── sops/
-  └── tests/                            # 294 test
+  └── tests/                            # 294 tests
 ```
 
 ---
 
-## 10. Bagimlilik Grafigi
+## 10. Dependency Graph
 
 ```
 aethon
-  ├── strands-agents           # Agent framework (cekirdek)
-  │   └── strands-agents-tools # 47+ tool
-  │   └── strands-agents-sops  # SOP sistemi
+  ├── strands-agents           # Agent framework (core)
+  │   └── strands-agents-tools # 47+ tools
+  │   └── strands-agents-sops  # SOP system
   │
   ├── fastapi + uvicorn        # WebChat + Dashboard + Webhook + API
-  │   └── websockets           # WS destegi (chat + telemetri)
+  │   └── websockets           # WS support (chat + telemetry)
   │
   ├── aiogram                  # Telegram
   ├── discord.py               # Discord
@@ -683,59 +683,59 @@ aethon
   ├── neonize (optional)       # WhatsApp
   │
   ├── prompt_toolkit + rich    # CLI
-  ├── click                    # CLI komutlari
+  ├── click                    # CLI commands
   │
   ├── pyyaml + pydantic        # Config
-  ├── aiosqlite                # Veritabani
-  ├── apscheduler              # Zamanlayici
-  └── mcp (optional)           # MCP sunucu entegrasyonu
+  ├── aiosqlite                # Database
+  ├── apscheduler              # Scheduler
+  └── mcp (optional)           # MCP server integration
 ```
 
 ---
 
-## 11. Port ve Endpoint Haritasi
+## 11. Port and Endpoint Map
 
-| Servis | Port | Endpoint | Protokol |
-|--------|------|----------|----------|
+| Service | Port | Endpoint | Protocol |
+|---------|------|----------|----------|
 | Ollama | 11434 | `/api/chat`, `/api/embed` | HTTP |
 | WebChat | 18790 | `/ws/chat` | WebSocket |
-| WebChat UI | 18790 | `/ui` | HTTP (statik) |
+| WebChat UI | 18790 | `/ui` | HTTP (static) |
 | Dashboard | 18790 | `/dashboard` | HTTP |
 | Dashboard API | 18790 | `/api/sessions`, `/api/memory`, `/api/config`, `/api/telemetry`, `/api/scheduler/jobs` | HTTP REST |
-| Hafiza Arama | 18790 | `/api/memory/search` | HTTP POST |
-| Telemetri Stream | 18790 | `/ws/telemetry` | WebSocket |
-| Webhook (Kanal) | 18790 | `/webhook/{channel}` | HTTP POST |
-| Webhook (Tetik) | 18790 | `/webhook/trigger` | HTTP POST |
+| Memory Search | 18790 | `/api/memory/search` | HTTP POST |
+| Telemetry Stream | 18790 | `/ws/telemetry` | WebSocket |
+| Webhook (Channel) | 18790 | `/webhook/{channel}` | HTTP POST |
+| Webhook (Trigger) | 18790 | `/webhook/trigger` | HTTP POST |
 | Telegram | - | Bot API polling | HTTPS (outbound) |
 | Discord | - | Gateway WebSocket | WSS (outbound) |
 | Slack | - | Socket Mode | WSS (outbound) |
 
-**Onemli:** Tum yerelde dinleyen servisler `127.0.0.1` adresine baglidir. `0.0.0.0` KULLANILMAZ.
+**Important:** All locally listening services are bound to `127.0.0.1`. `0.0.0.0` is NOT used.
 
 ---
 
-## 12. Performans Optimizasyonlari
+## 12. Performance Optimizations
 
 ### 12.1 Session LRU Cache
 
 ```
 Runtime.agents: OrderedDict (LRU cache)
 
-Erisim:                          Tasma:
+Access:                          Overflow:
 ┌───────────┐ move_to_end()     ┌───────────┐ popitem(last=False)
-│ session_A │ ──────────────▶   │ en_eski   │ ──────────────▶ Disk'e kaydet
+│ session_A │ ──────────────▶   │ oldest    │ ──────────────▶ Save to disk
 │ session_B │                   │ session_B │
 │ session_C │                   │ session_C │
 └───────────┘                   │ session_A │
                                 └───────────┘
 ```
 
-Varsayilan boyut: 10 session. Evict edilen session'lar disk'te kalir (FileSessionManager), tekrar erisince yuklenir.
+Default size: 10 sessions. Evicted sessions remain on disk (FileSessionManager) and are reloaded when accessed again.
 
 ### 12.2 Embedding LRU Cache
 
-Tekrarlayan hafiza sorgulari icin `lru_cache` ile embedding sonuclari onbelleklenir. Varsayilan boyut: 100 embedding.
+Embedding results are cached with `lru_cache` for repeated memory queries. Default size: 100 embeddings.
 
 ### 12.3 Model Warm-up
 
-Baslangiçta dummy "Merhaba" istegi gondererek ilk kullanici mesajindaki gecikmeyi azaltir.
+Sends a dummy "Merhaba" request at startup to reduce latency on the first user message.

@@ -1,67 +1,67 @@
-# AETHON — Baslangic Kilavuzu
+# AETHON — Getting Started Guide
 
-> Kurulumdan ilk mesaja kadar adim adim rehber.
+> Step-by-step guide from installation to your first message.
 
 ---
 
-## 1. Gereksinimler
+## 1. Requirements
 
-| Gereksinim | Minimum |
-|------------|---------|
+| Requirement | Minimum |
+|-------------|---------|
 | **Python** | 3.10+ |
-| **Ollama** | En guncel |
-| **RAM** | 16 GB (32 GB onerilen) |
-| **Disk** | 50 GB (model icin) |
-| **OS** | macOS (Apple Silicon onerilen) |
+| **Ollama** | Latest |
+| **RAM** | 16 GB (32 GB recommended) |
+| **Disk** | 50 GB (for the model) |
+| **OS** | macOS (Apple Silicon recommended) |
 
 ---
 
-## 2. Kurulum
+## 2. Installation
 
-### 2.1 Ollama Kur
+### 2.1 Install Ollama
 
 ```bash
-# Ollama'yi yukle (eger yoksa)
+# Install Ollama (if not already installed)
 brew install ollama
 
-# Ollama'yi baslat
+# Start Ollama
 ollama serve
 ```
 
-### 2.2 Modelleri Indir
+### 2.2 Download Models
 
 ```bash
-# Ana model — agent beyni
+# Main model — agent brain
 ollama pull qwen3-coder-next
 
-# Embedding modeli — hafiza icin
+# Embedding model — for memory
 ollama pull nomic-embed-text
 ```
 
-### 2.3 AETHON'u Kur
+### 2.3 Install AETHON
 
 ```bash
-# Projeyi klonla
+# Clone the project
 git clone <repo-url> aethon
 cd aethon
 
-# Bagimliliklari yukle
+# Install dependencies
 pip install -e ".[all]"
 ```
 
 ---
 
-## 3. Yapilandirma
+## 3. Configuration
 
-### 3.1 Varsayilan Config
+### 3.1 Default Config
 
-Ilk calistirmada AETHON otomatik olarak `~/.aethon/` dizinini ve varsayilan dosyalari olusturur. Ozel yapilandirma icin:
+On first run, AETHON automatically creates the `~/.aethon/` directory and default files. For custom configuration:
 
 ```bash
 mkdir -p ~/.aethon
 ```
 
-`~/.aethon/config.yaml` olustur:
+Create `~/.aethon/config.yaml`:
 
 ```yaml
 model:
@@ -93,60 +93,60 @@ dashboard:
   enabled: true
 ```
 
-### 3.2 Workspace Dosyalari
+### 3.2 Workspace Files
 
-`~/.aethon/workspace/` dizininde 3 temel dosya:
+3 essential files in the `~/.aethon/workspace/` directory:
 
-| Dosya | Amac |
-|-------|------|
-| `SOUL.md` | Agent'in kisilik ve davranis kurallari |
-| `TOOLS.md` | Kullanici tercihleri ve kodlama standartlari |
-| `CONTEXT.md` | Mevcut proje/baglam bilgisi (otomatik guncellenir) |
+| File | Purpose |
+|------|---------|
+| `SOUL.md` | Agent's personality and behavior rules |
+| `TOOLS.md` | User preferences and coding standards |
+| `CONTEXT.md` | Current project/context information (automatically updated) |
 
 ---
 
-## 4. Baslatma
+## 4. Starting
 
 ```bash
 python -m aethon start
 ```
 
-Konsol ciktisi:
+Console output:
 
 ```
-AETHON baslatiliyor...
+Starting AETHON...
 
   Provider: ollama
   Model: qwen3-coder-next
   WebChat: http://127.0.0.1:8080
-  Memory: nomic-embed-text (aktif)
-  Multi-Agent: aktif
-  SOP'lar: 3 adet
-  Zamanlayici: aktif
-  Telemetri: aktif
+  Memory: nomic-embed-text (active)
+  Multi-Agent: active
+  SOPs: 3 items
+  Scheduler: active
+  Telemetry: active
   Dashboard: http://127.0.0.1:8080/dashboard
-  Kanallar: CLI, WebChat
+  Channels: CLI, WebChat
 ```
 
 ---
 
-## 5. Ilk Mesajini Gonder
+## 5. Send Your First Message
 
-### CLI'dan
+### From CLI
 
-AETHON basladiktan sonra terminal'e yaz:
+After AETHON starts, type in the terminal:
 
 ```
 > Merhaba, sen kimsin?
 ```
 
-### WebChat'ten
+### From WebChat
 
-Tarayicida ac: `http://127.0.0.1:8080`
+Open in browser: `http://127.0.0.1:8080`
 
-### Telegram'dan
+### From Telegram
 
-1. `config.yaml`'a token ekle:
+1. Add token to `config.yaml`:
    ```yaml
    channels:
      telegram:
@@ -154,15 +154,15 @@ Tarayicida ac: `http://127.0.0.1:8080`
        token: "${TELEGRAM_BOT_TOKEN}"
    ```
 
-2. Token'i environment variable olarak ayarla veya `~/.aethon/credentials/telegram.env`'ye kaydet
+2. Set the token as an environment variable or save it to `~/.aethon/credentials/telegram.env`
 
-3. AETHON'u yeniden baslat
+3. Restart AETHON
 
 ---
 
-## 6. SOP Kullanimi
+## 6. SOP Usage
 
-Hazir SOP'lari tetikle:
+Trigger ready-made SOPs:
 
 ```
 /code-assist login sayfasi implement et
@@ -170,7 +170,7 @@ Hazir SOP'lari tetikle:
 /codebase-summary projeyi dokumante et
 ```
 
-### Ozel SOP Olustur
+### Create a Custom SOP
 
 `~/.aethon/workspace/sops/morning-brief.sop.md`:
 
@@ -178,35 +178,35 @@ Hazir SOP'lari tetikle:
 # Morning Brief
 
 ## Overview
-Her sabah kisa brifing hazirla.
+Prepare a short briefing every morning.
 
 ## Steps
-1. Bugunun tarihini ve gununu kontrol et
-2. Oncelikli gorevleri listele
-3. Kisaca ozet hazirla
+1. Check today's date and day
+2. List priority tasks
+3. Prepare a brief summary
 ```
 
-Tetikle: `/morning-brief`
+Trigger: `/morning-brief`
 
 ---
 
 ## 7. Dashboard
 
-Tarayicida ac: `http://127.0.0.1:8080/dashboard`
+Open in browser: `http://127.0.0.1:8080/dashboard`
 
-Goreceklerin:
-- **Oturumlar** — Aktif session'lar
-- **Hafiza** — Uzun vadeli hafiza kayitlari
-- **Telemetri** — Tool/Model cagri istatistikleri
-- **Zamanlanmis Gorevler** — Cron job'lar
-- **Canli Metrikler** — Gercek zamanli WebSocket akisi
+What you will see:
+- **Sessions** — Active sessions
+- **Memory** — Long-term memory records
+- **Telemetry** — Tool/Model call statistics
+- **Scheduled Tasks** — Cron jobs
+- **Live Metrics** — Real-time WebSocket stream
 
 ---
 
-## 8. Sonraki Adimlar
+## 8. Next Steps
 
-- Telegram/Discord/Slack kanallarini yapilandir → bkz. `docs/product/CONFIGURATION.md`
-- Webhook entegrasyonu kur → bkz. `docs/product/API-REFERENCE.md`
-- Zamanlayici ile otomatik gorevler olustur
-- Ozel SOP'lar yaz
-- MCP sunuculari bagla
+- Configure Telegram/Discord/Slack channels → see `docs/product/CONFIGURATION.md`
+- Set up webhook integration → see `docs/product/API-REFERENCE.md`
+- Create automated tasks with the scheduler
+- Write custom SOPs
+- Connect MCP servers

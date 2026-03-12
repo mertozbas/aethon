@@ -1,73 +1,73 @@
-# AETHON — API Referansi
+# AETHON — API Reference
 
-> Tum HTTP endpoint'leri, WebSocket protokolleri, webhook entegrasyonlari ve agent tool'lari.
+> All HTTP endpoints, WebSocket protocols, webhook integrations, and agent tools.
 
 ---
 
-## 1. WebChat Endpoint'leri
+## 1. WebChat Endpoints
 
-AETHON varsayilan olarak `http://127.0.0.1:18790` adresinde dinler.
+AETHON listens on `http://127.0.0.1:18790` by default.
 
 ### 1.1 WebChat UI
 
-| Endpoint | Metod | Aciklama |
-|----------|-------|----------|
-| `/ui` | GET | WebChat arayuzu (HTML) |
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/ui` | GET | WebChat interface (HTML) |
 
-**Ornek:**
+**Example:**
 ```
 GET http://127.0.0.1:18790/ui
 ```
 
 ### 1.2 WebSocket Chat
 
-| Endpoint | Protokol | Aciklama |
-|----------|----------|----------|
-| `/ws/chat` | WebSocket | Gercek zamanli sohbet |
+| Endpoint | Protocol | Description |
+|----------|----------|-------------|
+| `/ws/chat` | WebSocket | Real-time chat |
 
-**Baglanti:**
+**Connection:**
 ```javascript
 const ws = new WebSocket("ws://127.0.0.1:18790/ws/chat");
 ```
 
-**Mesaj Gonderme:**
+**Sending a Message:**
 ```json
 "Merhaba, bugun ne yapacagiz?"
 ```
 
-**Yanit Alma:**
+**Receiving a Response:**
 ```json
 "Merhaba! Sana nasil yardimci olabilirim?"
 ```
 
-WebSocket baglantisi metin tabanlidir. Client duz metin gonderir, sunucu duz metin dondurur.
+The WebSocket connection is text-based. The client sends plain text, and the server returns plain text.
 
 ---
 
 ## 2. Dashboard API
 
-Dashboard aktif oldugunda (`dashboard.enabled: true`) asagidaki endpoint'ler kullanilabilir.
+When the dashboard is active (`dashboard.enabled: true`), the following endpoints are available.
 
 ### 2.1 Dashboard UI
 
-| Endpoint | Metod | Aciklama |
-|----------|-------|----------|
-| `/dashboard` | GET | Izleme paneli (HTML) |
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/dashboard` | GET | Monitoring panel (HTML) |
 
-**Ornek:**
+**Example:**
 ```
 GET http://127.0.0.1:18790/dashboard
 ```
 
-Glassmorphism + cyberpunk neon temali izleme paneli. Oturumlar, hafiza, telemetri ve zamanlanmis gorevleri gosterir. 5 saniyede bir otomatik yenilenir.
+Glassmorphism + cyberpunk neon themed monitoring panel. Displays sessions, memory, telemetry, and scheduled tasks. Auto-refreshes every 5 seconds.
 
-### 2.2 Oturum Listesi
+### 2.2 Session List
 
-| Endpoint | Metod | Aciklama |
-|----------|-------|----------|
-| `/api/sessions` | GET | Aktif oturumlari listele |
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/sessions` | GET | List active sessions |
 
-**Yanit:**
+**Response:**
 ```json
 {
   "sessions": [
@@ -80,13 +80,13 @@ Glassmorphism + cyberpunk neon temali izleme paneli. Oturumlar, hafiza, telemetr
 }
 ```
 
-### 2.3 Hafiza Istatistikleri
+### 2.3 Memory Statistics
 
-| Endpoint | Metod | Aciklama |
-|----------|-------|----------|
-| `/api/memory` | GET | Hafiza durumu ve son kayitlar |
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/memory` | GET | Memory status and recent records |
 
-**Yanit:**
+**Response:**
 ```json
 {
   "enabled": true,
@@ -102,20 +102,20 @@ Glassmorphism + cyberpunk neon temali izleme paneli. Oturumlar, hafiza, telemetr
 }
 ```
 
-### 2.4 Hafiza Arama
+### 2.4 Memory Search
 
-| Endpoint | Metod | Aciklama |
-|----------|-------|----------|
-| `/api/memory/search` | POST | Semantik hafiza arama |
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/memory/search` | POST | Semantic memory search |
 
-**Istek:**
+**Request:**
 ```json
 {
   "query": "Python tercihleri"
 }
 ```
 
-**Yanit:**
+**Response:**
 ```json
 {
   "results": [
@@ -129,13 +129,13 @@ Glassmorphism + cyberpunk neon temali izleme paneli. Oturumlar, hafiza, telemetr
 }
 ```
 
-### 2.5 Yapilandirma
+### 2.5 Configuration
 
-| Endpoint | Metod | Aciklama |
-|----------|-------|----------|
-| `/api/config` | GET | Mevcut sistem yapilandirmasi |
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/config` | GET | Current system configuration |
 
-**Yanit:**
+**Response:**
 ```json
 {
   "model": {
@@ -150,13 +150,13 @@ Glassmorphism + cyberpunk neon temali izleme paneli. Oturumlar, hafiza, telemetr
 }
 ```
 
-### 2.6 Zamanlanmis Gorevler
+### 2.6 Scheduled Tasks
 
-| Endpoint | Metod | Aciklama |
-|----------|-------|----------|
-| `/api/scheduler/jobs` | GET | Zamanlanmis gorev listesi |
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/scheduler/jobs` | GET | Scheduled task list |
 
-**Yanit:**
+**Response:**
 ```json
 {
   "jobs": [
@@ -171,13 +171,13 @@ Glassmorphism + cyberpunk neon temali izleme paneli. Oturumlar, hafiza, telemetr
 }
 ```
 
-### 2.7 Telemetri
+### 2.7 Telemetry
 
-| Endpoint | Metod | Aciklama |
-|----------|-------|----------|
-| `/api/telemetry` | GET | Telemetri ozeti ve son metrikler |
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/telemetry` | GET | Telemetry summary and recent metrics |
 
-**Yanit:**
+**Response:**
 ```json
 {
   "enabled": true,
@@ -202,13 +202,13 @@ Glassmorphism + cyberpunk neon temali izleme paneli. Oturumlar, hafiza, telemetr
 }
 ```
 
-### 2.8 Canli Telemetri Stream
+### 2.8 Live Telemetry Stream
 
-| Endpoint | Protokol | Aciklama |
-|----------|----------|----------|
-| `/ws/telemetry` | WebSocket | Gercek zamanli metrik akisi |
+| Endpoint | Protocol | Description |
+|----------|----------|-------------|
+| `/ws/telemetry` | WebSocket | Real-time metric stream |
 
-**Baglanti:**
+**Connection:**
 ```javascript
 const ws = new WebSocket("ws://127.0.0.1:18790/ws/telemetry");
 ws.onmessage = (e) => {
@@ -217,7 +217,7 @@ ws.onmessage = (e) => {
 };
 ```
 
-**Metrik Formati:**
+**Metric Format:**
 ```json
 {
   "type": "tool",
@@ -228,28 +228,28 @@ ws.onmessage = (e) => {
 }
 ```
 
-Sunucu her 2 saniyede bir yeni metrikleri push eder.
+The server pushes new metrics every 2 seconds.
 
 ---
 
-## 3. Webhook Endpoint'leri
+## 3. Webhook Endpoints
 
-Webhook aktif oldugunda (`webhook.enabled: true`) disaridan mesaj ve SOP tetiklemesi yapilabilir.
+When webhooks are active (`webhook.enabled: true`), external message and SOP triggering is possible.
 
-### 3.1 Kanal Bazli Webhook
+### 3.1 Channel-Based Webhook
 
-| Endpoint | Metod | Aciklama |
-|----------|-------|----------|
-| `POST /webhook/{channel}` | POST | Belirtilen kanala mesaj gonder |
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `POST /webhook/{channel}` | POST | Send a message to the specified channel |
 
-**Ornek:**
+**Example:**
 ```bash
 curl -X POST http://127.0.0.1:18790/webhook/telegram \
   -H "Content-Type: application/json" \
   -d '{"text": "Merhaba AETHON!"}'
 ```
 
-**Yanit:**
+**Response:**
 ```json
 {
   "status": "ok",
@@ -257,22 +257,22 @@ curl -X POST http://127.0.0.1:18790/webhook/telegram \
 }
 ```
 
-### 3.2 SOP Tetikleyici
+### 3.2 SOP Trigger
 
-| Endpoint | Metod | Aciklama |
-|----------|-------|----------|
-| `POST /webhook/trigger` | POST | SOP calistir ve sonucu kanala gonder |
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `POST /webhook/trigger` | POST | Run an SOP and send the result to a channel |
 
-**Istek Govdesi:**
+**Request Body:**
 
-| Alan | Tip | Zorunlu | Aciklama |
-|------|-----|---------|----------|
-| `text` | string | Hayir | Mesaj metni |
-| `sop_name` | string | Hayir | Calistirilacak SOP adi |
-| `channel` | string | Hayir | Sonucun gonderilecegi kanal |
-| `recipient` | string | Hayir | Alici ID |
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `text` | string | No | Message text |
+| `sop_name` | string | No | Name of the SOP to run |
+| `channel` | string | No | Channel to send the result to |
+| `recipient` | string | No | Recipient ID |
 
-**Ornek — SOP Tetikleme:**
+**Example — SOP Trigger:**
 ```bash
 curl -X POST http://127.0.0.1:18790/webhook/trigger \
   -H "Content-Type: application/json" \
@@ -284,14 +284,14 @@ curl -X POST http://127.0.0.1:18790/webhook/trigger \
   }'
 ```
 
-**Ornek — Duz Mesaj:**
+**Example — Plain Message:**
 ```bash
 curl -X POST http://127.0.0.1:18790/webhook/trigger \
   -H "Content-Type: application/json" \
   -d '{"text": "Proje durumu nedir?"}'
 ```
 
-**Yanit:**
+**Response:**
 ```json
 {
   "status": "ok",
@@ -299,11 +299,11 @@ curl -X POST http://127.0.0.1:18790/webhook/trigger \
 }
 ```
 
-### 3.3 HMAC-SHA256 Dogrulama
+### 3.3 HMAC-SHA256 Validation
 
-Webhook secret belirlendiginde (`webhook.secret` config'de), tum isteklerde `X-Aethon-Signature` header'i gereklidir.
+When a webhook secret is set (`webhook.secret` in config), the `X-Aethon-Signature` header is required on all requests.
 
-**Imza Olusturma:**
+**Creating a Signature:**
 ```python
 import hashlib, hmac
 
@@ -321,194 +321,194 @@ curl -X POST http://127.0.0.1:18790/webhook/trigger \
   -d '{"text": "Guvenli mesaj"}'
 ```
 
-Secret bos ise (`""`) dogrulama devre disidir.
+If the secret is empty (`""`), validation is disabled.
 
 ---
 
-## 4. Agent Tool'lari
+## 4. Agent Tools
 
-AETHON agent'inin kullandigi tum tool'lar. Agent bu tool'lari mesaj isleme sirasinda otomatik olarak kullanir.
+All tools used by the AETHON agent. The agent uses these tools automatically during message processing.
 
-### 4.1 Strands Dahili Tool'lar
+### 4.1 Strands Built-in Tools
 
-| Tool | Import | Aciklama |
-|------|--------|----------|
-| `file_read` | `strands_tools` | Dosya oku |
-| `file_write` | `strands_tools` | Dosya yaz |
-| `editor` | `strands_tools` | Dosya duzenle (diff-tabanli) |
-| `shell` | `strands_tools` | Komut satirinda calistir |
-| `python_repl` | `strands_tools` | Python kodu calistir |
-| `http_request` | `strands_tools` | HTTP istegi gonder |
-| `calculator` | `strands_tools` | Matematiksel hesaplama |
-| `think` | `strands_tools` | Icsel dusunce (yapilan planlama) |
-| `current_time` | `strands_tools` | Mevcut tarih/saat |
+| Tool | Import | Description |
+|------|--------|-------------|
+| `file_read` | `strands_tools` | Read a file |
+| `file_write` | `strands_tools` | Write a file |
+| `editor` | `strands_tools` | Edit a file (diff-based) |
+| `shell` | `strands_tools` | Run in the command line |
+| `python_repl` | `strands_tools` | Run Python code |
+| `http_request` | `strands_tools` | Send an HTTP request |
+| `calculator` | `strands_tools` | Mathematical calculation |
+| `think` | `strands_tools` | Internal thought (planning) |
+| `current_time` | `strands_tools` | Current date/time |
 
-### 4.2 Uzman Delegasyon Tool'lari
+### 4.2 Specialist Delegation Tools
 
-| Tool | Dosya | Aciklama |
-|------|-------|----------|
-| `ask_coder` | `tools/delegate.py` | Kodlama gorevini kodcu uzmanina devret |
-| `ask_researcher` | `tools/delegate.py` | Arastirma gorevini arastirmaciya devret |
-| `ask_analyst` | `tools/delegate.py` | Analiz gorevini analiste devret |
-| `ask_planner` | `tools/delegate.py` | Planlama gorevini planlayiciya devret |
+| Tool | File | Description |
+|------|------|-------------|
+| `ask_coder` | `tools/delegate.py` | Delegate a coding task to the coder specialist |
+| `ask_researcher` | `tools/delegate.py` | Delegate a research task to the researcher |
+| `ask_analyst` | `tools/delegate.py` | Delegate an analysis task to the analyst |
+| `ask_planner` | `tools/delegate.py` | Delegate a planning task to the planner |
 
-**Parametre:**
-- `task` (str): Uzmanin yapacagi gorev aciklamasi
+**Parameter:**
+- `task` (str): Description of the task for the specialist
 
-**Calisma Sekli:** Ana agent gorevi uygun uzmana devreder. Uzman kendi tool'larini kullanarak gorevi tamamlar ve sonucu dondurur.
+**How It Works:** The main agent delegates the task to the appropriate specialist. The specialist completes the task using its own tools and returns the result.
 
-### 4.3 Hafiza Yonetim Tool'u
+### 4.3 Memory Management Tool
 
-| Tool | Dosya | Aciklama |
-|------|-------|----------|
-| `manage_memory` | `tools/memory_tool.py` | Uzun vadeli hafizayi yonet |
+| Tool | File | Description |
+|------|------|-------------|
+| `manage_memory` | `tools/memory_tool.py` | Manage long-term memory |
 
-**Parametreler:**
+**Parameters:**
 
-| Parametre | Tip | Aciklama |
-|-----------|-----|----------|
+| Parameter | Type | Description |
+|-----------|------|-------------|
 | `action` | str | `store`, `search`, `list`, `forget`, `count` |
-| `content` | str | Hafizaya eklenecek icerik (store icin) |
-| `category` | str | Kategori etiketi (store icin, opsiyonel) |
-| `query` | str | Arama sorgusu (search icin) |
-| `memory_id` | int | Silinecek kayit ID (forget icin) |
+| `content` | str | Content to add to memory (for store) |
+| `category` | str | Category label (for store, optional) |
+| `query` | str | Search query (for search) |
+| `memory_id` | int | Record ID to delete (for forget) |
 
-**Ornekler:**
+**Examples:**
 ```
-# Hafizaya bilgi ekle
+# Add information to memory
 manage_memory(action="store", content="Kullanici Python 3.11 tercih ediyor", category="preference")
 
-# Hafizada ara
+# Search memory
 manage_memory(action="search", query="Python tercihleri")
 
-# Tum kayitlari listele
+# List all records
 manage_memory(action="list")
 
-# Belirli kaydi sil
+# Delete a specific record
 manage_memory(action="forget", memory_id=5)
 
-# Kayit sayisini ogren
+# Get record count
 manage_memory(action="count")
 ```
 
-### 4.4 Baglam Yonetim Tool'u
+### 4.4 Context Management Tool
 
-| Tool | Dosya | Aciklama |
-|------|-------|----------|
-| `update_context` | `tools/context_tool.py` | CONTEXT.md dosyasini yonet |
+| Tool | File | Description |
+|------|------|-------------|
+| `update_context` | `tools/context_tool.py` | Manage the CONTEXT.md file |
 
-**Parametreler:**
+**Parameters:**
 
-| Parametre | Tip | Aciklama |
-|-----------|-----|----------|
+| Parameter | Type | Description |
+|-----------|------|-------------|
 | `action` | str | `update`, `get`, `list` |
-| `key` | str | Baglam anahtari |
-| `value` | str | Baglam degeri (update icin) |
+| `key` | str | Context key |
+| `value` | str | Context value (for update) |
 
-**Ornekler:**
+**Examples:**
 ```
-# Baglam guncelle
+# Update context
 update_context(action="update", key="Aktif Proje", value="AETHON v0.1.0 gelistirmesi")
 
-# Baglam oku
+# Read context
 update_context(action="get", key="Aktif Proje")
 
-# Tum anahtarlari listele
+# List all keys
 update_context(action="list")
 ```
 
-CONTEXT.md'ye `### Anahtar\nDeger` formatinda yazilir. Agent oturumlar arasi baglam bilgisini bu sekilde korur.
+Written to CONTEXT.md in `### Key\nValue` format. The agent preserves context information across sessions this way.
 
-### 4.5 Mesajlasma Tool'u
+### 4.5 Messaging Tool
 
-| Tool | Dosya | Aciklama |
-|------|-------|----------|
-| `send_message` | `tools/messaging.py` | Baska kanala mesaj gonder |
+| Tool | File | Description |
+|------|------|-------------|
+| `send_message` | `tools/messaging.py` | Send a message to another channel |
 
-**Parametreler:**
+**Parameters:**
 
-| Parametre | Tip | Aciklama |
-|-----------|-----|----------|
-| `channel` | str | Hedef kanal (`telegram`, `discord`, `slack`, `webchat`) |
-| `text` | str | Gonderilecek mesaj metni |
-| `recipient` | str | Alici ID (opsiyonel, bos ise varsayilan) |
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `channel` | str | Target channel (`telegram`, `discord`, `slack`, `webchat`) |
+| `text` | str | Message text to send |
+| `recipient` | str | Recipient ID (optional, default if empty) |
 
-**Ornek:**
+**Example:**
 ```
-send_message(channel="telegram", text="Gorev tamamlandi!", recipient="12345678")
+send_message(channel="telegram", text="Task completed!", recipient="12345678")
 ```
 
-### 4.6 Zamanlayici Tool'lari
+### 4.6 Scheduler Tools
 
-| Tool | Dosya | Aciklama |
-|------|-------|----------|
-| `schedule_task` | `tools/scheduler.py` | Cron tabanli gorev zamanla |
-| `list_scheduled_jobs` | `tools/scheduler.py` | Zamanlanmis gorevleri listele |
-| `remove_scheduled_job` | `tools/scheduler.py` | Zamanlanmis gorevi kaldir |
+| Tool | File | Description |
+|------|------|-------------|
+| `schedule_task` | `tools/scheduler.py` | Schedule a cron-based task |
+| `list_scheduled_jobs` | `tools/scheduler.py` | List scheduled tasks |
+| `remove_scheduled_job` | `tools/scheduler.py` | Remove a scheduled task |
 
-**schedule_task Parametreleri:**
+**schedule_task Parameters:**
 
-| Parametre | Tip | Aciklama |
-|-----------|-----|----------|
-| `cron_expression` | str | Cron ifadesi (orn: `0 9 * * 1-5`) |
-| `sop_name` | str | Calistirilacak SOP adi |
-| `job_id` | str | Gorev ID (opsiyonel, otomatik olusturulur) |
-| `channel` | str | Sonuc kanali (opsiyonel) |
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `cron_expression` | str | Cron expression (e.g., `0 9 * * 1-5`) |
+| `sop_name` | str | Name of the SOP to run |
+| `job_id` | str | Task ID (optional, auto-generated) |
+| `channel` | str | Result channel (optional) |
 
-**Cron Formati:** `dakika saat gun ay haftaGunu`
+**Cron Format:** `minute hour day month dayOfWeek`
 
-| Ornek | Anlami |
-|-------|--------|
-| `0 9 * * *` | Her gun saat 9:00 |
-| `0 9 * * 1-5` | Hafta ici saat 9:00 |
-| `30 18 * * 5` | Cuma 18:30 |
-| `0 0 1 * *` | Her ayin 1'i gece yarisi |
+| Example | Meaning |
+|---------|---------|
+| `0 9 * * *` | Every day at 9:00 AM |
+| `0 9 * * 1-5` | Weekdays at 9:00 AM |
+| `30 18 * * 5` | Friday at 6:30 PM |
+| `0 0 1 * *` | First of every month at midnight |
 
 ---
 
-## 5. SOP Komutlari
+## 5. SOP Commands
 
-SOP'lar (Standard Operating Procedures) sohbette `/` on-ekiyle tetiklenir.
+SOPs (Standard Operating Procedures) are triggered in chat with the `/` prefix.
 
-### 5.1 Dahili SOP'lar
+### 5.1 Built-in SOPs
 
-| Komut | Aciklama |
-|-------|----------|
-| `/code-assist <gorev>` | Kod yazma, duzeltme, refactoring |
-| `/pdd <gorev>` | Puzzle-Driven Development akisi |
-| `/morning-brief` | Sabah brifing raporu |
+| Command | Description |
+|---------|-------------|
+| `/code-assist <task>` | Code writing, fixing, refactoring |
+| `/pdd <task>` | Puzzle-Driven Development flow |
+| `/morning-brief` | Morning briefing report |
 
-### 5.2 SOP Calistirma
+### 5.2 Running an SOP
 
 ```
-Kullanici: /code-assist Bu fonksiyona hata yakalama ekle
-AETHON: [SOP adimlari izlenerek gorev tamamlanir]
+User: /code-assist Bu fonksiyona hata yakalama ekle
+AETHON: [Task is completed by following SOP steps]
 ```
 
-### 5.3 Ozel SOP Olusturma
+### 5.3 Creating a Custom SOP
 
-`~/.aethon/workspace/sops/` dizinine `.sop.md` uzantili dosya ekleyin:
+Add a file with `.sop.md` extension to the `~/.aethon/workspace/sops/` directory:
 
 ```markdown
-# Ozel SOP Adi
+# Custom SOP Name
 
 ## Overview
-Bu SOP ne yapar aciklamasi.
+Description of what this SOP does.
 
 ## Steps
-1. Ilk adim aciklamasi
-2. Ikinci adim aciklamasi
+1. First step description
+2. Second step description
 ```
 
-Dosya adi `benim-sop.sop.md` ise komut `/benim-sop` olur.
+If the filename is `my-sop.sop.md`, the command becomes `/my-sop`.
 
 ---
 
-## 6. Guvenlik Katmani
+## 6. Security Layer
 
-### 6.1 Komut Engelleme
+### 6.1 Command Blocking
 
-`security.blocked_commands` listesindeki komutlar otomatik engellenir:
+Commands in the `security.blocked_commands` list are automatically blocked:
 
 ```yaml
 security:
@@ -518,9 +518,9 @@ security:
     - "mkfs"
 ```
 
-### 6.2 Kullanici Dogrulama
+### 6.2 User Verification
 
-Kanal bazli izinli kullanici listesi:
+Channel-based allowed user list:
 
 ```yaml
 security:
@@ -529,19 +529,19 @@ security:
     discord: ["98765432"]
 ```
 
-### 6.3 Hafiza Korumasi (MemoryGuard)
+### 6.3 Memory Protection (MemoryGuard)
 
-`manage_memory` tool'unun `store` islemi sirasinda hassas bilgi otomatik engellenir:
+Sensitive information is automatically blocked during the `manage_memory` tool's `store` operation:
 
-- API key'ler (`api_key=...`)
-- Sifreler (`password=...`)
-- Token'lar (`secret=...`, `token=...`)
-- SSH anahtarlari
-- Ozel anahtar bloklari (PEM)
-- Kredi karti numaralari
-- SSN numaralari
+- API keys (`api_key=...`)
+- Passwords (`password=...`)
+- Tokens (`secret=...`, `token=...`)
+- SSH keys
+- Private key blocks (PEM)
+- Credit card numbers
+- SSN numbers
 
-Ozel pattern eklemek icin:
+To add custom patterns:
 
 ```yaml
 memory_guard:
@@ -549,9 +549,9 @@ memory_guard:
     - "internal_secret=\\S+"
 ```
 
-### 6.4 Onay Mekanizmasi
+### 6.4 Approval Mechanism
 
-Tehlikeli tool'lar icin kullanici onay gereksinimi:
+User approval requirement for dangerous tools:
 
 ```yaml
 approval:
@@ -563,27 +563,27 @@ approval:
 
 ---
 
-## 7. Hata Kodlari
+## 7. Error Codes
 
-| HTTP Kodu | Anlami |
-|-----------|--------|
-| 200 | Basarili |
-| 403 | Gecersiz HMAC imzasi (webhook) |
-| 422 | Gecersiz istek govdesi |
-| 500 | Sunucu hatasi |
+| HTTP Code | Meaning |
+|-----------|---------|
+| 200 | Success |
+| 403 | Invalid HMAC signature (webhook) |
+| 422 | Invalid request body |
+| 500 | Server error |
 
-WebSocket baglanti hatalari standart WebSocket close kodlarini kullanir.
+WebSocket connection errors use standard WebSocket close codes.
 
 ---
 
-## 8. Port Haritasi
+## 8. Port Map
 
-| Servis | Port | Protokol |
-|--------|------|----------|
+| Service | Port | Protocol |
+|---------|------|----------|
 | WebChat + Dashboard + Webhook + API | 18790 | HTTP/WS |
 | Ollama | 11434 | HTTP |
 | Telegram | - | HTTPS (outbound) |
 | Discord | - | WSS (outbound) |
 | Slack | - | WSS (outbound) |
 
-Tum yerel servisler `127.0.0.1` adresine baglidir. `0.0.0.0` kullanilmaz.
+All local services are bound to `127.0.0.1`. `0.0.0.0` is not used.
