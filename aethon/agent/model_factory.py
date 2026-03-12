@@ -1,0 +1,158 @@
+"""Multi-provider model factory.
+
+Creates the appropriate Strands Model based on config provider setting.
+Supported: ollama, openai, anthropic, bedrock, gemini, litellm, mistral.
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+from strands.models import Model
+
+if TYPE_CHECKING:
+    from aethon.config import ModelConfig
+
+
+def create_model(config: ModelConfig) -> Model:
+    """Create model instance based on provider config.
+
+    Args:
+        config: ModelConfig with provider, model_id, and provider-specific params.
+
+    Returns:
+        Strands Model instance ready for use with Agent.
+
+    Raises:
+        ValueError: If provider is not supported.
+    """
+    provider = config.provider.lower()
+
+    if provider == "ollama":
+        from strands.models.ollama import OllamaModel
+
+        return OllamaModel(
+            host=config.host,
+            model_id=config.model_id,
+            temperature=config.temperature,
+            top_p=config.top_p,
+            options={"top_k": config.top_k, **config.extra},
+        )
+
+    elif provider == "openai":
+        from strands.models.openai import OpenAIModel
+
+        client_args = {}
+        if config.api_key:
+            client_args["api_key"] = config.api_key
+        if config.host and config.host != "http://localhost:11434":
+            client_args["base_url"] = config.host
+        return OpenAIModel(
+            client_args=client_args or None,
+            model_id=config.model_id,
+            params={"temperature": config.temperature, "max_tokens": config.max_tokens},
+        )
+
+    elif provider == "anthropic":
+        from strands.models.anthropic import AnthropicModel
+
+        client_args = {}
+        if config.api_key:
+            client_args["api_key"] = config.api_key
+        return AnthropicModel(
+            client_args=client_args or None,
+            model_id=config.model_id,
+            max_tokens=config.max_tokens,
+            params={"temperature": config.temperature},
+        )
+
+    elif provider == "bedrock":
+        from strands.models import BedrockModel
+
+        return BedrockModel(
+            model_id=config.model_id,
+            region=config.region,
+            temperature=config.temperature,
+            max_tokens=config.max_tokens,
+        )
+
+    elif provider == "gemini":
+        from strands.models.gemini import GeminiModel
+
+        return GeminiModel(
+            model_id=config.model_id,
+            client_args={"api_key": config.api_key} if config.api_key else None,
+            max_tokens=config.max_tokens,
+        )
+
+    elif provider == "litellm":
+        from strands.models.litellm import LiteLLMModel
+
+        return LiteLLMModel(
+            model_id=config.model_id,
+        )
+
+    elif provider == "mistral":
+        from strands.models.mistral import MistralModel
+
+        return MistralModel(
+            model_id=config.model_id,
+            client_args={"api_key": config.api_key} if config.api_key else None,
+        )
+
+    else:
+        raise ValueError(
+            f"Bilinmeyen model provider: '{provider}'. "
+            f"Desteklenen: ollama, openai, anthropic, bedrock, gemini, litellm, mistral"
+        )
+
+
+def check_model_availability(config: ModelConfig) -> tuple[bool, str]:
+    """Check if the configured model is accessible.
+
+    Returns:
+        (available, message) tuple.
+    """
+    provider = config.provider.lower()
+
+    if provider == "ollama":
+        import requests
+
+        try:
+            r = requests.get(f"{config.host}/api/tags", timeout=5)
+            models = [m["name"] for m in r.json().get("models", [])]
+            if any(config.model_id in m for m in models):
+                return True, f"Ollama OK: {config.model_id}"
+            return False, (
+                f"Model '{config.model_id}' Ollama'da bulunamadi.\n"
+                f"  Mevcut modeller: {', '.join(models)}\n"
+                f"  Indir: ollama pull {config.model_id}"
+            )
+        except Exception:
+            return False, (
+                f"Ollama ({config.host}) erisilemez.\n"
+                f"  Baslat: ollama serve"
+            )
+
+    elif provider in ("openai", "anthropic", "gemini", "mistral"):
+        if not config.api_key:
+            return False, (
+                f"{provider} icin API key gerekli.\n"
+                f"  config.yaml: model.api_key: 'sk-...'\n"
+                f"  veya: AETHON_{provider.upper()}_API_KEY ortam degiskeni"
+            )
+        return True, f"{provider} OK: {config.model_id} (API key mevcut)"
+
+    elif provider == "bedrock":
+        try:
+            import boto3
+
+            boto3.client("bedrock-runtime", region_name=config.region)
+            return True, f"Bedrock OK: {config.model_id} ({config.region})"
+        except Exception as e:
+            return False, f"AWS Bedrock erisim hatasi: {e}"
+
+    elif provider == "litellm":
+        return True, f"LiteLLM OK: {config.model_id}"
+
+    return False, f"Bilinmeyen provider: {provider}"

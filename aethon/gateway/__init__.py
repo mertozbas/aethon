@@ -1,0 +1,1 @@
+"""AETHON gateway layer."""
