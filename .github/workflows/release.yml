@@ -1,0 +1,83 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write   # create the GitHub Release
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build & publish to PyPI
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Extract version from tag
+        id: ver
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Releasing version: $VERSION"
+
+      - name: Stamp version from tag
+        run: |
+          python - "${{ steps.ver.outputs.version }}" <<'PY'
+          import re, sys, pathlib
+          version = sys.argv[1]
+
+          pp = pathlib.Path("pyproject.toml")
+          text = pp.read_text()
+          pat = r'(?m)^version = "[^"]*"'
+          if not re.search(pat, text):
+              raise SystemExit("Could not find `version = \"...\"` in pyproject.toml")
+          pp.write_text(re.sub(pat, f'version = "{version}"', text, count=1))
+
+          init = pathlib.Path("aethon/__init__.py")
+          itext = init.read_text()
+          ipat = r'__version__ = "[^"]*"'
+          if not re.search(ipat, itext):
+              raise SystemExit("Could not find `__version__` in aethon/__init__.py")
+          init.write_text(re.sub(ipat, f'__version__ = "{version}"', itext))
+
+          print(f"Stamped version {version} into pyproject.toml and aethon/__init__.py")
+          PY
+
+      - name: Build
+        run: |
+          python -m pip install --upgrade pip build twine
+          python -m build
+          twine check dist/*
+
+      - name: Publish to PyPI
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+        run: twine upload dist/* --skip-existing
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref }}
+          name: aethon v${{ steps.ver.outputs.version }}
+          generate_release_notes: true
+          body: |
+            AETHON v${{ steps.ver.outputs.version }} — a self-hosted, provider-agnostic personal AI assistant.
+
+            **Install:**
+            ```bash
+            pip install aethon-ai
+            ```
+            The PyPI distribution is `aethon-ai`; the command and import are `aethon`.
+
+            See the [README](https://github.com/mertozbas/aethon/blob/main/README.md) and [CHANGELOG](https://github.com/mertozbas/aethon/blob/main/CHANGELOG.md).

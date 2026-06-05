@@ -3,6 +3,7 @@
 **A self-hosted, provider-agnostic personal AI assistant — Web UI, CLI, and messaging bots, with memory, multi-agent specialists, SOPs, a scheduler, telemetry, and a live dashboard.**
 
 [![CI](https://github.com/mertozbas/aethon/actions/workflows/ci.yml/badge.svg)](https://github.com/mertozbas/aethon/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/aethon-ai.svg)](https://pypi.org/project/aethon-ai/)
 [![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue.svg)](https://www.python.org/)
 [![License: PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/license-PolyForm--Noncommercial--1.0.0-orange.svg)](LICENSE)
 [![Built with Strands Agents SDK](https://img.shields.io/badge/built%20with-Strands%20Agents%20SDK-7d4cdb.svg)](https://github.com/strands-agents)
@@ -106,8 +107,9 @@ The fastest path runs AETHON on your **Claude Max** quota via Meridian — no AP
 npm install -g @rynfar/meridian
 claude login          # one-time; uses your Claude subscription
 
-# 2) Install AETHON (from GitHub; a PyPI release is coming).
-pip install git+https://github.com/mertozbas/aethon.git
+# 2) Install AETHON. (The PyPI distribution is named "aethon-ai";
+#    the command and import stay "aethon".)
+pip install aethon-ai
 
 # 3) Start. The first run launches the setup wizard if no config exists,
 #    and auto-starts the Meridian proxy in the background for you.
@@ -134,27 +136,25 @@ That's it. You can also chat right in your terminal (the CLI channel is on by de
 
 ### Install with pip
 
-Until the first PyPI release, install straight from GitHub:
-
 ```bash
-pip install "git+https://github.com/mertozbas/aethon.git"
+pip install aethon-ai
 ```
 
-Once published to PyPI, the install is simply `pip install aethon`.
+> **Note on names:** the PyPI distribution is **`aethon-ai`** (the plain `aethon` name was already taken), but the importable package and the CLI command are both **`aethon`** — so you run `aethon start` and `import aethon` as usual. To track the latest `main` instead, install from GitHub: `pip install "git+https://github.com/mertozbas/aethon.git"`.
 
 The **core install ships every entry point in one package**: CLI + WebChat + dashboard + Telegram (`aiogram`) + Discord (`discord.py`) + Slack (`slack-bolt`) + memory (`aiosqlite`) + SOPs (`strands-agents-sops`) + scheduler (`apscheduler`), plus the Strands core and the default `strands-meridian` provider.
 
 #### Optional extras
 
-The names below are the extras you can request. On PyPI: `pip install "aethon[ollama]"`. From a local clone, the equivalent is `pip install ".[ollama]"` (see [Development](#development)).
+Request an extra with `pip install "aethon-ai[ollama]"`. From a local clone, the equivalent is `pip install ".[ollama]"` (see [Development](#development)).
 
 | Extra | Install | Adds | Purpose |
 |-------|---------|------|---------|
-| `ollama` | `pip install "aethon[ollama]"` | `ollama>=0.3.0` | Local-inference provider (run models fully offline). |
-| `whatsapp` | `pip install "aethon[whatsapp]"` | `neonize>=0.3.0` | WhatsApp channel (**experimental**). |
-| `mcp` | `pip install "aethon[mcp]"` | `mcp>=1.0.0` | MCP (Model Context Protocol) server support. |
-| `all` | `pip install "aethon[all]"` | `aethon[ollama,whatsapp,mcp]` | Bundles the three feature extras above. |
-| `dev` | `pip install "aethon[dev]"` | `pytest>=8.0.0`, `pytest-asyncio>=0.23.0`, `httpx>=0.27.0` | Test/dev tooling. |
+| `ollama` | `pip install "aethon-ai[ollama]"` | `ollama>=0.3.0` | Local-inference provider (run models fully offline). |
+| `whatsapp` | `pip install "aethon-ai[whatsapp]"` | `neonize>=0.3.0` | WhatsApp channel (**experimental**). |
+| `mcp` | `pip install "aethon-ai[mcp]"` | `mcp>=1.0.0` | MCP (Model Context Protocol) server support. |
+| `all` | `pip install "aethon-ai[all]"` | `aethon-ai[ollama,whatsapp,mcp]` | Bundles the three feature extras above. |
+| `dev` | `pip install "aethon-ai[dev]"` | `pytest>=8.0.0`, `pytest-asyncio>=0.23.0`, `httpx>=0.27.0` | Test/dev tooling. |
 
 ### Install with Docker
 
@@ -270,7 +270,7 @@ model:
 
 ### Ollama (fully local)
 
-Install the extra (`pip install "aethon[ollama]"`), then:
+Install the extra (`pip install "aethon-ai[ollama]"`), then:
 
 ```yaml
 model:
@@ -603,7 +603,7 @@ channels:
     app_token: ${SLACK_APP_TOKEN}    # xapp-…
 ```
 
-**WhatsApp (experimental)** — install the extra (`pip install "aethon[whatsapp]"`), enable the channel, and on first start scan the **QR code** with your WhatsApp app to link the session.
+**WhatsApp (experimental)** — install the extra (`pip install "aethon-ai[whatsapp]"`), enable the channel, and on first start scan the **QR code** with your WhatsApp app to link the session.
 
 ```yaml
 channels:
