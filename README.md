@@ -290,7 +290,7 @@ Starting AETHON...
   WebChat: http://127.0.0.1:18790
   Memory: nomic-embed-text (active)
   Multi-Agent: active
-  SOPs: 5 loaded
+  SOPs: 3 loaded
   Scheduler: active
   Telemetry: active
   Dashboard: http://127.0.0.1:18790/dashboard

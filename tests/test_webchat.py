@@ -39,12 +39,22 @@ def test_index_returns_html(webchat_app):
 
 def test_status_endpoint(webchat_app):
     """GET /api/status returns JSON."""
+    from aethon import __version__
+
     client = TestClient(webchat_app)
     response = client.get("/api/status")
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "running"
-    assert data["version"] == "0.1.0"
+    assert data["version"] == __version__
+
+
+def test_health_endpoint(webchat_app):
+    """GET /health is a lightweight, always-open liveness probe."""
+    client = TestClient(webchat_app)
+    response = client.get("/health")
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
 
 
 def test_websocket_chat(webchat_app):

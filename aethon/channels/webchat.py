@@ -8,6 +8,7 @@ import asyncio
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 
+from aethon import __version__
 from aethon.channels.base import ChannelAdapter, InboundMessage, OutboundMessage
 
 
@@ -142,7 +143,14 @@ class WebChatAdapter(ChannelAdapter):
 
         @self.app.get("/api/status")
         async def status():
-            return {"status": "running", "version": "0.1.0"}
+            return {"status": "running", "version": __version__}
+
+        @self.app.get("/health")
+        async def health():
+            # Lightweight liveness probe. Deliberately ungated (the dashboard auth
+            # middleware covers /api/* and /dashboard, not /health) so container and
+            # load-balancer health checks work even when a dashboard token is set.
+            return {"status": "ok"}
 
     async def start(self) -> None:
         import uvicorn

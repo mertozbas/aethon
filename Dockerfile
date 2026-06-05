@@ -56,8 +56,8 @@ WORKDIR /home/aethon
 EXPOSE 18790
 VOLUME ["/home/aethon/.aethon"]
 
-# Liveness: the web server answers on loopback inside the container.
+# Liveness: the web server answers /health on loopback inside the container.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:18790/', timeout=4)" || exit 1
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:18790/health', timeout=4)" || exit 1
 
 CMD ["aethon", "start"]

@@ -70,8 +70,13 @@
 | Phase 2 — Channels + Memory | ✅ Completed | 120 tests | 42 items |
 | Phase 3 — Multi-Agent + SOP | ✅ Completed | 178 tests | 38 items |
 | Phase 4 — Polish + Advanced | ✅ Completed | 294 tests | 48 items |
-| Phase 5 — Dashboard & UX | ✅ Completed | 346 tests | 76 items |
-| Phase 6 — Infrastructure | 🚧 In progress | - | 54 items |
+| Phase 5 — Dashboard & UX | ✅ Completed | 348 tests | 76 items |
+| Phase 6 — Infrastructure | ✅ v1 slice (Docker + CI + packaging + dashboard auth) | 348 tests | 54 items |
 | Phase 7 — AI Capabilities | ⏭️ Deferred to v2 | - | 53 items |
 
-**Completed:** 346 tests, all passing.
+**Completed:** 348 tests, all passing.
+
+**Deferred to v2:** the advanced Phase 6 features (response streaming, per-specialist
+multi-model config, Tool Builder / Agent Builder agents) and all of Phase 7. v1 ships
+a complete, provider-agnostic assistant (Web UI + CLI + messaging bots, memory, SOPs,
+scheduler, telemetry, dashboard) via pip and Docker.

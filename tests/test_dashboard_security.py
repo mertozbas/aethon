@@ -74,6 +74,27 @@ def test_webchat_style_status_not_gated_by_dashboard_auth():
     assert client.get("/api/status").status_code == 200
 
 
+def test_health_open_even_with_dashboard_auth():
+    """Health probe must stay reachable when a dashboard token is set.
+
+    Mirrors the gateway wiring: the dashboard is mounted onto the WebChat app,
+    so /health (defined on WebChat) shares the auth middleware but must not be gated.
+    """
+    from aethon.channels.webchat import WebChatAdapter
+
+    cfg = AethonConfig()
+    cfg.dashboard.auth_token = "secret"
+    adapter = WebChatAdapter(cfg, MagicMock())
+    runtime = MagicMock()
+    runtime.agents = {}
+    runtime.memory = None
+    setup_dashboard(adapter.app, runtime, cfg, event_bus=None)
+
+    client = TestClient(adapter.app)
+    assert client.get("/health").status_code == 200       # open for healthchecks
+    assert client.get("/api/config").status_code == 401    # dashboard API still gated
+
+
 # --- Thread-safe event delivery -------------------------------------------
 
 
