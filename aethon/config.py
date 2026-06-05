@@ -187,10 +187,19 @@ class PathsConfig(BaseModel):
     credentials: str = "~/.aethon/credentials"
 
 
+class MeridianConfig(BaseModel):
+    """Meridian proxy lifecycle (used when provider is 'meridian')."""
+
+    # Start Meridian automatically (in the background) on `aethon start` if it
+    # isn't already running. Set false to manage Meridian yourself.
+    auto_start: bool = True
+
+
 class AethonConfig(BaseModel):
     """Root configuration model."""
 
     model: ModelConfig = ModelConfig()
+    meridian: MeridianConfig = MeridianConfig()
     channels: ChannelsConfig = ChannelsConfig()
     security: SecurityConfig = SecurityConfig()
     session: SessionConfig = SessionConfig()

@@ -77,6 +77,18 @@ def start(config: str):
 
     cfg = AethonConfig.load(config)
 
+    # Auto-start Meridian in the background if it's our provider and not already up,
+    # so the user never has to launch it by hand or keep a terminal open.
+    if cfg.model.provider == "meridian" and cfg.meridian.auto_start:
+        from aethon.agent.model_factory import _meridian_base_url
+        from aethon.meridian_manager import ensure_running, is_running
+
+        base = _meridian_base_url(cfg.model) or "http://127.0.0.1:3456"
+        if not is_running(base):
+            console.print("  Meridian: [dim]starting in the background…[/]")
+        ok, mmsg = ensure_running(base)
+        console.print(f"  Meridian: [{'green' if ok else 'yellow'}]{mmsg}[/]")
+
     _ensure_workspace(cfg)
 
     from aethon.agent.model_factory import check_model_availability
