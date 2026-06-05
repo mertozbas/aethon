@@ -49,6 +49,13 @@ dependencies = [
 [project.scripts]
 aethon = "aethon.__main__:main"
 
+[project.urls]
+Homepage = "https://github.com/mertozbas/aethon"
+Repository = "https://github.com/mertozbas/aethon"
+Issues = "https://github.com/mertozbas/aethon/issues"
+Documentation = "https://github.com/mertozbas/aethon/tree/main/docs"
+Changelog = "https://github.com/mertozbas/aethon/blob/main/CHANGELOG.md"
+
 [project.optional-dependencies]
 # Optional, opt-in features. Core install already covers CLI + WebChat + dashboard
 # + Telegram/Discord/Slack + memory + SOPs + scheduler.

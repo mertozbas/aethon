@@ -7,12 +7,16 @@ build/
 .eggs/
 *.egg
 .pytest_cache/
+.ruff_cache/
+.mypy_cache/
 .venv/
 venv/
 env/
 .env
 *.so
 .DS_Store
+.idea/
+.vscode/
 repl_state/
 workspace/
 Users/
