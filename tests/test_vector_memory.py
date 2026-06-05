@@ -108,6 +108,7 @@ def test_forget_nonexistent(tmp_path):
     mem = VectorMemory.__new__(VectorMemory)
     mem.db_path = db_path
     mem.db = __import__("sqlite3").connect(db_path)
+    mem._lock = __import__("threading").Lock()
     mem._create_tables()
 
     deleted = mem.forget(9999)

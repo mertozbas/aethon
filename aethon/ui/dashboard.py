@@ -14,8 +14,8 @@ import os
 from pathlib import Path
 from typing import Optional
 
-from fastapi import WebSocket, WebSocketDisconnect, Query
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi import Request, WebSocket, WebSocketDisconnect, Query
+from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 
@@ -41,6 +41,47 @@ def setup_dashboard(app, runtime, config, event_bus=None):
             setup_log_forwarding(event_bus, level=logging.DEBUG)
         except Exception as e:
             logger.warning(f"Log forwarding setup failed: {e}")
+
+    # --- Authentication (optional shared token) ---
+    # Empty token = no auth (fine for the default localhost bind). When set, all
+    # /api/* and /ws/dashboard access requires the token.
+    _raw_token = getattr(config.dashboard, "auth_token", "")
+    auth_token = _raw_token.strip() if isinstance(_raw_token, str) else ""
+
+    def _provided_token(request: Request) -> str:
+        header = request.headers.get("authorization", "")
+        bearer = header[7:] if header[:7].lower() == "bearer " else ""
+        return request.cookies.get("aethon_dash") or bearer or request.query_params.get("token", "")
+
+    if auth_token:
+        _protected = (
+            "/api/sessions",
+            "/api/memory",
+            "/api/config",
+            "/api/scheduler",
+            "/api/telemetry",
+            "/api/sops",
+            "/api/agents",
+        )
+
+        @app.middleware("http")
+        async def _dashboard_auth(request: Request, call_next):
+            path = request.url.path
+            if path == "/dashboard" or path.startswith(_protected):
+                if _provided_token(request) != auth_token:
+                    if path == "/dashboard":
+                        return HTMLResponse(
+                            "<html><body><h3>AETHON dashboard</h3><p>This dashboard is "
+                            "protected. Open <code>/dashboard?token=YOUR_TOKEN</code>.</p>"
+                            "</body></html>",
+                            status_code=401,
+                        )
+                    return JSONResponse({"detail": "Dashboard authentication required"}, status_code=401)
+                response = await call_next(request)
+                if path == "/dashboard":
+                    response.set_cookie("aethon_dash", auth_token, httponly=True, samesite="strict")
+                return response
+            return await call_next(request)
 
     # --- Static file serving ---
 
@@ -333,28 +374,7 @@ def setup_dashboard(app, runtime, config, event_bus=None):
         metrics = telemetry_hook.get_metrics(limit=30)
         return {"events": metrics}
 
-    # --- Legacy WebSocket (backward compatible) ---
-
-    @app.websocket("/ws/telemetry")
-    async def ws_telemetry(websocket: WebSocket):
-        """Real-time telemetry stream (legacy polling-based)."""
-        await websocket.accept()
-        last_count = 0
-        try:
-            while True:
-                telemetry_hook = getattr(runtime, "_telemetry_hook", None)
-                if telemetry_hook:
-                    current_count = len(telemetry_hook.metrics)
-                    if current_count > last_count:
-                        new_metrics = list(telemetry_hook.metrics)[last_count:]
-                        for m in new_metrics:
-                            await websocket.send_text(json.dumps(m))
-                        last_count = current_count
-                await asyncio.sleep(2)
-        except WebSocketDisconnect:
-            pass
-
-    # --- New Multiplexed WebSocket ---
+    # --- Multiplexed WebSocket ---
 
     @app.websocket("/ws/dashboard")
     async def ws_dashboard(websocket: WebSocket):
@@ -364,6 +384,11 @@ def setup_dashboard(app, runtime, config, event_bus=None):
           Client -> {"channel":"subscribe","topics":["messages","logs","telemetry","agents"]}
           Server -> {"channel":"<topic>","data":{...}}
         """
+        if auth_token:
+            provided = websocket.cookies.get("aethon_dash") or websocket.query_params.get("token", "")
+            if provided != auth_token:
+                await websocket.close(code=1008)
+                return
         await websocket.accept()
 
         # Subscribe to event bus if available

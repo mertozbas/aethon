@@ -143,6 +143,11 @@ class DashboardConfig(BaseModel):
 
     enabled: bool = True
     pixel_agents: bool = True
+    # Optional shared token. Empty = no auth (fine for the default localhost bind).
+    # Set this before exposing the dashboard on a network — it then gates all
+    # /api/* and /ws/dashboard access. Pass it via ?token=... (a cookie is set),
+    # an `Authorization: Bearer` header, or the `aethon_dash` cookie.
+    auth_token: str = ""
 
 
 class WebhookConfig(BaseModel):

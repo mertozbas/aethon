@@ -250,14 +250,6 @@ def test_ws_dashboard_connects(app):
         # Connection should stay alive — just verify no error
 
 
-def test_ws_telemetry_legacy_connects(app):
-    """Legacy WebSocket /ws/telemetry still works."""
-    client = TestClient(app)
-    with client.websocket_connect("/ws/telemetry") as ws:
-        # Connection should accept without error
-        pass
-
-
 def test_ws_dashboard_subscribe_message(app, event_bus):
     """WebSocket /ws/dashboard processes subscribe messages without error."""
     client = TestClient(app)
