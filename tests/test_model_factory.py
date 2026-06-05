@@ -56,6 +56,33 @@ def test_create_model_unknown_provider():
         create_model(config)
 
 
+def test_create_model_bedrock_wires_region_name():
+    """Bedrock passes the AWS region via region_name (not the invalid 'region' kwarg)."""
+    pytest.importorskip("boto3")
+    import warnings
+
+    from strands.models import BedrockModel
+
+    config = ModelConfig(provider="bedrock", model_id="anthropic.claude-3-5-sonnet-20240620-v1:0", region="eu-west-1")
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        model = create_model(config)
+    assert isinstance(model, BedrockModel)
+    # The region actually reaches the boto3 client (was silently dropped when passed as `region`).
+    assert model.client.meta.region_name == "eu-west-1"
+    invalid_region = [w for w in caught if "region" in str(w.message).lower() and "invalid" in str(w.message).lower()]
+    assert not invalid_region, f"unexpected invalid-region warning: {[str(w.message) for w in invalid_region]}"
+
+
+def test_create_model_gemini_max_tokens_in_params():
+    """Gemini puts the token cap in params as max_output_tokens (GeminiConfig has no max_tokens)."""
+    pytest.importorskip("google.genai")
+    config = ModelConfig(provider="gemini", model_id="gemini-2.0-flash", api_key="k", max_tokens=1234)
+    model = create_model(config)
+    params = model.get_config().get("params", {})
+    assert params.get("max_output_tokens") == 1234
+
+
 def test_check_model_availability_ollama():
     """Check Ollama availability with real connection."""
     config = ModelConfig(provider="ollama")

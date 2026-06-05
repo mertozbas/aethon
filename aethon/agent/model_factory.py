@@ -119,7 +119,7 @@ def create_model(config: ModelConfig) -> Model:
 
         return BedrockModel(
             model_id=config.model_id,
-            region=config.region,
+            region_name=config.region,  # BedrockModel uses region_name, not region
             temperature=config.temperature,
             max_tokens=config.max_tokens,
         )
@@ -127,10 +127,15 @@ def create_model(config: ModelConfig) -> Model:
     elif provider == "gemini":
         from strands.models.gemini import GeminiModel
 
+        # GeminiConfig only has model_id + params; generation settings (incl. the
+        # token cap, which Gemini calls max_output_tokens) go inside params.
         return GeminiModel(
             model_id=config.model_id,
             client_args={"api_key": config.api_key} if config.api_key else None,
-            max_tokens=config.max_tokens,
+            params={
+                "max_output_tokens": config.max_tokens,
+                "temperature": config.temperature,
+            },
         )
 
     elif provider == "litellm":
@@ -143,9 +148,12 @@ def create_model(config: ModelConfig) -> Model:
     elif provider == "mistral":
         from strands.models.mistral import MistralModel
 
+        # MistralModel takes api_key as a dedicated arg (not via client_args);
+        # max_tokens is a MistralConfig field.
         return MistralModel(
+            api_key=config.api_key or None,
             model_id=config.model_id,
-            client_args={"api_key": config.api_key} if config.api_key else None,
+            max_tokens=config.max_tokens,
         )
 
     else:
