@@ -71,4 +71,5 @@ dev = [
 [tool.pytest.ini_options]
 markers = [
     "ollama: tests that require a running Ollama instance",
+    "e2e: end-to-end boot tests that spawn a subprocess and bind a socket (deselect with -m 'not e2e')",
 ]
