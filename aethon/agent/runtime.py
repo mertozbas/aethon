@@ -39,20 +39,25 @@ class AethonRuntime:
         self._telemetry_hook = None
         self._context_updater = None
         self._mcp_loader = None
+        self._event_bus = None
 
         # VectorMemory
         if getattr(config, "memory", None) and config.memory.enabled:
             try:
                 from aethon.memory.vector import VectorMemory
 
+                emb_provider = getattr(config.memory, "embedding_provider", "ollama")
+                emb_api_key = getattr(config.memory, "embedding_api_key", "")
                 self.memory = VectorMemory(
                     db_path=config.memory.db_path,
                     ollama_host=config.model.host,
                     model_id=config.memory.embedding_model,
                     embedding_cache_size=config.performance.embedding_cache_size,
+                    embedding_provider=emb_provider,
+                    embedding_api_key=emb_api_key,
                 )
                 logger.info(
-                    f"VectorMemory: aktif (model={config.memory.embedding_model})"
+                    f"VectorMemory: aktif ({emb_provider}/{config.memory.embedding_model})"
                 )
             except Exception as e:
                 logger.warning(f"VectorMemory baslatma hatasi: {e}")
@@ -126,6 +131,81 @@ class AethonRuntime:
             except Exception as e:
                 logger.warning(f"MCP baslatma hatasi: {e}")
                 self._mcp_loader = None
+
+    def _sanitize_session(self, session_id: str) -> None:
+        """Sanitize a session's message history for cross-provider compatibility.
+
+        Converts toolUse/toolResult blocks into plain text so the conversation
+        context is preserved when switching between model providers.
+        The agent is evicted from cache so it gets recreated with clean history.
+        """
+        import json
+
+        sessions_dir = Path(self.config.session.storage_dir).expanduser()
+        messages_dir = (
+            sessions_dir / f"session_{session_id}" / "agents" / "agent_main" / "messages"
+        )
+
+        if not messages_dir.exists():
+            self.agents.pop(session_id, None)
+            return
+
+        sanitized = 0
+        for msg_file in sorted(messages_dir.glob("message_*.json")):
+            try:
+                data = json.loads(msg_file.read_text())
+                message = data.get("message", {})
+                content = message.get("content", [])
+                if not content:
+                    continue
+
+                new_content = []
+                changed = False
+                for block in content:
+                    if "text" in block:
+                        new_content.append(block)
+                    elif "toolUse" in block:
+                        tu = block["toolUse"]
+                        tool_name = tu.get("name", "?")
+                        tool_input = tu.get("input", {})
+                        # Extract the first meaningful input value
+                        input_summary = next(iter(tool_input.values()), "") if tool_input else ""
+                        if len(str(input_summary)) > 200:
+                            input_summary = str(input_summary)[:200] + "..."
+                        new_content.append({"text": f"[{tool_name}: {input_summary}]"})
+                        changed = True
+                    elif "toolResult" in block:
+                        tr = block["toolResult"]
+                        result_texts = []
+                        for rc in tr.get("content", []):
+                            if "text" in rc:
+                                result_texts.append(rc["text"])
+                        result_summary = "\n".join(result_texts)
+                        if len(result_summary) > 500:
+                            result_summary = result_summary[:500] + "..."
+                        status = tr.get("status", "")
+                        new_content.append({"text": f"[Sonuc ({status}): {result_summary}]"})
+                        changed = True
+                    else:
+                        # Unknown block type — keep as-is
+                        new_content.append(block)
+
+                if changed and new_content:
+                    data["message"]["content"] = new_content
+                    msg_file.write_text(json.dumps(data, ensure_ascii=False))
+                    sanitized += 1
+
+            except Exception as e:
+                logger.debug(f"Mesaj sanitize edilemedi ({msg_file.name}): {e}")
+
+        if sanitized:
+            logger.warning(
+                f"Session sanitize edildi ({session_id}): "
+                f"{sanitized} mesajdaki tool bloklari text'e donusturuldu"
+            )
+
+        # Evict from cache so it gets recreated with clean history
+        self.agents.pop(session_id, None)
 
     def _get_tools(self) -> list:
         """Tool list — includes memory, delegate, context, messaging, scheduler, MCP tools."""
@@ -264,26 +344,65 @@ class AethonRuntime:
             logger.warning(f"Model warm-up hatasi: {e}")
 
     def _process_sync(self, message: InboundMessage, session_id: str) -> str:
-        """Process message synchronously (called from executor)."""
-        # SOP command check
-        if self.sop_runner:
-            is_sop, sop_name, sop_input = self.sop_runner.is_sop_command(
-                message.text
-            )
-            if is_sop:
-                agent = self.get_or_create_agent(session_id)
-                return self.sop_runner.run_sop(sop_name, agent, sop_input)
+        """Process message synchronously (called from executor).
 
-        # Normal message processing
-        agent = self.get_or_create_agent(session_id)
-        result = agent(message.text)
+        If the model call fails due to incompatible session history (e.g. after
+        switching providers), the session is automatically reset and retried once.
+        """
+        return self._try_process(message, session_id, allow_retry=True)
 
+    def _try_process(
+        self, message: InboundMessage, session_id: str, allow_retry: bool
+    ) -> str:
+        """Attempt to process message, with optional retry after session reset."""
         try:
-            content = result.message["content"]
-            text_parts = [block["text"] for block in content if "text" in block]
-            return "\n".join(text_parts) if text_parts else str(result)
-        except (KeyError, TypeError, IndexError):
-            return str(result)
+            # SOP command check
+            if self.sop_runner:
+                is_sop, sop_name, sop_input = self.sop_runner.is_sop_command(
+                    message.text
+                )
+                if is_sop:
+                    agent = self.get_or_create_agent(session_id)
+                    return self.sop_runner.run_sop(sop_name, agent, sop_input)
+
+            # Normal message processing
+            agent = self.get_or_create_agent(session_id)
+            result = agent(message.text)
+
+            try:
+                content = result.message["content"]
+                text_parts = [block["text"] for block in content if "text" in block]
+                return "\n".join(text_parts) if text_parts else str(result)
+            except (KeyError, TypeError, IndexError):
+                return str(result)
+
+        except Exception as e:
+            if allow_retry and self._is_session_format_error(e):
+                logger.warning(
+                    f"Session format uyumsuzlugu ({session_id}), "
+                    f"gecmis sifirlaniyor ve tekrar deneniyor: {e}"
+                )
+                self._sanitize_session(session_id)
+                return self._try_process(message, session_id, allow_retry=False)
+
+            logger.error(f"Model hatasi ({session_id}): {type(e).__name__}: {e}")
+            raise
+
+    @staticmethod
+    def _is_session_format_error(exc: Exception) -> bool:
+        """Check if an exception is caused by incompatible session message history."""
+        msg = str(exc).lower()
+        indicators = [
+            "tool_calls",            # OpenAI: tool role without preceding tool_calls
+            "tool_use",              # Anthropic: orphaned toolUse
+            "toolresult",            # Strands: missing toolResult
+            "tool_result",           # Strands variant
+            "invalid parameter",     # OpenAI generic format error
+            "messages with role",    # OpenAI: role ordering error
+            "orphaned",              # Strands warning turned error
+            "conversation history",  # Generic history error
+        ]
+        return any(ind in msg for ind in indicators)
 
     async def process(self, message: InboundMessage, session_id: str) -> str:
         """Process message asynchronously.

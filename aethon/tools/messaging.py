@@ -53,11 +53,16 @@ def send_message(channel: str, text: str, recipient: str = "") -> str:
     )
 
     try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
+        try:
+            running_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            running_loop = None
+        if running_loop is not None:
+            # Already inside an event loop (e.g. async caller) — schedule it.
             asyncio.ensure_future(adapter.send(outbound))
         else:
-            loop.run_until_complete(adapter.send(outbound))
+            # No running loop (sync caller / worker thread) — run to completion.
+            asyncio.run(adapter.send(outbound))
         return f"Mesaj {channel} uzerinden gonderildi."
     except Exception as e:
         logger.error(f"Mesaj gonderme hatasi: {e}")

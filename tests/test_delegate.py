@@ -2,7 +2,7 @@
 
 import pytest
 
-from strands.models.ollama import OllamaModel
+from aethon.agent.fake_model import EchoModel
 
 from aethon.agent.specialists import SpecialistFactory
 from aethon.tools.delegate import (
@@ -18,10 +18,7 @@ import aethon.tools.delegate as delegate_module
 
 @pytest.fixture
 def model():
-    return OllamaModel(
-        host="http://localhost:11434",
-        model_id="qwen3-coder-next",
-    )
+    return EchoModel()
 
 
 @pytest.fixture
@@ -66,6 +63,7 @@ def test_ask_planner_without_factory():
     assert "Hata" in result
 
 
+@pytest.mark.ollama
 def test_ask_coder_with_factory(factory):
     """ask_coder delegates to coder specialist (real Ollama)."""
     set_specialist_factory(factory)
@@ -74,6 +72,7 @@ def test_ask_coder_with_factory(factory):
     set_specialist_factory(None)
 
 
+@pytest.mark.ollama
 def test_ask_planner_with_factory(factory):
     """ask_planner delegates to planner specialist (real Ollama)."""
     set_specialist_factory(factory)

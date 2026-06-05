@@ -23,7 +23,7 @@ def runtime_config(tmp_path):
     logs.mkdir()
 
     return AethonConfig(
-        model=ModelConfig(provider="ollama", model_id="qwen3-coder-next"),
+        model=ModelConfig(provider="fake", model_id="fake"),
         paths=PathsConfig(
             workspace=str(workspace),
             sessions=str(sessions),
@@ -96,7 +96,7 @@ def test_runtime_with_multi_agent(tmp_path):
     sessions.mkdir()
 
     config = AethonConfig(
-        model=ModelConfig(provider="ollama", model_id="qwen3-coder-next"),
+        model=ModelConfig(provider="fake", model_id="fake"),
         multi_agent=MultiAgentConfig(enabled=True),
         sops=SOPConfig(enabled=True),
         paths=PathsConfig(
@@ -123,7 +123,7 @@ def test_tools_include_delegate(tmp_path):
     sessions.mkdir()
 
     config = AethonConfig(
-        model=ModelConfig(provider="ollama", model_id="qwen3-coder-next"),
+        model=ModelConfig(provider="fake", model_id="fake"),
         multi_agent=MultiAgentConfig(enabled=True),
         paths=PathsConfig(
             workspace=str(workspace),
@@ -148,7 +148,7 @@ def test_tools_no_delegate_when_disabled(tmp_path):
     sessions.mkdir()
 
     config = AethonConfig(
-        model=ModelConfig(provider="ollama", model_id="qwen3-coder-next"),
+        model=ModelConfig(provider="fake", model_id="fake"),
         multi_agent=MultiAgentConfig(enabled=False),
         paths=PathsConfig(
             workspace=str(workspace),
@@ -173,7 +173,7 @@ def test_hooks_include_approval_when_enabled(tmp_path):
     sessions.mkdir()
 
     config = AethonConfig(
-        model=ModelConfig(provider="ollama", model_id="qwen3-coder-next"),
+        model=ModelConfig(provider="fake", model_id="fake"),
         approval=ApprovalConfig(enabled=True),
         paths=PathsConfig(
             workspace=str(workspace),
@@ -189,6 +189,7 @@ def test_hooks_include_approval_when_enabled(tmp_path):
     assert any(isinstance(h, ApprovalHookProvider) for h in hooks)
 
 
+@pytest.mark.ollama
 @pytest.mark.asyncio
 async def test_process_returns_response(runtime_config):
     """Process method returns a string response from real Ollama model."""

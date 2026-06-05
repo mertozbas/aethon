@@ -1,10 +1,11 @@
 """Message router.
 
 Routes incoming messages to the agent runtime with sender validation
-and session resolution.
+and session resolution. Emits message events to the dashboard event bus.
 """
 
 import logging
+import time
 
 from aethon.channels.base import InboundMessage, OutboundMessage
 from aethon.agent.runtime import AethonRuntime
@@ -17,10 +18,11 @@ logger = logging.getLogger("aethon.router")
 class MessageRouter:
     """Route messages between channels and agent runtime."""
 
-    def __init__(self, config: AethonConfig, runtime: AethonRuntime):
+    def __init__(self, config: AethonConfig, runtime: AethonRuntime, event_bus=None):
         self.config = config
         self.runtime = runtime
         self.allowed_senders = config.security.allowed_senders
+        self._event_bus = event_bus
 
     async def handle(self, message: InboundMessage) -> OutboundMessage | None:
         """Process an incoming message.
@@ -42,8 +44,30 @@ class MessageRouter:
         session_id = self._resolve_session(message)
         logger.info(f"SESSION: {session_id} | FROM: {message.sender_name}")
 
+        # Emit inbound message event to dashboard
+        if self._event_bus:
+            self._event_bus.emit("messages", {
+                "direction": "inbound",
+                "channel_name": message.channel,
+                "session_id": session_id,
+                "sender": message.sender_name or message.sender_id,
+                "content": message.text[:500],  # Truncate for dashboard
+                "timestamp": time.time(),
+            })
+
         # 3. Forward to agent runtime
         response_text = await self.runtime.process(message, session_id)
+
+        # Emit outbound response event to dashboard
+        if self._event_bus:
+            self._event_bus.emit("messages", {
+                "direction": "outbound",
+                "channel_name": message.channel,
+                "session_id": session_id,
+                "sender": "AETHON",
+                "content": response_text[:500] if response_text else "",
+                "timestamp": time.time(),
+            })
 
         # 4. Build response (raw alanini kopyala — kanal-spesifik veri icin)
         return OutboundMessage(

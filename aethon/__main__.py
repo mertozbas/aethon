@@ -6,6 +6,7 @@ from pathlib import Path
 import click
 from rich.console import Console
 
+from aethon import __version__
 from aethon.config import AethonConfig
 from aethon.gateway.server import AethonGateway
 
@@ -13,15 +14,65 @@ console = Console()
 
 
 @click.group()
+@click.version_option(version=__version__, prog_name="aethon")
 def main():
-    """AETHON — Kisisel AI Asistan"""
+    """AETHON — Personal AI assistant."""
     pass
+
+
+@main.command()
+@click.option("--config", "-c", default="~/.aethon/config.yaml", help="Config file path")
+@click.option("--force", is_flag=True, help="Overwrite an existing config without asking")
+def init(config: str, force: bool):
+    """Set up AETHON (provider, model, memory) and write the config file."""
+    from aethon.setup_wizard import run_wizard
+
+    run_wizard(config, force=force)
+
+
+@main.command()
+@click.option("--config", "-c", default="~/.aethon/config.yaml", help="Config file path")
+def doctor(config: str):
+    """Diagnose the current configuration and provider availability."""
+    from aethon.agent.model_factory import check_model_availability
+    from aethon.setup_wizard import meridian_status
+
+    cfg_path = Path(config).expanduser()
+    console.print(f"\n[bold cyan]AETHON doctor[/]  (config: {cfg_path})\n")
+
+    if not cfg_path.exists():
+        console.print("[yellow]No config file yet — run [bold]aethon init[/].[/]\n")
+        return
+
+    cfg = AethonConfig.load(config)
+    console.print(f"  Provider: [green]{cfg.model.provider}[/]")
+    console.print(f"  Model:    [green]{cfg.model.model_id}[/]")
+
+    available, msg = check_model_availability(cfg.model)
+    console.print(f"  Provider check: [{'green' if available else 'red'}]{msg}[/]")
+
+    up, status = meridian_status()
+    console.print(f"  Meridian: [{'green' if up else 'yellow'}]{status}[/]")
+
+    console.print(
+        f"  Memory:   [{'green' if cfg.memory.enabled else 'dim'}]"
+        f"{'enabled' if cfg.memory.enabled else 'disabled'}[/]"
+        f" ({cfg.memory.embedding_provider} embeddings)"
+    )
+    console.print()
 
 
 @main.command()
 @click.option("--config", "-c", default="~/.aethon/config.yaml", help="Config dosya yolu")
 def start(config: str):
     """AETHON'u baslat."""
+    if not Path(config).expanduser().exists():
+        console.print("[yellow]No config found — let's set up AETHON first.[/]")
+        from aethon.setup_wizard import run_wizard
+
+        if run_wizard(config) is None:
+            return
+
     console.print("[bold cyan]AETHON[/] baslatiliyor...\n")
 
     cfg = AethonConfig.load(config)
@@ -32,7 +83,8 @@ def start(config: str):
 
     available, msg = check_model_availability(cfg.model)
     if not available:
-        console.print(f"[red]HATA:[/] {msg}")
+        console.print(f"[red]Provider not ready:[/] {msg}")
+        console.print("Run [bold]aethon init[/] to reconfigure, or [bold]aethon doctor[/] to diagnose.")
         return
 
     console.print(f"  Provider: [green]{cfg.model.provider}[/]")
@@ -104,15 +156,26 @@ def start(config: str):
 
 
 def _check_embedding_model(config: AethonConfig):
-    """Check if embedding model is available in Ollama."""
+    """Check if embedding model is available."""
     import requests
 
+    emb_provider = getattr(config.memory, "embedding_provider", "ollama")
+    emb_model = config.memory.embedding_model
+
+    if emb_provider == "openai":
+        emb_key = getattr(config.memory, "embedding_api_key", "")
+        if emb_key:
+            console.print(f"  Memory: [green]{emb_model}[/] (openai, aktif)")
+        else:
+            console.print(f"  Memory: [yellow]{emb_model}[/] (openai, API key eksik)")
+        return
+
+    # Default: Ollama
     try:
         r = requests.get(f"{config.model.host}/api/tags", timeout=5)
         models = [m["name"] for m in r.json().get("models", [])]
-        emb_model = config.memory.embedding_model
         if any(emb_model in m for m in models):
-            console.print(f"  Memory: [green]{emb_model}[/] (aktif)")
+            console.print(f"  Memory: [green]{emb_model}[/] (ollama, aktif)")
         else:
             console.print(
                 f"  Memory: [yellow]{emb_model} bulunamadi[/] — "
@@ -149,13 +212,24 @@ def _ensure_workspace(config: AethonConfig):
     soul = workspace / "SOUL.md"
     if not soul.exists():
         soul.write_text(
-            "# AETHON — Kisilik\n\n"
-            "Sen AETHON, Mert'in kisisel AI asistanisin.\n"
-            "Mac uzerinde Ollama ile calisiyorsun.\n\n"
-            "## Davranis\n"
-            "- Turkce ve Ingilizce konusabilirsin.\n"
-            "- Kisa ve oz yanit ver.\n"
-            "- Hata yaptiginda kabul et ve duzelt.\n",
+            "# AETHON — Ruh\n\n"
+            "Sen AETHON, kisisel AI asistansin. Amacin kullanicinin hayatini "
+            "kolaylastirmak, islerini hizlandirmak ve teknik konularda gercek "
+            "bir partner olmak.\n\n"
+            "## Kimlik\n\n"
+            "- Pragmatik ve dogrudan ol.\n"
+            "- Hatani kabul et, bahanenin arkasina saklanma.\n"
+            "- Bilmedigini soyle — uydurma.\n\n"
+            "## Iletisim\n\n"
+            "- Turkce ve Ingilizce konusabilirsin. Kullanici hangi dilde "
+            "yazarsa o dilde yanit ver.\n"
+            "- Kisa, oz, net yanit ver. Gereksiz giris cumleleri yazma.\n"
+            "- Yanitlarini Markdown formatinda ver. Baslik, kalin, kod blogu, "
+            "liste kullan.\n\n"
+            "## Karar Verme\n\n"
+            "- Basit isler icin direkt yap, soru sorma.\n"
+            "- Karmasik isler icin once plan sun.\n"
+            "- Birden fazla yol varsa en basitini sec.\n",
             encoding="utf-8",
         )
 
@@ -163,10 +237,25 @@ def _ensure_workspace(config: AethonConfig):
     tools = workspace / "TOOLS.md"
     if not tools.exists():
         tools.write_text(
-            "# Kullanici Tercihleri\n\n"
-            "- Python 3.10+ kullan\n"
+            "# Kullanici Tercihleri ve Yetenekler\n\n"
+            "## Kod Standartlari\n\n"
+            "- Python 3.10+ (type hint, f-string)\n"
             "- asyncio + OOP tercih et\n"
-            "- Kodda yorum ekleme — kod kendini aciklamali\n",
+            "- Kodda gereksiz yorum ekleme — kod kendini aciklamali\n"
+            "- Gercek veri ile test et, mock kullanma\n\n"
+            "## Uzman Delegasyonu\n\n"
+            "Karmasik gorevlerde uzman agentlari kullan:\n"
+            "- `ask_coder` — Kod yazma, test, debug, refactor\n"
+            "- `ask_researcher` — Web arastirma, bilgi toplama\n"
+            "- `ask_analyst` — Veri analizi, hesaplama, rapor\n"
+            "- `ask_planner` — Gorev planlama, onceliklendirme\n\n"
+            "## Hafiza\n\n"
+            "- Onemli bilgileri `manage_memory` ile kaydet.\n"
+            "- Kategori kullan: preferences, projects, decisions, learnings\n"
+            "- Hassas veri kaydetme (API key, sifre).\n\n"
+            "## Baglam\n\n"
+            "- `update_context` ile CONTEXT.md'yi canli tut.\n"
+            "- Proje, karar ve durum degisikliklerini guncelle.\n",
             encoding="utf-8",
         )
 
@@ -175,7 +264,12 @@ def _ensure_workspace(config: AethonConfig):
     if not context.exists():
         context.write_text(
             "# Mevcut Baglam\n\n"
-            "Henuz bir baglam belirlenmedi.\n",
+            "### Aktif Proje\n"
+            "Henuz bir proje belirlenmedi.\n\n"
+            "### Son Kararlar\n"
+            "Henuz karar kaydedilmedi.\n\n"
+            "### Notlar\n"
+            "Henuz not eklenmedi.\n",
             encoding="utf-8",
         )
 

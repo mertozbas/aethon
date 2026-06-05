@@ -2,17 +2,14 @@
 
 import pytest
 
-from strands.models.ollama import OllamaModel
+from aethon.agent.fake_model import EchoModel
 
 from aethon.agent.specialists import SpecialistFactory, SPECIALIST_CONFIGS
 
 
 @pytest.fixture
 def model():
-    return OllamaModel(
-        host="http://localhost:11434",
-        model_id="qwen3-coder-next",
-    )
+    return EchoModel()
 
 
 @pytest.fixture

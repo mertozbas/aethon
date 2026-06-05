@@ -1,6 +1,6 @@
 """Tests for VectorMemory.
 
-All tests use real Ollama with nomic-embed-text model.
+Tests that need Ollama are auto-skipped when Ollama is not running.
 """
 
 import pytest
@@ -21,11 +21,13 @@ def memory(tmp_path):
     mem.close()
 
 
+@pytest.mark.ollama
 def test_create_memory(memory):
     """VectorMemory creates successfully with SQLite DB."""
     assert memory.count() == 0
 
 
+@pytest.mark.ollama
 def test_get_embedding(memory):
     """Ollama embedding returns a float list."""
     emb = memory._get_embedding("test text")
@@ -34,6 +36,7 @@ def test_get_embedding(memory):
     assert isinstance(emb[0], float)
 
 
+@pytest.mark.ollama
 def test_store_and_count(memory):
     """Store increments memory count."""
     memory.store("Python 3.10+ kullan")
@@ -43,6 +46,7 @@ def test_store_and_count(memory):
     assert memory.count() == 2
 
 
+@pytest.mark.ollama
 def test_store_returns_id(memory):
     """Store returns the memory ID."""
     mid = memory.store("Test icerik")
@@ -50,6 +54,7 @@ def test_store_returns_id(memory):
     assert mid > 0
 
 
+@pytest.mark.ollama
 def test_search_finds_similar(memory):
     """Semantic search returns all stored content with scores."""
     memory.store("Python programlama dili hizli ve guclu")
@@ -63,6 +68,7 @@ def test_search_finds_similar(memory):
     assert all(isinstance(r["score"], float) for r in results)
 
 
+@pytest.mark.ollama
 def test_search_with_category(memory):
     """Category filter works in search."""
     memory.store("Python hizli", category="programming")
@@ -73,6 +79,7 @@ def test_search_with_category(memory):
     assert results[0]["category"] == "programming"
 
 
+@pytest.mark.ollama
 def test_list_all(memory):
     """list_all returns stored memories."""
     memory.store("birinci kayit")
@@ -84,6 +91,7 @@ def test_list_all(memory):
     assert items[0]["content"] == "ucuncu kayit"
 
 
+@pytest.mark.ollama
 def test_forget(memory):
     """forget removes a specific memory."""
     mid = memory.store("silinecek kayit")
@@ -94,10 +102,17 @@ def test_forget(memory):
     assert memory.count() == 0
 
 
-def test_forget_nonexistent(memory):
-    """forget returns False for nonexistent ID."""
-    deleted = memory.forget(9999)
+def test_forget_nonexistent(tmp_path):
+    """forget returns False for nonexistent ID (no embedding needed)."""
+    db_path = str(tmp_path / "test_memory.sqlite")
+    mem = VectorMemory.__new__(VectorMemory)
+    mem.db_path = db_path
+    mem.db = __import__("sqlite3").connect(db_path)
+    mem._create_tables()
+
+    deleted = mem.forget(9999)
     assert deleted is False
+    mem.close()
 
 
 def test_cosine_similarity():
@@ -108,6 +123,7 @@ def test_cosine_similarity():
     assert VectorMemory._cosine_similarity([0, 0], [1, 0]) == pytest.approx(0.0)
 
 
+@pytest.mark.ollama
 def test_store_with_metadata(memory):
     """Store with metadata preserves it."""
     mid = memory.store(

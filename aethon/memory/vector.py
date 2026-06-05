@@ -1,7 +1,7 @@
-"""SQLite + Ollama embedding based vector memory.
+"""SQLite + multi-provider embedding based vector memory.
 
-Provides long-term semantic memory for AETHON using local Ollama embeddings
-and SQLite storage with cosine similarity search.
+Provides long-term semantic memory for AETHON using embeddings
+from Ollama or OpenAI, with SQLite storage and cosine similarity search.
 """
 
 import json
@@ -15,15 +15,22 @@ import requests
 
 
 class VectorMemory:
-    """SQLite + Ollama embedding based long-term memory."""
+    """SQLite + embedding based long-term memory.
 
-    def __init__(self, db_path: str, ollama_host: str, model_id: str,
-                 embedding_cache_size: int = 100):
+    Supports embedding providers: ollama, openai.
+    """
+
+    def __init__(self, db_path: str, ollama_host: str = "", model_id: str = "",
+                 embedding_cache_size: int = 100,
+                 embedding_provider: str = "ollama",
+                 embedding_api_key: str = ""):
         self.db_path = Path(db_path).expanduser()
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self.db = sqlite3.connect(str(self.db_path), check_same_thread=False)
-        self.ollama_host = ollama_host.rstrip("/")
+        self.ollama_host = (ollama_host or "http://localhost:11434").rstrip("/")
         self.model_id = model_id
+        self.embedding_provider = embedding_provider.lower()
+        self.embedding_api_key = embedding_api_key
         self._embedding_cache_size = embedding_cache_size
         self._create_tables()
 
@@ -133,7 +140,13 @@ class VectorMemory:
         return list(self._cached_embedding(text))
 
     def _get_embedding_raw(self, text: str) -> list[float]:
-        """Get embedding from Ollama /api/embed endpoint (uncached)."""
+        """Get embedding from configured provider (uncached)."""
+        if self.embedding_provider == "openai":
+            return self._get_embedding_openai(text)
+        return self._get_embedding_ollama(text)
+
+    def _get_embedding_ollama(self, text: str) -> list[float]:
+        """Get embedding from Ollama /api/embed endpoint."""
         response = requests.post(
             f"{self.ollama_host}/api/embed",
             json={"model": self.model_id, "input": text},
@@ -141,6 +154,20 @@ class VectorMemory:
         )
         response.raise_for_status()
         return response.json()["embeddings"][0]
+
+    def _get_embedding_openai(self, text: str) -> list[float]:
+        """Get embedding from OpenAI embeddings API."""
+        response = requests.post(
+            "https://api.openai.com/v1/embeddings",
+            headers={
+                "Authorization": f"Bearer {self.embedding_api_key}",
+                "Content-Type": "application/json",
+            },
+            json={"model": self.model_id, "input": text},
+            timeout=30,
+        )
+        response.raise_for_status()
+        return response.json()["data"][0]["embedding"]
 
     @staticmethod
     def _cosine_similarity(a: list[float], b: list[float]) -> float:

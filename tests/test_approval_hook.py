@@ -3,7 +3,7 @@
 import pytest
 
 from strands import Agent
-from strands.models.ollama import OllamaModel
+from aethon.agent.fake_model import EchoModel
 from strands.hooks import HookRegistry
 from strands.hooks.events import BeforeToolCallEvent
 from strands.interrupt import InterruptException
@@ -23,10 +23,7 @@ def custom_hook():
 
 @pytest.fixture
 def agent():
-    model = OllamaModel(
-        host="http://localhost:11434",
-        model_id="qwen3-coder-next",
-    )
+    model = EchoModel()
     return Agent(model=model, system_prompt="Test agent")
 
 

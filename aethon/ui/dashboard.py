@@ -1,33 +1,70 @@
 """Web dashboard for AETHON monitoring.
 
-Provides API endpoints and a real-time UI for monitoring
-sessions, memory, telemetry, and scheduled jobs.
+Full SPA dashboard with real-time WebSocket support.
+Serves static files (HTML/CSS/JS) and provides REST API endpoints
+for sessions, memory, telemetry, config, and scheduled jobs.
+
+Phase 5 — Dashboard & UX Revolution.
 """
 
 import asyncio
 import json
 import logging
+import os
+from pathlib import Path
+from typing import Optional
 
-from fastapi import WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse
+from fastapi import WebSocket, WebSocketDisconnect, Query
+from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 
 
 logger = logging.getLogger("aethon.dashboard")
 
+# Path to static files directory (relative to this module)
+_STATIC_DIR = Path(__file__).parent / "static"
 
-def setup_dashboard(app, runtime, config):
+
+def setup_dashboard(app, runtime, config, event_bus=None):
     """Register dashboard routes on the FastAPI app.
 
     Args:
         app: FastAPI application instance.
         runtime: AethonRuntime for data access.
         config: AethonConfig.
+        event_bus: Optional DashboardEventBus for real-time events.
     """
+    # Attach log forwarding so Python logs stream to dashboard via event bus
+    if event_bus:
+        try:
+            from aethon.ui.log_handler import setup_log_forwarding
+            setup_log_forwarding(event_bus, level=logging.DEBUG)
+        except Exception as e:
+            logger.warning(f"Log forwarding setup failed: {e}")
+
+    # --- Static file serving ---
+
+    # Mount static files directory for CSS/JS assets
+    if _STATIC_DIR.exists():
+        app.mount(
+            "/dashboard/static",
+            StaticFiles(directory=str(_STATIC_DIR)),
+            name="dashboard-static",
+        )
 
     @app.get("/dashboard")
     async def dashboard():
-        """Dashboard HTML page."""
-        return HTMLResponse(_get_dashboard_html())
+        """Serve the SPA index.html."""
+        index_path = _STATIC_DIR / "index.html"
+        if index_path.exists():
+            return FileResponse(str(index_path), media_type="text/html")
+        # Fallback: minimal HTML
+        return HTMLResponse(
+            '<html><body><p>Dashboard static files not found.</p></body></html>',
+            status_code=500,
+        )
+
+    # --- REST API Endpoints (backward compatible) ---
 
     @app.get("/api/sessions")
     async def api_sessions():
@@ -63,10 +100,30 @@ def setup_dashboard(app, runtime, config):
         results = runtime.memory.search(query, top_k=10)
         return {"results": results}
 
+    # Sensitive field names to mask in config display
+    _SENSITIVE_KEYS = {"api_key", "token", "bot_token", "app_token", "secret", "password"}
+
+    def _mask_sensitive(obj):
+        """Recursively mask sensitive values in config dicts."""
+        if isinstance(obj, dict):
+            return {
+                k: ("***" if k in _SENSITIVE_KEYS and v else _mask_sensitive(v))
+                for k, v in obj.items()
+            }
+        if isinstance(obj, list):
+            return [_mask_sensitive(v) for v in obj]
+        return obj
+
     @app.get("/api/config")
     async def api_config():
-        """Current configuration."""
-        return config.model_dump()
+        """Current configuration (sensitive fields masked)."""
+        return _mask_sensitive(config.model_dump())
+
+    @app.get("/api/config/schema")
+    async def api_config_schema():
+        """JSON Schema for AethonConfig (for auto-form generation)."""
+        from aethon.config import AethonConfig
+        return AethonConfig.model_json_schema()
 
     @app.get("/api/scheduler/jobs")
     async def api_scheduler_jobs():
@@ -88,9 +145,199 @@ def setup_dashboard(app, runtime, config):
             "metrics": telemetry_hook.get_metrics(limit=50),
         }
 
+    # --- Session Detail API (Step 3) ---
+
+    @app.get("/api/sessions/{session_id:path}")
+    async def api_session_detail(session_id: str):
+        """Get session metadata."""
+        agent = runtime.agents.get(session_id)
+        if not agent:
+            return {"error": "Session not found", "session_id": session_id}
+
+        # Extract channel and sender from session_id
+        parts = session_id.split(":", 1)
+        channel = parts[0] if parts else "unknown"
+        sender = parts[1] if len(parts) > 1 else "unknown"
+
+        return {
+            "session_id": session_id,
+            "agent_name": getattr(agent, "name", "AETHON"),
+            "channel": channel,
+            "sender": sender,
+        }
+
+    # --- Enhanced Memory API (Step 3) ---
+
+    @app.get("/api/memory/stats")
+    async def api_memory_stats():
+        """Memory statistics: count, categories, DB size."""
+        if not runtime.memory:
+            return {"enabled": False, "count": 0, "categories": {}, "db_size_bytes": 0}
+
+        count = runtime.memory.count()
+
+        # Get category breakdown
+        try:
+            rows = runtime.memory.db.execute(
+                "SELECT category, COUNT(*) FROM memories GROUP BY category"
+            ).fetchall()
+            categories = {r[0]: r[1] for r in rows}
+        except Exception:
+            categories = {}
+
+        # Get DB file size
+        db_size = 0
+        try:
+            db_path = runtime.memory.db_path
+            if db_path.exists():
+                db_size = db_path.stat().st_size
+        except Exception:
+            pass
+
+        return {
+            "enabled": True,
+            "count": count,
+            "categories": categories,
+            "db_size_bytes": db_size,
+        }
+
+    @app.post("/api/memory")
+    async def api_memory_add(request_body: dict):
+        """Add a new memory entry."""
+        if not runtime.memory:
+            return {"error": "Memory is not enabled"}
+        content = request_body.get("content", "").strip()
+        if not content:
+            return {"error": "Content is required"}
+        category = request_body.get("category", "general")
+        metadata = request_body.get("metadata")
+
+        try:
+            memory_id = runtime.memory.store(
+                content=content, category=category, metadata=metadata
+            )
+            return {"success": True, "memory_id": memory_id}
+        except Exception as e:
+            logger.warning(f"Memory store error: {e}")
+            return {"error": str(e)}
+
+    @app.delete("/api/memory/{memory_id}")
+    async def api_memory_delete(memory_id: int):
+        """Delete a memory entry by ID."""
+        if not runtime.memory:
+            return {"error": "Memory is not enabled"}
+
+        deleted = runtime.memory.forget(memory_id)
+        if deleted:
+            return {"success": True, "memory_id": memory_id}
+        return {"error": "Memory not found", "memory_id": memory_id}
+
+    # --- SOP API (Step 4) ---
+
+    @app.get("/api/sops")
+    async def api_sops():
+        """List all available SOPs."""
+        if not runtime.sop_runner:
+            return {"sops": [], "enabled": False}
+        sops = runtime.sop_runner.list_sops()
+        # Annotate with type (builtin vs custom)
+        for sop in sops:
+            content = runtime.sop_runner.get_sop(sop["name"]) or ""
+            sop["type"] = "builtin" if sop["name"] in ("code-assist", "pdd", "codebase-summary") else "custom"
+            sop["size"] = len(content)
+        return {"sops": sops, "enabled": True}
+
+    @app.get("/api/sops/{name}")
+    async def api_sop_get(name: str):
+        """Get SOP content by name."""
+        if not runtime.sop_runner:
+            return {"error": "SOPs not enabled"}
+        content = runtime.sop_runner.get_sop(name)
+        if content is None:
+            return {"error": f"SOP '{name}' not found"}
+        sop_type = "builtin" if name in ("code-assist", "pdd", "codebase-summary") else "custom"
+        return {"name": name, "content": content, "type": sop_type}
+
+    @app.put("/api/sops/{name}")
+    async def api_sop_save(name: str, request_body: dict):
+        """Save a custom SOP."""
+        content = request_body.get("content", "")
+        if not content:
+            return {"error": "Content is required"}
+
+        # Only save to workspace custom SOPs directory
+        sop_dir = Path(config.paths.workspace).expanduser() / "sops"
+        sop_dir.mkdir(parents=True, exist_ok=True)
+        sop_path = sop_dir / f"{name}.sop.md"
+
+        try:
+            sop_path.write_text(content, encoding="utf-8")
+            # Reload SOP in runner if available
+            if runtime.sop_runner:
+                runtime.sop_runner._sops[name] = content
+            return {"success": True, "name": name, "path": str(sop_path)}
+        except Exception as e:
+            logger.warning(f"SOP save error: {e}")
+            return {"error": str(e)}
+
+    @app.delete("/api/sops/{name}")
+    async def api_sop_delete(name: str):
+        """Delete a custom SOP (built-in SOPs cannot be deleted)."""
+        if name in ("code-assist", "pdd", "codebase-summary"):
+            return {"error": "Cannot delete built-in SOPs"}
+
+        sop_dir = Path(config.paths.workspace).expanduser() / "sops"
+        sop_path = sop_dir / f"{name}.sop.md"
+
+        if sop_path.exists():
+            try:
+                sop_path.unlink()
+                if runtime.sop_runner and name in runtime.sop_runner._sops:
+                    del runtime.sop_runner._sops[name]
+                return {"success": True, "name": name}
+            except Exception as e:
+                return {"error": str(e)}
+        return {"error": f"SOP '{name}' not found on disk"}
+
+    # --- Agent Activity API (Step 5) ---
+
+    @app.get("/api/agents/active")
+    async def api_agents_active():
+        """List active agents with their status."""
+        agents = []
+        for sid, agent in runtime.agents.items():
+            agents.append({
+                "session_id": sid,
+                "agent_name": getattr(agent, "name", "AETHON"),
+                "agent_id": getattr(agent, "agent_id", "main"),
+            })
+        # Include specialist agents if available
+        factory = getattr(runtime, "specialist_factory", None)
+        if factory:
+            cache = getattr(factory, "_cache", {})
+            for role, agent in cache.items():
+                agents.append({
+                    "session_id": f"specialist:{role}",
+                    "agent_name": getattr(agent, "name", role),
+                    "agent_id": role,
+                })
+        return {"agents": agents, "count": len(agents)}
+
+    @app.get("/api/agents/history")
+    async def api_agents_history():
+        """Recent agent activity from telemetry metrics."""
+        telemetry_hook = getattr(runtime, "_telemetry_hook", None)
+        if not telemetry_hook:
+            return {"events": []}
+        # Return recent tool + model calls as activity
+        metrics = telemetry_hook.get_metrics(limit=30)
+        return {"events": metrics}
+
+    # --- Legacy WebSocket (backward compatible) ---
+
     @app.websocket("/ws/telemetry")
     async def ws_telemetry(websocket: WebSocket):
-        """Real-time telemetry stream."""
+        """Real-time telemetry stream (legacy polling-based)."""
         await websocket.accept()
         last_count = 0
         try:
@@ -107,162 +354,78 @@ def setup_dashboard(app, runtime, config):
         except WebSocketDisconnect:
             pass
 
+    # --- New Multiplexed WebSocket ---
 
-_DASHBOARD_SCRIPT = r"""
-<script>
-const sessionsEl = document.getElementById('sessions');
-const memoryEl = document.getElementById('memory');
-const telemetryEl = document.getElementById('telemetry');
-const jobsEl = document.getElementById('jobs');
-const memSearchInput = document.getElementById('mem-search');
-const memResultsEl = document.getElementById('mem-results');
+    @app.websocket("/ws/dashboard")
+    async def ws_dashboard(websocket: WebSocket):
+        """Multiplexed WebSocket for all dashboard real-time data.
 
-function esc(s) {
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-}
+        Protocol:
+          Client -> {"channel":"subscribe","topics":["messages","logs","telemetry","agents"]}
+          Server -> {"channel":"<topic>","data":{...}}
+        """
+        await websocket.accept()
 
-async function fetchJSON(url) {
-  const r = await fetch(url);
-  return r.json();
-}
+        # Subscribe to event bus if available
+        queue = None
+        if event_bus:
+            queue = event_bus.subscribe(maxsize=500)
 
-async function refreshSessions() {
-  const d = await fetchJSON('/api/sessions');
-  if (d.count === 0) { sessionsEl.innerHTML = '<span class="dim">Aktif oturum yok</span>'; return; }
-  sessionsEl.innerHTML = d.sessions.map(function(s) {
-    return '<div class="card">' + esc(s.session_id) + '</div>';
-  }).join('');
-}
+        subscribed_topics = set()
+        forward_task = None
 
-async function refreshMemory() {
-  const d = await fetchJSON('/api/memory');
-  if (!d.enabled) { memoryEl.innerHTML = '<span class="dim">Devre disi</span>'; return; }
-  memoryEl.innerHTML = '<b>' + d.count + ' kayit</b>';
-  if (d.entries.length > 0) {
-    memoryEl.innerHTML += d.entries.slice(0,5).map(function(e) {
-      return '<div class="card">' + esc(e.content || e.text || JSON.stringify(e)).substring(0,80) + '</div>';
-    }).join('');
-  }
-}
+        try:
+            # Start forwarding events from the bus to the client
+            if queue:
+                forward_task = asyncio.create_task(
+                    _forward_events(websocket, queue, subscribed_topics)
+                )
 
-async function refreshTelemetry() {
-  const d = await fetchJSON('/api/telemetry');
-  if (!d.enabled) { telemetryEl.innerHTML = '<span class="dim">Devre disi</span>'; return; }
-  var s = d.summary;
-  telemetryEl.innerHTML =
-    '<div class="stat">Tool: <b>' + (s.total_tool_calls||0) + '</b></div>' +
-    '<div class="stat">Model: <b>' + (s.total_model_calls||0) + '</b></div>' +
-    '<div class="stat">Hata: <b>' + (s.error_count||0) + '</b></div>' +
-    '<div class="stat">Ort Tool: <b>' + (s.avg_tool_duration||0).toFixed(2) + 's</b></div>' +
-    '<div class="stat">Ort Model: <b>' + (s.avg_model_duration||0).toFixed(2) + 's</b></div>';
-}
+            # Read client messages (subscriptions, config changes)
+            while True:
+                raw = await websocket.receive_text()
+                try:
+                    msg = json.loads(raw)
+                    channel = msg.get("channel", "")
 
-async function refreshJobs() {
-  const d = await fetchJSON('/api/scheduler/jobs');
-  if (d.jobs.length === 0) { jobsEl.innerHTML = '<span class="dim">Zamanlanmis gorev yok</span>'; return; }
-  jobsEl.innerHTML = d.jobs.map(function(j) {
-    return '<div class="card"><b>' + esc(j.job_id) + '</b> ' + esc(j.sop_name) + ' (' + esc(j.cron) + ')</div>';
-  }).join('');
-}
+                    if channel == "subscribe":
+                        topics = msg.get("topics", [])
+                        subscribed_topics.update(topics)
+                        logger.debug(f"WS client subscribed to: {topics}")
 
-async function searchMemory() {
-  var q = memSearchInput.value.trim();
-  if (!q) { memResultsEl.innerHTML = ''; return; }
-  const r = await fetch('/api/memory/search', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({query: q})
-  });
-  const d = await r.json();
-  if (d.results.length === 0) { memResultsEl.innerHTML = '<span class="dim">Sonuc yok</span>'; return; }
-  memResultsEl.innerHTML = d.results.map(function(e) {
-    return '<div class="card">' + esc(e.content || e.text || JSON.stringify(e)).substring(0,120) + '</div>';
-  }).join('');
-}
+                except json.JSONDecodeError:
+                    pass  # Ignore non-JSON messages
 
-function refreshAll() {
-  refreshSessions();
-  refreshMemory();
-  refreshTelemetry();
-  refreshJobs();
-}
-
-refreshAll();
-setInterval(refreshAll, 5000);
-
-// WebSocket telemetry stream
-var wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-var ws = new WebSocket(wsProto + '//' + location.host + '/ws/telemetry');
-var wsLog = document.getElementById('ws-log');
-ws.onmessage = function(e) {
-  var m = JSON.parse(e.data);
-  var d = document.createElement('div');
-  d.className = 'ws-entry';
-  d.textContent = (m.type||'?') + ' | ' + (m.name||'-') + ' | ' + (m.duration ? m.duration.toFixed(3) + 's' : '-') + ' | ' + (m.status||'-');
-  wsLog.insertBefore(d, wsLog.firstChild);
-  if (wsLog.children.length > 50) wsLog.removeChild(wsLog.lastChild);
-};
-
-memSearchInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') searchMemory(); });
-</script>
-"""
+        except WebSocketDisconnect:
+            pass
+        except Exception as e:
+            logger.debug(f"WS dashboard error: {e}")
+        finally:
+            if forward_task:
+                forward_task.cancel()
+                try:
+                    await forward_task
+                except asyncio.CancelledError:
+                    pass
+            if event_bus and queue:
+                event_bus.unsubscribe(queue)
 
 
-def _get_dashboard_html() -> str:
-    """Dashboard HTML with glassmorphism + cyberpunk neon theme."""
-    return """<!DOCTYPE html>
-<html><head>
-<title>AETHON Dashboard</title>
-<style>
-  * { margin:0; padding:0; box-sizing:border-box; }
-  body { font-family: system-ui; background: #0a0a0a; color: #e0e0e0;
-         padding: 24px; min-height: 100vh; }
-  h1 { color: #00d4ff; font-size: 28px; margin-bottom: 24px;
-       text-shadow: 0 0 20px rgba(0,212,255,0.3); }
-  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-  .panel { background: rgba(20,20,40,0.8); border: 1px solid rgba(0,212,255,0.2);
-           border-radius: 12px; padding: 20px; backdrop-filter: blur(10px); }
-  .panel h2 { color: #00d4ff; font-size: 16px; margin-bottom: 12px;
-              border-bottom: 1px solid rgba(0,212,255,0.15); padding-bottom: 8px; }
-  .card { background: rgba(26,26,46,0.6); padding: 8px 12px; border-radius: 6px;
-          margin: 6px 0; font-size: 13px; border-left: 2px solid #00d4ff; }
-  .stat { display: inline-block; margin: 4px 12px 4px 0; font-size: 14px; }
-  .stat b { color: #00d4ff; }
-  .dim { color: #666; font-style: italic; }
-  input { padding: 8px 12px; border: 1px solid #333; border-radius: 6px;
-          background: #0a0a0a; color: #e0e0e0; font-size: 13px; outline: none;
-          width: 100%; margin-bottom: 8px; }
-  input:focus { border-color: #00d4ff; }
-  .ws-entry { font-family: 'SF Mono', Consolas, monospace; font-size: 12px;
-              padding: 4px 8px; border-bottom: 1px solid rgba(255,255,255,0.05);
-              color: #aaa; }
-  .full-width { grid-column: 1 / -1; }
-  @media (max-width: 768px) { .grid { grid-template-columns: 1fr; } }
-</style>
-</head><body>
-<h1>AETHON Dashboard</h1>
-<div class="grid">
-  <div class="panel">
-    <h2>Oturumlar</h2>
-    <div id="sessions"><span class="dim">Yukleniyor...</span></div>
-  </div>
-  <div class="panel">
-    <h2>Hafiza</h2>
-    <div id="memory"><span class="dim">Yukleniyor...</span></div>
-    <input id="mem-search" placeholder="Hafizada ara..." style="margin-top:12px">
-    <div id="mem-results"></div>
-  </div>
-  <div class="panel">
-    <h2>Telemetri</h2>
-    <div id="telemetry"><span class="dim">Yukleniyor...</span></div>
-  </div>
-  <div class="panel">
-    <h2>Zamanlanmis Gorevler</h2>
-    <div id="jobs"><span class="dim">Yukleniyor...</span></div>
-  </div>
-  <div class="panel full-width">
-    <h2>Canli Metrikler</h2>
-    <div id="ws-log" style="max-height:200px;overflow-y:auto"><span class="dim">WebSocket baglantisi bekleniyor...</span></div>
-  </div>
-</div>
-""" + _DASHBOARD_SCRIPT + "</body></html>"
+async def _forward_events(websocket, queue, subscribed_topics):
+    """Forward events from the event bus queue to the WebSocket client.
+
+    Only forwards events matching the client's subscribed topics.
+    """
+    try:
+        while True:
+            event = await queue.get()
+            channel = event.get("channel", "")
+
+            # Only forward if client subscribed to this topic
+            if not subscribed_topics or channel in subscribed_topics:
+                try:
+                    await websocket.send_text(json.dumps(event))
+                except Exception:
+                    break  # WebSocket closed
+    except asyncio.CancelledError:
+        pass

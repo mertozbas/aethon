@@ -13,6 +13,7 @@ from aethon.agent.runtime import AethonRuntime
 from aethon.gateway.router import MessageRouter
 from aethon.channels.cli import CLIAdapter
 from aethon.channels.webchat import WebChatAdapter
+from aethon.ui.event_bus import DashboardEventBus
 
 
 logger = logging.getLogger("aethon.gateway")
@@ -24,7 +25,12 @@ class AethonGateway:
     def __init__(self, config: AethonConfig):
         self.config = config
         self.runtime = AethonRuntime(config)
-        self.router = MessageRouter(config, self.runtime)
+        self.event_bus = DashboardEventBus()
+        self.router = MessageRouter(config, self.runtime, event_bus=self.event_bus)
+        self.runtime._event_bus = self.event_bus
+        # Wire event bus into telemetry hook for real-time dashboard events
+        if self.runtime._telemetry_hook:
+            self.runtime._telemetry_hook._event_bus = self.event_bus
         self.adapters: dict[str, object] = {}
         self._tasks: list[asyncio.Task] = []
         self._shutdown_event = asyncio.Event()
@@ -169,6 +175,7 @@ class AethonGateway:
                     self.adapters["webchat"].app,
                     self.runtime,
                     self.config,
+                    event_bus=self.event_bus,
                 )
                 logger.info("Dashboard: aktif")
             except Exception as e:

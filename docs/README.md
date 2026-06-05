@@ -24,7 +24,10 @@
 | [PHASE-2-CHANNELS.md](development/PHASE-2-CHANNELS.md) | Phase 2 — Channel integrations design |
 | [PHASE-3-MULTIAGENT.md](development/PHASE-3-MULTIAGENT.md) | Phase 3 — Multi-agent orchestration design |
 | [PHASE-4-POLISH.md](development/PHASE-4-POLISH.md) | Phase 4 — Polish and advanced features design |
-| [ROADMAP.md](development/ROADMAP.md) | Project roadmap |
+| [PHASE-5-DASHBOARD.md](development/PHASE-5-DASHBOARD.md) | Phase 5 — Dashboard & UX Revolution design |
+| [PHASE-6-INFRASTRUCTURE.md](development/PHASE-6-INFRASTRUCTURE.md) | Phase 6 — Infrastructure Strengthening design |
+| [PHASE-7-INTELLIGENCE.md](development/PHASE-7-INTELLIGENCE.md) | Phase 7 — AI Capabilities Expansion design |
+| [ROADMAP.md](development/ROADMAP.md) | Project roadmap (Phase 1-7) |
 | [SECURITY.md](development/SECURITY.md) | Security model and threat analysis |
 
 ### Checklists (`checklists/`)
@@ -35,6 +38,9 @@
 | [PHASE-2-CHECKLIST.md](checklists/PHASE-2-CHECKLIST.md) | Phase 2 completion checklist |
 | [PHASE-3-CHECKLIST.md](checklists/PHASE-3-CHECKLIST.md) | Phase 3 completion checklist |
 | [PHASE-4-CHECKLIST.md](checklists/PHASE-4-CHECKLIST.md) | Phase 4 completion checklist |
+| [PHASE-5-CHECKLIST.md](checklists/PHASE-5-CHECKLIST.md) | Phase 5 completion checklist (76 items) |
+| [PHASE-6-CHECKLIST.md](checklists/PHASE-6-CHECKLIST.md) | Phase 6 completion checklist (54 items) |
+| [PHASE-7-CHECKLIST.md](checklists/PHASE-7-CHECKLIST.md) | Phase 7 completion checklist (53 items) |
 
 ### References (`references/`)
 
@@ -59,11 +65,14 @@
 
 ## Project Status
 
-| Phase | Status | Tests |
-|-------|--------|-------|
-| Phase 1 — Core | Completed | 64 tests |
-| Phase 2 — Channels | Completed | 120 tests |
-| Phase 3 — Multi-Agent | Completed | 178 tests |
-| Phase 4 — Polish | Completed | 294 tests |
+| Phase | Status | Tests | Checklist |
+|-------|--------|-------|-----------|
+| Phase 1 — Core Runtime | ✅ Completed | 64 tests | 37 items |
+| Phase 2 — Channels + Memory | ✅ Completed | 120 tests | 42 items |
+| Phase 3 — Multi-Agent + SOP | ✅ Completed | 178 tests | 38 items |
+| Phase 4 — Polish + Advanced | ✅ Completed | 294 tests | 48 items |
+| Phase 5 — Dashboard & UX | 📋 Planned | - | 76 items |
+| Phase 6 — Infrastructure | 📋 Planned | - | 54 items |
+| Phase 7 — AI Capabilities | 📋 Planned | - | 53 items |
 
-Total: **294 tests**, all passing.
+**Completed:** 294 tests, all passing. **Planned:** 183 checklist items across 3 phases.

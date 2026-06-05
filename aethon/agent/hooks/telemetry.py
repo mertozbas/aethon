@@ -23,9 +23,10 @@ logger = logging.getLogger("aethon.telemetry")
 class TelemetryHookProvider(HookProvider):
     """Track and log tool and model call metrics."""
 
-    def __init__(self, max_history: int = 10000):
+    def __init__(self, max_history: int = 10000, event_bus=None):
         self.metrics: deque = deque(maxlen=max_history)
         self._timers: dict[str, float] = {}
+        self._event_bus = event_bus
 
     def register_hooks(self, registry: HookRegistry, **kwargs: Any) -> None:
         registry.add_callback(BeforeToolCallEvent, self.before_tool)
@@ -36,6 +37,16 @@ class TelemetryHookProvider(HookProvider):
     def before_tool(self, event: BeforeToolCallEvent) -> None:
         tool_id = event.tool_use.get("toolUseId", "unknown")
         self._timers[f"tool:{tool_id}"] = time.monotonic()
+
+        # Emit tool_start event for dashboard
+        if self._event_bus:
+            tool_name = event.tool_use.get("name", "unknown")
+            self._event_bus.emit("agents", {
+                "event": "tool_start",
+                "agent_name": "AETHON",
+                "tool_name": tool_name,
+                "timestamp": datetime.now().isoformat(),
+            })
 
     def after_tool(self, event: AfterToolCallEvent) -> None:
         tool_id = event.tool_use.get("toolUseId", "unknown")
@@ -58,6 +69,18 @@ class TelemetryHookProvider(HookProvider):
         }
         self.metrics.append(record)
         logger.info(f"TOOL: {record['name']} | {duration:.2f}s | {status}")
+
+        # Emit to dashboard event bus
+        if self._event_bus:
+            self._event_bus.emit("telemetry", record)
+            self._event_bus.emit("agents", {
+                "event": "tool_end",
+                "agent_name": "AETHON",
+                "tool_name": record["name"],
+                "status": status,
+                "duration": record["duration"],
+                "timestamp": record["timestamp"],
+            })
 
     def before_model(self, event: BeforeModelCallEvent) -> None:
         self._timers["model"] = time.monotonic()
@@ -82,6 +105,10 @@ class TelemetryHookProvider(HookProvider):
         }
         self.metrics.append(record)
         logger.info(f"MODEL: {duration:.2f}s | stop={stop_reason}")
+
+        # Emit to dashboard event bus
+        if self._event_bus:
+            self._event_bus.emit("telemetry", record)
 
     def get_metrics(self, limit: int = 100) -> list[dict]:
         """Return recent metrics (most recent last)."""

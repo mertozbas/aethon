@@ -145,7 +145,26 @@ scheduler:
 
 ## Installation
 
-### 1. Install Ollama
+### Claude via Meridian (default, recommended)
+
+AETHON ships configured for **Claude on your Claude Max subscription quota** via the local
+[Meridian](https://github.com/rynfar/meridian) proxy and the
+[strands-meridian](https://github.com/mertozbas/strands-meridian) provider — no per-token API bills:
+
+```bash
+npm install -g @rynfar/meridian
+claude login          # one-time
+meridian              # proxy on http://127.0.0.1:3456
+```
+
+Then install AETHON (step 3) and run — `provider: meridian` is the default, on `claude-opus-4-8`
+(Claude's most capable model; 1M context included with Claude Max). Switch models any time with
+`model_id` (`claude-opus-4-8`, `claude-sonnet-4-6`, `opus[1m]`, …). The Ollama steps below are
+only needed for fully-local inference.
+
+---
+
+### 1. Install Ollama (local alternative)
 
 ```bash
 brew install ollama
@@ -185,9 +204,11 @@ On first run, `~/.aethon/` is created automatically. To customize:
 mkdir -p ~/.aethon
 cat > ~/.aethon/config.yaml << 'EOF'
 model:
-  provider: ollama
-  model_id: qwen3-coder-next
-  host: http://localhost:11434
+  provider: meridian                 # Claude on your Claude Max quota (default)
+  model_id: claude-opus-4-8          # most capable; 1M context included with Claude Max
+  # provider: ollama                 # local alternative:
+  # model_id: qwen3-coder-next
+  # host: http://localhost:11434
 
 memory:
   enabled: true
@@ -201,6 +222,15 @@ channels:
     port: 8080
 EOF
 ```
+model:
+  provider: openai
+  model_id: gpt-5-mini-2025-08-07
+  api_key: ${OPENAI_API_KEY}
+
+memory:
+  embedding_provider: openai        # or "ollama"
+  embedding_model: text-embedding-3-small
+  embedding_api_key: ${OPENAI_API_KEY}
 
 ---
 
@@ -223,8 +253,8 @@ Output:
 ```
 Starting AETHON...
 
-  Provider: ollama
-  Model: qwen3-coder-next
+  Provider: meridian
+  Model: claude-opus-4-8
   WebChat: http://127.0.0.1:8080
   Memory: nomic-embed-text (active)
   Multi-Agent: active
@@ -439,4 +469,6 @@ Detailed documentation is in the `docs/` directory:
 
 ## License
 
-MIT
+[PolyForm Noncommercial License 1.0.0](LICENSE) — free for any noncommercial use
+(personal, research, education, hobby). Commercial use is not permitted. This is a
+source-available license, not an OSI-approved open-source license.

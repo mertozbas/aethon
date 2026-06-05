@@ -3,7 +3,7 @@
 import pytest
 
 from strands import Agent
-from strands.models.ollama import OllamaModel
+from aethon.agent.fake_model import EchoModel
 
 from aethon.agent.specialists import SpecialistFactory
 from aethon.agent.teams import TeamOrchestrator
@@ -12,10 +12,7 @@ from aethon.config import MultiAgentConfig
 
 @pytest.fixture
 def model():
-    return OllamaModel(
-        host="http://localhost:11434",
-        model_id="qwen3-coder-next",
-    )
+    return EchoModel()
 
 
 @pytest.fixture
@@ -59,6 +56,7 @@ def test_extract_result_empty():
     assert result == "Sonuc alinamadi."
 
 
+@pytest.mark.ollama
 def test_pipeline_task(team):
     """Graph pipeline executes with real Ollama."""
     result = team.pipeline_task(

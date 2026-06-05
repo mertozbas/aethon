@@ -19,7 +19,7 @@ def small_cache_config(tmp_path):
     logs.mkdir()
 
     return AethonConfig(
-        model=ModelConfig(provider="ollama", model_id="qwen3-coder-next"),
+        model=ModelConfig(provider="fake", model_id="fake"),
         performance=PerformanceConfig(session_cache_size=3),
         paths=PathsConfig(
             workspace=str(workspace),

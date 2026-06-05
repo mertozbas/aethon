@@ -56,12 +56,16 @@ class CLIAdapter(ChannelAdapter):
                 )
 
                 self.console.print("[dim]Dusunuyor...[/]")
-                response = await self.router.handle(inbound)
 
-                if response:
-                    self.console.print()
-                    self.console.print(Markdown(response.text))
-                    self.console.print()
+                try:
+                    response = await self.router.handle(inbound)
+
+                    if response:
+                        self.console.print()
+                        self.console.print(Markdown(response.text))
+                        self.console.print()
+                except Exception as e:
+                    self.console.print(f"\n[red]HATA:[/] {type(e).__name__}: {e}\n")
 
             except (KeyboardInterrupt, EOFError):
                 self.console.print("\n[dim]Gorusuruz![/]")

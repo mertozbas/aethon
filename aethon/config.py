@@ -12,11 +12,16 @@ from pydantic import BaseModel, Field
 
 
 class ModelConfig(BaseModel):
-    """Model provider configuration."""
+    """Model provider configuration.
 
-    provider: str = "ollama"
-    host: str = "http://localhost:11434"
-    model_id: str = "qwen3-coder-next"
+    Defaults to ``meridian`` — Claude on your Claude Max subscription quota via
+    the local Meridian proxy (https://github.com/mertozbas/strands-meridian).
+    Set ``provider: ollama`` (with ``host``/``model_id``) to run fully locally.
+    """
+
+    provider: str = "meridian"
+    host: str = "http://localhost:11434"  # Ollama default; Meridian ignores it and uses 127.0.0.1:3456
+    model_id: str = "claude-opus-4-8"     # most capable model; 1M context included with Claude Max
     api_key: str = ""
     temperature: float = 1.0
     top_p: float = 0.95
@@ -79,7 +84,9 @@ class MemoryConfig(BaseModel):
     """Vector memory configuration."""
 
     enabled: bool = True
+    embedding_provider: str = "ollama"  # ollama, openai
     embedding_model: str = "nomic-embed-text"
+    embedding_api_key: str = ""
     db_path: str = "~/.aethon/memory.sqlite"
 
 
@@ -127,7 +134,7 @@ class SchedulerConfig(BaseModel):
     """APScheduler configuration."""
 
     enabled: bool = True
-    default_channel: str = "telegram"
+    default_channel: str = "cli"  # cli is enabled by default; telegram is opt-in
     jobs: dict = Field(default_factory=dict)
 
 
@@ -135,6 +142,7 @@ class DashboardConfig(BaseModel):
     """Web dashboard configuration."""
 
     enabled: bool = True
+    pixel_agents: bool = True
 
 
 class WebhookConfig(BaseModel):
@@ -218,3 +226,12 @@ class AethonConfig(BaseModel):
         elif isinstance(data, list):
             return [AethonConfig._resolve_env_vars(item) for item in data]
         return data
+
+    @staticmethod
+    def write(data: dict, config_path: str = "~/.aethon/config.yaml") -> Path:
+        """Write a config dict to a YAML file, creating parent dirs. Returns the path."""
+        path = Path(config_path).expanduser()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            yaml.safe_dump(data, f, sort_keys=False, allow_unicode=True)
+        return path

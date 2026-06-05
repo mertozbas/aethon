@@ -1,9 +1,32 @@
 """Shared test fixtures."""
 
 import pytest
+import requests
 from pathlib import Path
 
 from aethon.config import AethonConfig
+
+
+def _ollama_available() -> bool:
+    """Check if Ollama is running and accessible."""
+    try:
+        r = requests.get("http://localhost:11434/api/tags", timeout=2)
+        return r.status_code == 200
+    except Exception:
+        return False
+
+
+_OLLAMA_UP = _ollama_available()
+
+
+def pytest_collection_modifyitems(config, items):
+    """Auto-skip tests marked with @pytest.mark.ollama when Ollama is down."""
+    if _OLLAMA_UP:
+        return
+    skip = pytest.mark.skip(reason="Ollama erisilemez — atlaniyor")
+    for item in items:
+        if "ollama" in item.keywords:
+            item.add_marker(skip)
 
 
 @pytest.fixture

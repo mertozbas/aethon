@@ -34,7 +34,7 @@ def integration_setup(tmp_path):
     logs.mkdir()
 
     config = AethonConfig(
-        model=ModelConfig(provider="ollama", model_id="qwen3-coder-next"),
+        model=ModelConfig(provider="fake", model_id="fake"),
         memory=MemoryConfig(
             enabled=True,
             embedding_model="nomic-embed-text",
@@ -54,6 +54,7 @@ def integration_setup(tmp_path):
     return config, runtime, router
 
 
+@pytest.mark.ollama
 @pytest.mark.asyncio
 async def test_full_pipeline(integration_setup):
     """Full message pipeline: InboundMessage -> Router -> Agent -> Response."""
@@ -75,6 +76,7 @@ async def test_full_pipeline(integration_setup):
     assert len(response.text) > 0
 
 
+@pytest.mark.ollama
 @pytest.mark.asyncio
 async def test_session_persistence(integration_setup):
     """Same session maintains conversation context."""
@@ -101,6 +103,7 @@ async def test_session_persistence(integration_setup):
     # Agent should remember the name from same session
 
 
+@pytest.mark.ollama
 @pytest.mark.asyncio
 async def test_session_isolation(integration_setup):
     """Different channels have isolated sessions."""
@@ -148,6 +151,7 @@ async def test_runtime_tools_include_memory(integration_setup):
     assert any("memory" in name.lower() for name in tool_names)
 
 
+@pytest.mark.ollama
 @pytest.mark.asyncio
 async def test_vector_memory_direct(integration_setup):
     """VectorMemory store + search works end-to-end."""
@@ -193,7 +197,7 @@ def phase3_setup(tmp_path):
     logs.mkdir()
 
     config = AethonConfig(
-        model=ModelConfig(provider="ollama", model_id="qwen3-coder-next"),
+        model=ModelConfig(provider="fake", model_id="fake"),
         memory=MemoryConfig(
             enabled=True,
             embedding_model="nomic-embed-text",
@@ -297,7 +301,7 @@ def phase4_setup(tmp_path):
     logs.mkdir()
 
     config = AethonConfig(
-        model=ModelConfig(provider="ollama", model_id="qwen3-coder-next"),
+        model=ModelConfig(provider="fake", model_id="fake"),
         memory=MemoryConfig(
             enabled=True,
             embedding_model="nomic-embed-text",

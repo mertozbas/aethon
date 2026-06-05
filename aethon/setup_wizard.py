@@ -1,0 +1,152 @@
+"""Interactive first-run setup wizard (`aethon init`).
+
+Detects Meridian (Claude on your Claude Max quota) and otherwise guides the user
+to any Strands provider — Ollama, OpenAI, Anthropic — then validates the choice
+and writes ``~/.aethon/config.yaml``. The default and recommended path is Meridian.
+"""
+
+from __future__ import annotations
+
+import os
+from pathlib import Path
+from typing import Optional
+
+import click
+from rich.console import Console
+
+from aethon.agent.model_factory import check_model_availability
+from aethon.config import AethonConfig, ModelConfig
+
+console = Console()
+
+_OLLAMA_DEFAULT_HOST = "http://localhost:11434"
+
+# provider -> (description, default_model, needs_api_key, api_key_env)
+PROVIDERS: dict[str, tuple[str, str, bool, Optional[str]]] = {
+    "meridian": (
+        "Claude on your Claude Max subscription quota, via the Meridian proxy (recommended)",
+        "claude-opus-4-8",
+        False,
+        None,
+    ),
+    "anthropic": (
+        "Claude via an Anthropic API key (per-token billing)",
+        "claude-opus-4-8",
+        True,
+        "ANTHROPIC_API_KEY",
+    ),
+    "openai": (
+        "OpenAI GPT models via an API key",
+        "gpt-4o",
+        True,
+        "OPENAI_API_KEY",
+    ),
+    "ollama": (
+        "Local models via Ollama — fully offline, no API key",
+        "llama3.1",
+        False,
+        None,
+    ),
+}
+
+
+def meridian_status() -> tuple[bool, str]:
+    """Return (logged_in, human_status) for the local Meridian proxy."""
+    try:
+        from strands_meridian import health_check
+
+        info = health_check()
+        auth = info.get("auth") or {}
+        if auth.get("loggedIn"):
+            return True, (
+                f"running — logged in as {auth.get('email', '?')} "
+                f"({auth.get('subscriptionType', '?')} quota)"
+            )
+        return False, "running, but not logged in — run: claude login"
+    except Exception:
+        return False, (
+            "not reachable — install with `npm i -g @rynfar/meridian`, "
+            "then run `claude login` and `meridian`"
+        )
+
+
+def build_model_config(provider: str, *, model_id: str, api_key: str = "", host: str = "") -> dict:
+    """Build the ``model:`` section of config.yaml (pure — no I/O)."""
+    model: dict = {"provider": provider, "model_id": model_id}
+    if provider == "ollama":
+        model["host"] = host or _OLLAMA_DEFAULT_HOST
+    if api_key:
+        model["api_key"] = api_key
+    return model
+
+
+def build_memory_config(provider: str, enable: bool, api_key: str = "") -> dict:
+    """Build the ``memory:`` section. Embeddings need Ollama or an OpenAI key."""
+    if not enable:
+        return {"enabled": False}
+    if provider == "openai" and api_key:
+        return {
+            "enabled": True,
+            "embedding_provider": "openai",
+            "embedding_model": "text-embedding-3-small",
+            "embedding_api_key": api_key,
+        }
+    return {"enabled": True, "embedding_provider": "ollama", "embedding_model": "nomic-embed-text"}
+
+
+def run_wizard(config_path: str = "~/.aethon/config.yaml", *, force: bool = False) -> Optional[Path]:
+    """Run the interactive setup. Returns the written path, or None if aborted."""
+    path = Path(config_path).expanduser()
+
+    console.print("\n[bold cyan]AETHON setup[/]\n")
+    if path.exists() and not force:
+        if not click.confirm(f"{path} already exists. Overwrite it?", default=False):
+            console.print("[yellow]Keeping the existing config.[/]")
+            return path
+
+    up, status = meridian_status()
+    console.print(f"Meridian (Claude Max): [{'green' if up else 'yellow'}]{status}[/]\n")
+
+    console.print("Which AI provider should AETHON use?")
+    keys = list(PROVIDERS)
+    for i, key in enumerate(keys, 1):
+        console.print(f"  [bold]{i}[/]. {key} — {PROVIDERS[key][0]}")
+    idx = click.prompt("Provider", type=click.IntRange(1, len(keys)), default=1)
+    provider = keys[idx - 1]
+    _desc, default_model, needs_key, api_key_env = PROVIDERS[provider]
+
+    model_id = click.prompt("Model id", default=default_model)
+
+    host = ""
+    if provider == "ollama":
+        host = click.prompt("Ollama host", default=_OLLAMA_DEFAULT_HOST)
+
+    api_key = ""
+    if needs_key:
+        env_val = os.getenv(api_key_env or "")
+        if env_val:
+            console.print(f"[dim]Found {api_key_env} in your environment — referencing it from config.[/]")
+            api_key = "${" + (api_key_env or "") + "}"  # resolved at load time
+        else:
+            api_key = click.prompt(f"{provider} API key", hide_input=True, default="").strip()
+
+    model = build_model_config(provider, model_id=model_id, api_key=api_key, host=host)
+
+    # Validate the choice (network check for meridian/ollama; key presence for the rest).
+    available, msg = check_model_availability(ModelConfig(**model))
+    console.print(f"\nProvider check: [{'green' if available else 'yellow'}]{msg}[/]")
+    if not available and not click.confirm("Provider isn't ready yet. Save the config anyway?", default=True):
+        console.print("[yellow]Aborted — re-run `aethon init` when the provider is ready.[/]")
+        return None
+
+    enable_memory = click.confirm(
+        "Enable long-term memory? (needs Ollama or an OpenAI key for embeddings)",
+        default=(provider in ("ollama", "openai")),
+    )
+
+    data: dict = {"model": model, "memory": build_memory_config(provider, enable_memory, api_key)}
+    written = AethonConfig.write(data, config_path)
+
+    console.print(f"\n[green]✓ Wrote config to {written}[/]")
+    console.print("Start AETHON with: [bold]aethon start[/]\n")
+    return written
