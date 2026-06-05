@@ -52,6 +52,29 @@ def test_scheduler_add_job(scheduler):
     assert scheduler._jobs_meta["test-job"]["sop_name"] == "morning-brief"
 
 
+def test_scheduler_recipient_used_for_delivery(scheduler, monkeypatch):
+    """A job's recipient is sent as the OutboundMessage recipient_id (not hardcoded 'default')."""
+    import aethon.tools.messaging as messaging_module
+
+    sent = {}
+
+    class FakeAdapter:
+        async def send(self, msg):
+            sent["channel"] = msg.channel
+            sent["recipient_id"] = msg.recipient_id
+
+    fake_gw = MagicMock()
+    fake_gw.adapters = {"telegram": FakeAdapter()}
+    monkeypatch.setattr(messaging_module, "get_gateway", lambda: fake_gw)
+
+    scheduler.add_job("j", "0 9 * * *", "morning-brief", channel="telegram", recipient="123456789")
+    assert scheduler._jobs_meta["j"]["recipient"] == "123456789"
+
+    asyncio.run(scheduler._run_sop("morning-brief", "telegram", "123456789"))
+    assert sent["channel"] == "telegram"
+    assert sent["recipient_id"] == "123456789"  # the real chat id, not 'default'
+
+
 def test_scheduler_list_jobs(scheduler):
     """list_jobs returns correct data."""
     scheduler.add_job("j1", "0 9 * * *", "sop1")

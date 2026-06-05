@@ -569,8 +569,8 @@ class ChannelConfig(BaseModel):
     # Channel-specific fields in subclass
 
 class SecurityConfig(BaseModel):
-    workspace_only: bool = True
-    require_approval: list[str] = ["shell", "file_write", "send_message"]
+    workspace_only: bool = False  # opt in to confine file tools to the workspace
+    require_approval: list[str] = ["shell", "file_write", "send_message"]  # reserved; not wired
     blocked_commands: list[str] = ["rm -rf /", "sudo", "mkfs"]
 
 class AethonConfig(BaseModel):

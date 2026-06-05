@@ -256,6 +256,7 @@ class AethonRuntime:
             SecurityHookProvider(
                 workspace=self.config.paths.workspace,
                 blocked_commands=self.config.security.blocked_commands,
+                workspace_only=self.config.security.workspace_only,
             ),
         ]
         # MemoryGuardHook

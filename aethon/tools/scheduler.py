@@ -34,7 +34,7 @@ class AethonScheduler:
         self._jobs_meta: dict[str, dict] = {}
 
     def add_job(self, job_id: str, cron: str, sop_name: str,
-                channel: str = "") -> str:
+                channel: str = "", recipient: str = "") -> str:
         """Add a scheduled SOP job.
 
         Args:
@@ -42,29 +42,39 @@ class AethonScheduler:
             cron: Cron expression (e.g. "0 9 * * 1-5").
             sop_name: SOP to execute.
             channel: Channel to send results to.
+            recipient: Destination id on that channel (e.g. a Telegram/Discord
+                chat/channel id). Not needed for ``cli``/``webchat``.
 
         Returns:
             Job ID.
         """
         from apscheduler.triggers.cron import CronTrigger
 
+        ch = channel or self.default_channel
+        if ch and ch not in ("cli", "webchat") and not recipient:
+            logger.warning(
+                f"Scheduled job '{job_id}' targets channel '{ch}' without a recipient; "
+                f"delivery will likely fail. Set a recipient (e.g. a chat/channel id)."
+            )
+
         trigger = CronTrigger.from_crontab(cron)
         self.scheduler.add_job(
             self._run_sop,
             trigger=trigger,
             id=job_id,
-            args=[sop_name, channel or self.default_channel],
+            args=[sop_name, ch, recipient],
             replace_existing=True,
         )
         self._jobs_meta[job_id] = {
             "cron": cron,
             "sop_name": sop_name,
-            "channel": channel or self.default_channel,
+            "channel": ch,
+            "recipient": recipient,
         }
         logger.info(f"Task scheduled: {job_id} -> {sop_name} ({cron})")
         return job_id
 
-    async def _run_sop(self, sop_name: str, channel: str) -> None:
+    async def _run_sop(self, sop_name: str, channel: str, recipient: str = "") -> None:
         """Execute scheduled SOP and send result to channel."""
         try:
             agent = self.runtime.get_or_create_agent("scheduler:cron")
@@ -78,7 +88,7 @@ class AethonScheduler:
                 if gw and channel in gw.adapters:
                     msg = OutboundMessage(
                         channel=channel,
-                        recipient_id="default",
+                        recipient_id=recipient or "default",
                         text=f"[Scheduled: {sop_name}]\n\n{result}",
                     )
                     await gw.adapters[channel].send(msg)
@@ -130,7 +140,7 @@ class AethonScheduler:
 
 @tool
 def schedule_task(cron_expression: str, sop_name: str, job_id: str = "",
-                  channel: str = "") -> str:
+                  channel: str = "", recipient: str = "") -> str:
     """Create or update a scheduled task. Runs the SOP at the specified cron time.
 
     Args:
@@ -138,13 +148,15 @@ def schedule_task(cron_expression: str, sop_name: str, job_id: str = "",
         sop_name: Name of the SOP to run
         job_id: Task ID (auto-generated if empty)
         channel: Channel to send the result to (default if empty)
+        recipient: Destination id on that channel (e.g. a chat/channel id);
+            not needed for cli/webchat
     """
     if not _scheduler_instance:
         return "Error: Scheduler not started."
     if not job_id:
         job_id = f"task-{uuid.uuid4().hex[:8]}"
     try:
-        _scheduler_instance.add_job(job_id, cron_expression, sop_name, channel)
+        _scheduler_instance.add_job(job_id, cron_expression, sop_name, channel, recipient)
         return f"Task scheduled: {job_id} -> {sop_name} ({cron_expression})"
     except Exception as e:
         return f"Error: Could not schedule task ({e})"

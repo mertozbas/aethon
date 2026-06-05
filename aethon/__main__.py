@@ -125,9 +125,11 @@ def start(config: str):
         except Exception:
             console.print("  SOPs: [yellow]failed to load[/]")
 
-    # Scheduler status
-    if cfg.scheduler.enabled:
+    # Scheduler status (the gateway only starts it when SOPs are enabled too)
+    if cfg.scheduler.enabled and cfg.sops.enabled:
         console.print("  Scheduler: [green]active[/]")
+    elif cfg.scheduler.enabled:
+        console.print("  Scheduler: [yellow]disabled (requires SOPs)[/]")
     else:
         console.print("  Scheduler: [dim]disabled[/]")
 

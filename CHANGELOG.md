@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Model providers:** Bedrock now passes the AWS region via `region_name` (it was
+  silently dropped); Gemini sends its token cap via `params.max_output_tokens`
+  (`GeminiConfig` has no `max_tokens`); Mistral uses the dedicated `api_key` arg and
+  forwards `max_tokens`.
+- **Scheduler:** scheduled jobs can now deliver to messaging channels — jobs/`schedule_task`
+  accept a `recipient` (chat/channel id) used as the message destination instead of a
+  hardcoded `"default"` that failed for Telegram/Discord/Slack/WhatsApp.
+- **Security:** `security.workspace_only` is now actually enforced (it was ignored). When
+  `true`, file tools are confined to `~/.aethon/workspace`; the default is now `false`
+  (file tools may work anywhere under `$HOME` except blocked system/credential paths).
+  Localized the remaining Turkish security messages to English.
+- **Startup status:** the `Scheduler` line now reports `disabled (requires SOPs)` when SOPs
+  are off (the scheduler only starts with SOPs enabled).
+
+### Docs
+- README corrected to match runtime reality: team/pipeline orchestration is internal and
+  deferred to v2 (not a shipped feature); SOP descriptions appear in listings, not the
+  system prompt; `security.require_approval` is reserved (approval gating lives in the
+  `approval` section, off by default); non-core providers (OpenAI/Bedrock/Gemini/LiteLLM/
+  Mistral) require their own SDK; documented scheduler `recipient`.
+
 ## [0.1.0] - 2026-06-05
 
 Initial release of AETHON — a self-hosted, provider-agnostic, multi-channel,

@@ -74,7 +74,12 @@ class ChannelsConfig(BaseModel):
 
 
 class SecurityConfig(BaseModel):
-    workspace_only: bool = True
+    # When True, file tools are confined to ~/.aethon/workspace. Default False so the
+    # assistant can work on your projects anywhere under $HOME (sensitive system and
+    # credential paths are always blocked regardless of this flag).
+    workspace_only: bool = False
+    # NOTE: approval gating is provided by the separate `approval` section (disabled
+    # by default). This list is reserved and is not currently wired to a hook.
     require_approval: list[str] = Field(
         default_factory=lambda: ["shell", "file_write", "send_message"]
     )

@@ -83,7 +83,7 @@ def test_config_security_defaults():
     config = AethonConfig()
     assert "shell" in config.security.require_approval
     assert "rm -rf /" in config.security.blocked_commands
-    assert config.security.workspace_only is True
+    assert config.security.workspace_only is False  # permissive by default; opt in to confine to workspace
 
 
 def test_model_config_custom():

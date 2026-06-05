@@ -65,7 +65,7 @@ def test_block_rm_rf(security_hook, fake_agent):
     event = _make_before_event(fake_agent, "shell", {"command": "rm -rf /"})
     security_hook.check_tool_safety(event)
     assert event.cancel_tool
-    assert "ENGELLENDI" in str(event.cancel_tool)
+    assert "BLOCKED" in str(event.cancel_tool)
 
 
 def test_block_sudo(security_hook, fake_agent):
@@ -73,7 +73,7 @@ def test_block_sudo(security_hook, fake_agent):
     event = _make_before_event(fake_agent, "shell", {"command": "sudo apt install something"})
     security_hook.check_tool_safety(event)
     assert event.cancel_tool
-    assert "ENGELLENDI" in str(event.cancel_tool)
+    assert "BLOCKED" in str(event.cancel_tool)
 
 
 def test_block_rm_rf_home(security_hook, fake_agent):
@@ -104,7 +104,7 @@ def test_block_etc_path(security_hook, fake_agent):
     event = _make_before_event(fake_agent, "file_read", {"path": "/etc/passwd"})
     security_hook.check_tool_safety(event)
     assert event.cancel_tool
-    assert "ENGELLENDI" in str(event.cancel_tool)
+    assert "BLOCKED" in str(event.cancel_tool)
 
 
 def test_block_ssh_path(security_hook, fake_agent):
@@ -112,6 +112,29 @@ def test_block_ssh_path(security_hook, fake_agent):
     event = _make_before_event(fake_agent, "file_read", {"path": "~/.ssh/id_rsa"})
     security_hook.check_tool_safety(event)
     assert event.cancel_tool
+
+
+def test_default_allows_home_file_outside_workspace(security_hook, fake_agent, tmp_path):
+    """By default (workspace_only=False), files under $HOME outside the workspace are allowed."""
+    home_file = str(Path.home() / "some_project" / "main.py")
+    event = _make_before_event(fake_agent, "file_read", {"path": home_file})
+    security_hook.check_tool_safety(event)
+    assert not event.cancel_tool
+
+
+def test_workspace_only_blocks_home_file_outside_workspace(tmp_path, fake_agent):
+    """With workspace_only=True, files outside the workspace (even under $HOME) are blocked."""
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    hook = SecurityHookProvider(workspace=str(workspace), workspace_only=True)
+    # A file inside the workspace is still allowed.
+    inside = _make_before_event(fake_agent, "file_read", {"path": str(workspace / "ok.txt")})
+    hook.check_tool_safety(inside)
+    assert not inside.cancel_tool
+    # A file under $HOME but outside the workspace is now blocked.
+    outside = _make_before_event(fake_agent, "file_read", {"path": str(Path.home() / "elsewhere.txt")})
+    hook.check_tool_safety(outside)
+    assert outside.cancel_tool
 
 
 def test_log_tool_result(security_hook, fake_agent):

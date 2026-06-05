@@ -52,7 +52,7 @@ The headline value is the **default model backend**. Instead of paying per token
 
 **Assistant intelligence**
 - **Long-term vector memory** — SQLite-backed embeddings with cosine-similarity search.
-- **Multi-agent specialists** — Coder, Researcher, Analyst, Planner, with `ask_*` delegation tools and team/pipeline modes.
+- **Multi-agent specialists** — Coder, Researcher, Analyst, Planner, reachable from the main agent via `ask_*` delegation tools. (Swarm/Graph team & pipeline orchestration exists internally but isn't yet wired into the runtime — see [Roadmap](#roadmap).)
 - **SOPs** — built-in `/code-assist`, `/pdd`, `/codebase-summary`, plus your own custom `*.sop.md` workflows.
 - **Workspace persona files** — `SOUL.md`, `TOOLS.md`, `CONTEXT.md` define identity, preferences, and live state.
 - **Tools** — file read/write/edit, shell, scheduling, context updates, messaging, and MCP tools.
@@ -261,6 +261,8 @@ model:
 
 ### OpenAI
 
+Requires the OpenAI SDK (not bundled): `pip install openai`.
+
 ```yaml
 model:
   provider: openai
@@ -282,6 +284,8 @@ model:
 ### Other providers (bedrock / gemini / litellm / mistral)
 
 These are also supported by the model factory. Set `provider` accordingly and supply the parameters each backend needs — for example `region` (default `us-west-2`) for **Bedrock**-style backends, and `api_key` for **Gemini / Mistral**. The `litellm` provider only uses `model_id` (configure credentials via LiteLLM's own environment variables, not `model.api_key`). `model.extra` is forwarded only for the `ollama` provider (merged into its sampling `options`); bedrock/gemini/litellm/mistral ignore `extra`.
+
+Each of these backends needs its own SDK installed (none is bundled with aethon's core or an extra): `pip install boto3` (Bedrock), `google-genai` (Gemini), `litellm` (LiteLLM), or `mistralai` (Mistral).
 
 ```yaml
 model:
@@ -398,8 +402,8 @@ channels:
 
 | Field | Type | Default | Meaning |
 |---|---|---|---|
-| `workspace_only` | bool | `true` | Restrict file/tool operations to the workspace directory. |
-| `require_approval` | list[str] | `["shell", "file_write", "send_message"]` | Action types that require approval. |
+| `workspace_only` | bool | `false` | When true, confine file tools to `~/.aethon/workspace`; when false (default), allow anywhere under `$HOME` except blocked system/credential paths. |
+| `require_approval` | list[str] | `["shell", "file_write", "send_message"]` | Reserved; not currently enforced. Approval gating is configured in the `approval` section. |
 | `blocked_commands` | list[str] | `["rm -rf /", "sudo", "mkfs"]` | Shell command substrings that are blocked. |
 | `allowed_senders` | dict[str, list[str]] | `{}` | Per-channel allowlist of sender identifiers. |
 
@@ -641,7 +645,7 @@ curl -X POST http://127.0.0.1:18790/webhook/github \
 
 ### Scheduler (cron jobs)
 
-The scheduler (APScheduler) runs cron jobs that execute an SOP and deliver the result to a channel (default channel from `scheduler.default_channel`, which is `cli`). Define jobs in config:
+The scheduler (APScheduler) runs cron jobs that execute an SOP and deliver the result to a channel (default channel from `scheduler.default_channel`, which is `cli`). It requires SOPs to be enabled (`sops.enabled: true`, the default). Define jobs in config:
 
 ```yaml
 scheduler:
@@ -652,7 +656,10 @@ scheduler:
       cron: "0 9 * * 1-5"        # weekdays at 9 AM
       sop_name: codebase-summary
       channel: telegram          # optional; overrides default_channel
+      recipient: "123456789"     # the destination chat/channel id (see note)
 ```
+
+> **Recipients:** `cli` and `webchat` need no `recipient`. For messaging channels (`telegram`, `discord`, `slack`, `whatsapp`), set `recipient` to the destination chat/channel id — otherwise delivery is skipped with a warning.
 
 The assistant can also manage jobs at runtime with the `schedule_task`, `list_scheduled_jobs`, and `remove_scheduled_job` tools (see [Agent tools](#agent-tools)).
 
@@ -712,7 +719,7 @@ SOPs are reusable workflows invoked with a slash command. **Built-ins:**
 ~/.aethon/workspace/sops/<name>.sop.md
 ```
 
-The SOP name is the filename with `.sop.md` removed, so `weekly-report.sop.md` is invoked as `/weekly-report`. A `## Overview` section is parsed for the SOP's description (first 200 chars) shown in listings and in the system prompt. Custom SOPs are merged with built-ins.
+The SOP name is the filename with `.sop.md` removed, so `weekly-report.sop.md` is invoked as `/weekly-report`. A `## Overview` section is parsed for the SOP's description (first 200 chars), shown in listings (the dashboard SOPs panel and `/api/sops`). The agent's system prompt lists the available SOP slash-commands by name. Custom SOPs are merged with built-ins.
 
 ```markdown
 ## Overview
@@ -728,13 +735,11 @@ You can also create/edit/delete custom SOPs from the dashboard's SOPs panel (bui
 
 ### Agent tools
 
-The main agent always has: `file_read, file_write, editor, shell, think, current_time`. Conditionally added:
+The main agent always has: `file_read, file_write, editor, shell, think, current_time`, plus `update_context(action, key, value)` (maintains `CONTEXT.md`; actions `update`, `get`, `list`) and `send_message(channel, text, recipient)` (pushes a message out to any enabled channel — e.g. `telegram`, `discord`, `slack`, `webchat`). Conditionally added:
 
 - **memory** — `manage_memory(action, content, query, category, memory_id)` when vector memory is active.
 - **delegate** — `ask_coder / ask_researcher / ask_analyst / ask_planner` when the multi-agent system is on.
-- **update_context** — `update_context(action, key, value)` to maintain `CONTEXT.md` (actions `update`, `get`, `list`).
-- **send_message** — `send_message(channel, text, recipient)` to push messages out via `telegram`, `discord`, `slack`, or `webchat`.
-- **scheduler** — `schedule_task(cron_expression, sop_name, job_id, channel)`, `list_scheduled_jobs()`, `remove_scheduled_job(job_id)`.
+- **scheduler** — `schedule_task(cron_expression, sop_name, job_id, channel, recipient)`, `list_scheduled_jobs()`, `remove_scheduled_job(job_id)` when the scheduler is running.
 - **MCP tools** — appended when MCP is enabled.
 
 ### Telemetry
@@ -764,8 +769,9 @@ AETHON is **local-first** and ships safe defaults:
 
 - **Loopback binding:** WebChat (and the dashboard/webhooks mounted on it) bind to `127.0.0.1` by default. To expose beyond localhost, set `channels.webchat.host: 0.0.0.0` **and** a `dashboard.auth_token`.
 - **Dashboard auth token:** when `dashboard.auth_token` is set, `/dashboard`, the protected `/api/*` prefixes, and `/ws/dashboard` require the token (via `aethon_dash` cookie, `Authorization: Bearer`, or `?token=`). `/api/status` and `/health` stay open for probes.
-- **Workspace boundary:** `security.workspace_only` (default true) restricts file/tool operations to the workspace.
-- **Approval & blocked commands:** `security.require_approval` (default `shell`, `file_write`, `send_message`) and `security.blocked_commands` (default `rm -rf /`, `sudo`, `mkfs`) gate dangerous actions; an additional interrupt-based approval hook is available via the `approval` section.
+- **File-access sandbox:** by default, file tools may read/write anywhere under your home directory **except** a blocklist of system and credential paths (`/etc`, `/usr`, `/bin`, `~/.ssh`, `~/.gnupg`, `~/.aethon/credentials`, …). Set `security.workspace_only: true` to confine file tools strictly to `~/.aethon/workspace`.
+- **Blocked commands:** the security hook refuses shell commands containing any `security.blocked_commands` entry (default `rm -rf /`, `sudo`, `mkfs`, plus a built-in danger list).
+- **Approval gating:** an optional interrupt-based hook can require approval for the actions in `approval.requires_approval` (default `shell`, `file_write`) — it is **off by default** (`approval.enabled: false`). *(The `security.require_approval` field is reserved and not currently enforced.)*
 - **Sender allowlists:** `security.allowed_senders` can restrict who may message each channel.
 - **Secret masking:** the dashboard `GET /api/config` dump masks sensitive keys (`api_key`, `token`, `bot_token`, `app_token`, `secret`, `password`) to `***`.
 - **Memory guard:** the memory guard hook blocks secrets from being written to long-term memory.
@@ -881,10 +887,11 @@ Contributions follow the same noncommercial terms; see [CONTRIBUTING.md](CONTRIB
 
 ## Roadmap
 
-**v1 (0.1.0) ships:** the full provider-agnostic assistant — CLI + WebChat + dashboard, Telegram/Discord/Slack channels, SQLite vector memory, multi-agent specialists with delegation and teams, built-in and custom SOPs, scheduler, webhooks, telemetry, the Meridian/Claude-Max default backend with background auto-start, and Docker + CI infrastructure.
+**v1 (0.1.0) ships:** the full provider-agnostic assistant — CLI + WebChat + dashboard, Telegram/Discord/Slack channels, SQLite vector memory, multi-agent specialists with `ask_*` delegation, built-in and custom SOPs, scheduler, webhooks, telemetry, the Meridian/Claude-Max default backend with background auto-start, and Docker + CI infrastructure.
 
 **Deferred to v2:**
 - Response **streaming**.
+- **Team / pipeline orchestration** (Swarm/Graph) wired into the runtime and exposed as a command/tool (the orchestration code exists but isn't connected yet).
 - **Per-specialist multi-model** configuration.
 - **Tool Builder** and **Agent Builder** agents.
 - **Phase 7** AI Capabilities Expansion.

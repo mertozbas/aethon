@@ -145,6 +145,7 @@ class AethonGateway:
                         job_cfg.get("cron", "0 9 * * *"),
                         job_cfg.get("sop_name", ""),
                         job_cfg.get("channel", ""),
+                        job_cfg.get("recipient", ""),
                     )
                 set_scheduler(self._scheduler)
                 self._scheduler.start()

@@ -38,8 +38,16 @@ class SecurityHookProvider(HookProvider):
         "~/.aethon/credentials/",
     ]
 
-    def __init__(self, workspace: str, blocked_commands: list[str] | None = None):
+    def __init__(
+        self,
+        workspace: str,
+        blocked_commands: list[str] | None = None,
+        workspace_only: bool = False,
+    ):
         self.workspace = str(Path(workspace).expanduser().resolve())
+        # When True, file tools are confined to the workspace. When False (default),
+        # they may touch anything under $HOME except the BLOCKED_PATHS list.
+        self.workspace_only = workspace_only
         if blocked_commands:
             self.BLOCKED_COMMANDS = self.BLOCKED_COMMANDS + blocked_commands
 
@@ -59,8 +67,8 @@ class SecurityHookProvider(HookProvider):
                 for blocked in self.BLOCKED_COMMANDS:
                     if blocked in command:
                         event.cancel_tool = (
-                            f"ENGELLENDI: '{blocked}' iceren komut guvenlik "
-                            f"politikasi tarafindan yasaklandi."
+                            f"BLOCKED: a command containing '{blocked}' is "
+                            f"forbidden by the security policy."
                         )
                         logger.warning(f"BLOCKED COMMAND: {command}")
                         return
@@ -73,9 +81,10 @@ class SecurityHookProvider(HookProvider):
                 or tool_input.get("command", "")
             )
             if path and not self._is_safe_path(path):
+                allowed_root = self.workspace if self.workspace_only else str(Path.home())
                 event.cancel_tool = (
-                    f"ENGELLENDI: Workspace disi dosya erisimi ({path}). "
-                    f"Sadece {self.workspace} icindeki dosyalara erisebilirsiniz."
+                    f"BLOCKED: file access outside the allowed area ({path}). "
+                    f"Allowed root: {allowed_root} (system and credential paths are always off-limits)."
                 )
                 logger.warning(f"BLOCKED PATH: {path}")
                 return
@@ -86,23 +95,32 @@ class SecurityHookProvider(HookProvider):
             logger.info(f"NETWORK: {tool_name} -> {url}")
 
     def _is_safe_path(self, path: str) -> bool:
-        """Check if a path is within allowed boundaries."""
+        """Check if a path is within allowed boundaries.
+
+        Sensitive system/credential paths are always blocked. The workspace is
+        always allowed. Beyond that: ``workspace_only`` confines to the workspace,
+        otherwise anything under the home directory is allowed.
+        """
         try:
             resolved = Path(path).expanduser().resolve()
             workspace = Path(self.workspace).resolve()
             home = Path.home().resolve()
 
-            # Inside workspace?
-            if str(resolved).startswith(str(workspace)):
-                return True
-
-            # In blocked paths?
+            # Always block sensitive system/credential paths (highest priority).
             for blocked in self.BLOCKED_PATHS:
                 blocked_resolved = Path(blocked).expanduser().resolve()
                 if str(resolved).startswith(str(blocked_resolved)):
                     return False
 
-            # Inside home but outside workspace — allow with caution
+            # Inside the workspace is always allowed.
+            if str(resolved).startswith(str(workspace)):
+                return True
+
+            # Strict mode: nothing outside the workspace.
+            if self.workspace_only:
+                return False
+
+            # Default mode: allow anywhere under the home directory.
             if str(resolved).startswith(str(home)):
                 return True
 
