@@ -18,6 +18,7 @@ dependencies = [
     "strands-agents-tools>=0.1.0",
     "strands-agents-sops>=1.0.0",  # built-in SOPs (enabled by default)
     "apscheduler>=3.10.0",  # scheduler (enabled by default)
+    "openai>=1.0.0",  # default model provider (also any OpenAI-compatible endpoint)
 
     # Gateway
     "fastapi>=0.100.0",
@@ -57,7 +58,10 @@ Changelog = "https://github.com/mertozbas/aethon/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 # Optional, opt-in features. Core install already covers CLI + WebChat + dashboard
-# + Telegram/Discord/Slack + memory + SOPs + scheduler.
+# + Telegram/Discord/Slack + memory + SOPs + scheduler + the OpenAI provider.
+anthropic = [
+    "anthropic>=0.40.0",  # the `anthropic` provider (Claude via an Anthropic API key)
+]
 ollama = [
     "ollama>=0.3.0",  # local-inference provider
 ]
@@ -67,7 +71,7 @@ whatsapp = [
 mcp = [
     "mcp>=1.0.0",
 ]
-all = ["aethon-ai[ollama,whatsapp,mcp]"]
+all = ["aethon-ai[anthropic,ollama,whatsapp,mcp]"]
 dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",

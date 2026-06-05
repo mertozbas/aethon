@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - **Default provider is now `openai`** (model `gpt-4o`): set an `api_key` for the
   official OpenAI API, or point `host` at any OpenAI-compatible endpoint (base URL).
+  The `openai` SDK is now a **core dependency** so the default works out of the box;
+  `anthropic` is available as an extra (`pip install aethon-ai[anthropic]`).
   Existing configs with `provider: meridian` must be switched (`aethon init`).
   `security.workspace_only` now defaults to `false` (file tools work under `$HOME`
   except blocked system/credential paths).

@@ -153,10 +153,11 @@ Request an extra with `pip install "aethon-ai[ollama]"`. From a local clone, the
 
 | Extra | Install | Adds | Purpose |
 |-------|---------|------|---------|
+| `anthropic` | `pip install "aethon-ai[anthropic]"` | `anthropic>=0.40.0` | The `anthropic` provider (Claude via an Anthropic API key). |
 | `ollama` | `pip install "aethon-ai[ollama]"` | `ollama>=0.3.0` | Local-inference provider (run models fully offline). |
 | `whatsapp` | `pip install "aethon-ai[whatsapp]"` | `neonize>=0.3.0` | WhatsApp channel (**experimental**). |
 | `mcp` | `pip install "aethon-ai[mcp]"` | `mcp>=1.0.0` | MCP (Model Context Protocol) server support. |
-| `all` | `pip install "aethon-ai[all]"` | `aethon-ai[ollama,whatsapp,mcp]` | Bundles the three feature extras above. |
+| `all` | `pip install "aethon-ai[all]"` | `aethon-ai[anthropic,ollama,whatsapp,mcp]` | Bundles the feature extras above. |
 | `dev` | `pip install "aethon-ai[dev]"` | `pytest>=8.0.0`, `pytest-asyncio>=0.23.0`, `httpx>=0.27.0` | Test/dev tooling. |
 
 ### Install with Docker
@@ -247,6 +248,8 @@ model:
 > The `aethon init` wizard asks for your OpenAI API key and, optionally, an OpenAI-compatible base URL — so you usually don't hand-edit this.
 
 ### Anthropic API
+
+Install the extra (`pip install "aethon-ai[anthropic]"`), then:
 
 ```yaml
 model:
