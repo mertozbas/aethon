@@ -103,6 +103,7 @@ def test_config_security_defaults():
     assert "shell" in config.security.require_approval
     assert "rm -rf /" in config.security.blocked_commands
     assert config.security.workspace_only is False  # permissive by default; opt in to confine to workspace
+    assert config.security.bypass_tool_consent is True  # headless by default; no interactive consent prompts
 
 
 def test_model_config_custom():

@@ -83,8 +83,9 @@ def test_cli_init_writes_meridian_config(tmp_path, monkeypatch):
     monkeypatch.setattr(wiz, "check_model_availability", lambda mc: (True, "OK (test)"))
 
     cfg = tmp_path / "config.yaml"
-    # provider #1 (meridian), accept default model, memory: no
-    result = CliRunner().invoke(main, ["init", "-c", str(cfg)], input="1\n\nn\n")
+    # provider #1 (meridian), accept default model, memory: no,
+    # then the three channel prompts (Telegram/Discord/Slack): no/no/no
+    result = CliRunner().invoke(main, ["init", "-c", str(cfg)], input="1\n\nn\nn\nn\nn\n")
     assert result.exit_code == 0, result.output
     assert cfg.exists()
 
@@ -92,3 +93,22 @@ def test_cli_init_writes_meridian_config(tmp_path, monkeypatch):
     assert loaded.model.provider == "meridian"
     assert loaded.model.model_id == "claude-opus-4-8"
     assert loaded.memory.enabled is False
+
+
+def test_cli_init_enables_telegram_channel(tmp_path, monkeypatch):
+    import aethon.setup_wizard as wiz
+
+    monkeypatch.setattr(wiz, "meridian_status", lambda: (True, "running (test)"))
+    monkeypatch.setattr(wiz, "check_model_availability", lambda mc: (True, "OK (test)"))
+
+    cfg = tmp_path / "config.yaml"
+    # provider 1, default model, memory no, Telegram YES + token, Discord no, Slack no
+    result = CliRunner().invoke(
+        main, ["init", "-c", str(cfg)], input="1\n\nn\ny\nMYTOKEN\nn\nn\n"
+    )
+    assert result.exit_code == 0, result.output
+
+    loaded = AethonConfig.load(str(cfg))
+    assert loaded.channels.telegram.enabled is True
+    assert loaded.channels.telegram.token == "MYTOKEN"
+    assert loaded.channels.discord.enabled is False

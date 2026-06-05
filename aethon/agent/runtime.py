@@ -5,6 +5,7 @@ Creates and manages Strands Agent instances per session.
 
 import asyncio
 import logging
+import os
 from collections import OrderedDict
 from pathlib import Path
 
@@ -28,6 +29,11 @@ class AethonRuntime:
 
     def __init__(self, config: AethonConfig):
         self.config = config
+        # Bypass the interactive per-tool consent prompt from strands-tools by default
+        # (AETHON runs headless and has its own guardrails). Must be set before any tool
+        # runs. An explicit env var still wins if the user set one.
+        if getattr(config.security, "bypass_tool_consent", True):
+            os.environ.setdefault("BYPASS_TOOL_CONSENT", "true")
         self.model = create_model(config.model)
         self.prompt_composer = SystemPromptComposer(config.paths.workspace)
         self._session_cache_size = config.performance.session_cache_size
@@ -322,6 +328,9 @@ class AethonRuntime:
             hooks=self._get_hooks(),
             agent_id="main",
             name="AETHON",
+            # Don't let Strands print to stdout — each channel renders the reply itself
+            # (otherwise the CLI shows every answer twice).
+            callback_handler=None,
         )
 
         return self.agents[session_id]
@@ -338,6 +347,7 @@ class AethonRuntime:
                 model=self.model,
                 system_prompt="Just say 'Hi!'.",
                 tools=[],
+                callback_handler=None,
             )
             agent("Hi")
             logger.info("Model warm-up complete")

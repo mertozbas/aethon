@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- The CLI no longer prints each reply twice — agents run with `callback_handler=None`,
+  so only the channel renders the response (the model's text still comes from the result).
+- Tool consent prompts are now bypassed by default (`security.bypass_tool_consent: true`):
+  AETHON runs headless (gateway/bots) where an interactive per-tool confirmation would
+  hang, and it has its own guardrails (blocked commands + the optional approval hook).
+  Set it to `false` to restore strands-tools' per-tool prompts.
+
+### Added
+- `aethon init` now also configures messaging bots (Telegram/Discord/Slack tokens) and,
+  when using Ollama embeddings, offers to install Ollama (via Homebrew) and pull the
+  embedding model so memory works out of the box.
+
 ## [0.1.1] - 2026-06-05
 
 ### Fixed

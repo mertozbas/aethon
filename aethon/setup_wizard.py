@@ -94,6 +94,63 @@ def build_memory_config(provider: str, enable: bool, api_key: str = "") -> dict:
     return {"enabled": True, "embedding_provider": "ollama", "embedding_model": "nomic-embed-text"}
 
 
+def _wizard_channels() -> dict:
+    """Optionally enable messaging bots and collect their tokens."""
+    channels: dict = {}
+    console.print("\n[bold]Messaging bots[/] (optional)")
+    if click.confirm("  Enable Telegram?", default=False):
+        token = click.prompt("    Telegram bot token (from @BotFather)", hide_input=True, default="").strip()
+        channels["telegram"] = {"enabled": True, "token": token}
+    if click.confirm("  Enable Discord?", default=False):
+        token = click.prompt("    Discord bot token", hide_input=True, default="").strip()
+        channels["discord"] = {"enabled": True, "token": token}
+    if click.confirm("  Enable Slack?", default=False):
+        bot_token = click.prompt("    Slack bot token (xoxb-...)", hide_input=True, default="").strip()
+        app_token = click.prompt("    Slack app token (xapp-...)", hide_input=True, default="").strip()
+        channels["slack"] = {"enabled": True, "bot_token": bot_token, "app_token": app_token}
+    return channels
+
+
+def _ensure_embedding_model(memory_cfg: dict) -> None:
+    """If using Ollama embeddings, make sure the model is available — offer to install
+    Ollama and/or pull the model. Optional and non-fatal."""
+    import shutil
+    import subprocess
+
+    if not memory_cfg.get("enabled") or memory_cfg.get("embedding_provider") != "ollama":
+        return
+    model = memory_cfg.get("embedding_model", "nomic-embed-text")
+
+    if shutil.which("ollama") is None:
+        console.print(f"\n[yellow]Memory needs Ollama for embeddings, but it isn't installed.[/]")
+        if shutil.which("brew") and click.confirm("  Install Ollama now with Homebrew?", default=False):
+            try:
+                subprocess.run(["brew", "install", "ollama"], check=True)
+            except Exception as e:
+                console.print(f"  [yellow]Install failed ({e}).[/]")
+        else:
+            console.print("  Install it from [bold]https://ollama.com/download[/], then re-run [bold]aethon init[/].")
+            return
+        if shutil.which("ollama") is None:
+            return
+
+    # Ollama is present — check the embedding model is pulled.
+    try:
+        listed = subprocess.run(["ollama", "list"], capture_output=True, text=True, timeout=10).stdout
+    except Exception:
+        listed = ""
+    if model.split(":")[0] in listed:
+        console.print(f"[green]Embedding model '{model}' is ready.[/]")
+        return
+    if click.confirm(f"  Pull the embedding model '{model}' now (~270 MB)?", default=True):
+        console.print(f"[dim]Running: ollama pull {model}[/]")
+        try:
+            subprocess.run(["ollama", "pull", model], check=True)
+            console.print(f"[green]✓ Pulled {model}[/]")
+        except Exception as e:
+            console.print(f"[yellow]Pull failed ({e}). Run it yourself: ollama pull {model}[/]")
+
+
 def run_wizard(config_path: str = "~/.aethon/config.yaml", *, force: bool = False) -> Optional[Path]:
     """Run the interactive setup. Returns the written path, or None if aborted."""
     path = Path(config_path).expanduser()
@@ -143,10 +200,18 @@ def run_wizard(config_path: str = "~/.aethon/config.yaml", *, force: bool = Fals
         "Enable long-term memory? (needs Ollama or an OpenAI key for embeddings)",
         default=(provider in ("ollama", "openai")),
     )
+    memory_cfg = build_memory_config(provider, enable_memory, api_key)
+    _ensure_embedding_model(memory_cfg)
 
-    data: dict = {"model": model, "memory": build_memory_config(provider, enable_memory, api_key)}
+    channels_cfg = _wizard_channels()
+
+    data: dict = {"model": model, "memory": memory_cfg}
+    if channels_cfg:
+        data["channels"] = channels_cfg
     written = AethonConfig.write(data, config_path)
 
     console.print(f"\n[green]✓ Wrote config to {written}[/]")
+    if channels_cfg:
+        console.print(f"  Enabled channels: {', '.join(channels_cfg)} + CLI/WebChat")
     console.print("Start AETHON with: [bold]aethon start[/]\n")
     return written

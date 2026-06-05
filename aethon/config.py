@@ -74,6 +74,11 @@ class ChannelsConfig(BaseModel):
 
 
 class SecurityConfig(BaseModel):
+    # Run tools without the interactive consent prompt that strands-tools shows for
+    # shell/file_write/etc. AETHON runs headless (gateway/bots) where such a prompt
+    # would hang, and it has its own guardrails (blocked_commands + the optional
+    # approval hook), so this defaults to True. Set False to restore per-tool prompts.
+    bypass_tool_consent: bool = True
     # When True, file tools are confined to ~/.aethon/workspace. Default False so the
     # assistant can work on your projects anywhere under $HOME (sensitive system and
     # credential paths are always blocked regardless of this flag).
