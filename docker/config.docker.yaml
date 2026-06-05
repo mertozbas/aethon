@@ -1,0 +1,40 @@
+# AETHON — container defaults (headless: web UI + dashboard + webhook + bots; no interactive CLI).
+#
+# This file seeds /home/aethon/.aethon/config.yaml the first time the container runs
+# against an empty data volume. To use your own settings, edit it inside the mounted
+# volume or bind-mount a config over /home/aethon/.aethon/config.yaml.
+#
+# Model backend:
+#   - The default below talks to a Meridian proxy running on your HOST machine
+#     (start `meridian` on the host; the container reaches it via host.docker.internal).
+#   - Or switch to an API provider that needs no host proxy (see the commented block).
+
+model:
+  provider: meridian
+  model_id: claude-opus-4-8
+  host: http://host.docker.internal:3456   # Meridian proxy on the host
+  # --- API-provider alternative (no host proxy needed) ---
+  # provider: anthropic
+  # model_id: claude-opus-4-8
+  # api_key: ${ANTHROPIC_API_KEY}
+
+meridian:
+  auto_start: false        # the slim image ships no Node runtime; run Meridian on the host
+
+channels:
+  cli:
+    enabled: false         # no interactive TTY inside a container
+  webchat:
+    enabled: true
+    host: 0.0.0.0          # bind all interfaces so Docker port mapping reaches the server
+    port: 18790
+
+# Memory needs an embedding backend (Ollama). Disabled by default in the image;
+# enable it and run an Ollama service (see docker-compose `local` profile) to use it.
+memory:
+  enabled: false
+
+# Empty token = no auth. Set AETHON_DASHBOARD_TOKEN before exposing beyond localhost.
+dashboard:
+  enabled: true
+  auth_token: ${AETHON_DASHBOARD_TOKEN}

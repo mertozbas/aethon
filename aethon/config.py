@@ -34,6 +34,10 @@ class ModelConfig(BaseModel):
 class WebChatChannelConfig(BaseModel):
     enabled: bool = True
     port: int = 18790
+    # Bind address. Defaults to loopback (only reachable from this machine).
+    # Set to "0.0.0.0" to expose on the network or inside a container (e.g. Docker
+    # port mapping). When binding beyond loopback, also set dashboard.auth_token.
+    host: str = "127.0.0.1"
 
 
 class CLIChannelConfig(BaseModel):

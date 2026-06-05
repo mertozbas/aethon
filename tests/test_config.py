@@ -22,6 +22,7 @@ def test_config_defaults():
     assert config.model.top_k == 40
     assert config.model.max_tokens == 8192
     assert config.channels.webchat.port == 18790
+    assert config.channels.webchat.host == "127.0.0.1"  # loopback by default (don't expose unintentionally)
     assert config.channels.cli.enabled is True
     assert config.channels.webchat.enabled is True
     assert config.channels.telegram.enabled is False

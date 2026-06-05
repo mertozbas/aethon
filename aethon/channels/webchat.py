@@ -113,6 +113,7 @@ class WebChatAdapter(ChannelAdapter):
         super().__init__(config, router)
         self.app = FastAPI(title="AETHON")
         self.port = config.channels.webchat.port
+        self.host = config.channels.webchat.host
         self._server = None
         self._setup_routes()
 
@@ -148,7 +149,7 @@ class WebChatAdapter(ChannelAdapter):
 
         config = uvicorn.Config(
             self.app,
-            host="127.0.0.1",
+            host=self.host,
             port=self.port,
             log_level="warning",
         )

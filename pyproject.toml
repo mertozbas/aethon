@@ -13,7 +13,7 @@ authors = [{ name = "Mert Özbaş", email = "mertozbas@gmail.com" }]
 requires-python = ">=3.10"
 
 dependencies = [
-    # Cekirdek
+    # Core
     "strands-agents>=1.0.0",
     "strands-agents-tools>=0.1.0",
     "strands-meridian>=0.1.0",  # Claude via Claude Max quota (default provider)

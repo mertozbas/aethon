@@ -186,14 +186,15 @@ cd aethon
 pip install -e ".[all]"
 ```
 
-For specific features only:
+The core install already includes CLI + WebChat + dashboard, the Telegram/Discord/Slack
+bots, vector memory, SOPs, and the scheduler. Opt-in extras:
 
 ```bash
-pip install -e "."                  # Core only (CLI + WebChat)
-pip install -e ".[channels]"        # + Telegram, Discord, Slack
-pip install -e ".[memory]"          # + Vector memory
-pip install -e ".[scheduler]"       # + Scheduler
+pip install -e "."                  # Core (everything above)
+pip install -e ".[ollama]"          # + fully-local inference via Ollama
 pip install -e ".[mcp]"             # + MCP server integration
+pip install -e ".[whatsapp]"        # + WhatsApp (experimental)
+pip install -e ".[all]"             # all extras
 ```
 
 ### 4. Configuration (Optional)
@@ -236,6 +237,32 @@ memory:
   embedding_model: text-embedding-3-small
   embedding_api_key: ${OPENAI_API_KEY}
 ```
+
+### 5. Run with Docker (alternative to pip)
+
+AETHON also ships as a container — headless web UI + dashboard + webhook + messaging bots:
+
+```bash
+# Start Meridian on the host first (default backend), then:
+docker compose up --build
+# open http://127.0.0.1:18790
+```
+
+The image runs as a non-root user, persists state in the `aethon-data` volume
+(`/home/aethon/.aethon`), and binds WebChat to `0.0.0.0` so the published port works.
+By default it reaches a **Meridian proxy on the host** via `host.docker.internal:3456`.
+To avoid a host proxy, switch the model section in the volume's `config.yaml` to an API
+provider (`provider: anthropic`, `api_key: ${ANTHROPIC_API_KEY}`) — see
+[`docker/config.docker.yaml`](docker/config.docker.yaml) for the container defaults.
+
+Fully-local inference instead (runs an Ollama service in Compose):
+
+```bash
+docker compose --profile local up --build   # build with EXTRAS=ollama for the Ollama client
+```
+
+> Exposing WebChat beyond localhost (Docker `-p`, or `host: 0.0.0.0`)? Set
+> `dashboard.auth_token` (or the `AETHON_DASHBOARD_TOKEN` env var) to require a token.
 
 ---
 

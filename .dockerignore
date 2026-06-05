@@ -1,0 +1,33 @@
+# VCS / CI
+.git
+.github
+.gitignore
+
+# Python caches / build artifacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Virtualenvs
+.venv/
+venv/
+env/
+
+# Local state / scratch — never goes in the image
+repl_state/
+workspace/
+
+# Not needed at runtime (README.md and LICENSE are COPYed explicitly)
+tests/
+docs/
+
+# Editor / OS cruft
+.DS_Store
+.vscode/
+.idea/
