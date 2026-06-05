@@ -12,6 +12,25 @@ from aethon.config import (
 )
 
 
+def test_version_matches_pyproject():
+    """aethon.__version__ stays in sync with the pyproject version.
+
+    The release workflow publishes the pyproject version; `aethon --version` reports
+    __version__. They must match so a release tag matches what users see.
+    """
+    import re
+    from pathlib import Path
+
+    from aethon import __version__
+
+    pyproject = (Path(__file__).resolve().parent.parent / "pyproject.toml").read_text()
+    match = re.search(r'(?m)^version = "([^"]+)"', pyproject)
+    assert match, "could not find version in pyproject.toml"
+    assert match.group(1) == __version__, (
+        f"pyproject version {match.group(1)!r} != aethon.__version__ {__version__!r}"
+    )
+
+
 def test_config_defaults():
     """Default config loads with correct values."""
     config = AethonConfig()

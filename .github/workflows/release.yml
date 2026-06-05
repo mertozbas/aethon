@@ -1,83 +1,84 @@
 name: Release
 
+# Automatic publish-on-version-bump: when the version in pyproject.toml changes on
+# main and hasn't been released yet, run the tests, publish to PyPI, and create the
+# git tag + GitHub Release. Bumping the version is the only action needed to release.
+
 on:
   push:
-    tags:
-      - 'v*.*.*'
+    branches: [main]
 
 permissions:
-  contents: write   # create the GitHub Release
+  contents: write   # create the tag + GitHub Release
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-main
   cancel-in-progress: false
 
 jobs:
   release:
-    name: Build & publish to PyPI
+    name: Auto-publish on version bump
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # need existing tags to detect "already released"
 
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: Extract version from tag
+      - name: Read package version
         id: ver
         run: |
-          VERSION="${GITHUB_REF#refs/tags/v}"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "Releasing version: $VERSION"
+          V=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "Package version: $V"
 
-      - name: Stamp version from tag
+      - name: Release only if this version is new
+        id: gate
         run: |
-          python - "${{ steps.ver.outputs.version }}" <<'PY'
-          import re, sys, pathlib
-          version = sys.argv[1]
+          if git rev-parse "refs/tags/v${{ steps.ver.outputs.version }}" >/dev/null 2>&1; then
+            echo "do_release=false" >> "$GITHUB_OUTPUT"
+            echo "v${{ steps.ver.outputs.version }} already tagged — nothing to release."
+          else
+            echo "do_release=true" >> "$GITHUB_OUTPUT"
+            echo "Releasing v${{ steps.ver.outputs.version }}"
+          fi
 
-          pp = pathlib.Path("pyproject.toml")
-          text = pp.read_text()
-          pat = r'(?m)^version = "[^"]*"'
-          if not re.search(pat, text):
-              raise SystemExit("Could not find `version = \"...\"` in pyproject.toml")
-          pp.write_text(re.sub(pat, f'version = "{version}"', text, count=1))
-
-          init = pathlib.Path("aethon/__init__.py")
-          itext = init.read_text()
-          ipat = r'__version__ = "[^"]*"'
-          if not re.search(ipat, itext):
-              raise SystemExit("Could not find `__version__` in aethon/__init__.py")
-          init.write_text(re.sub(ipat, f'__version__ = "{version}"', itext))
-
-          print(f"Stamped version {version} into pyproject.toml and aethon/__init__.py")
-          PY
+      - name: Install + test (release gate)
+        if: steps.gate.outputs.do_release == 'true'
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+          pytest -q -m "not e2e"
 
       - name: Build
+        if: steps.gate.outputs.do_release == 'true'
         run: |
-          python -m pip install --upgrade pip build twine
+          pip install build twine
           python -m build
           twine check dist/*
 
       - name: Publish to PyPI
+        if: steps.gate.outputs.do_release == 'true'
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
         run: twine upload dist/* --skip-existing
 
-      - name: Create GitHub Release
+      - name: Tag + GitHub Release
+        if: steps.gate.outputs.do_release == 'true'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref }}
+          tag_name: v${{ steps.ver.outputs.version }}
           name: aethon v${{ steps.ver.outputs.version }}
           generate_release_notes: true
           body: |
             AETHON v${{ steps.ver.outputs.version }} — a self-hosted, provider-agnostic personal AI assistant.
 
-            **Install:**
             ```bash
             pip install aethon-ai
             ```
             The PyPI distribution is `aethon-ai`; the command and import are `aethon`.
-
-            See the [README](https://github.com/mertozbas/aethon/blob/main/README.md) and [CHANGELOG](https://github.com/mertozbas/aethon/blob/main/CHANGELOG.md).
+            See the [CHANGELOG](https://github.com/mertozbas/aethon/blob/main/CHANGELOG.md).
