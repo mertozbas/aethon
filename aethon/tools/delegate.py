@@ -17,19 +17,19 @@ def set_specialist_factory(factory):
 
 def _extract_text(result) -> str:
     """Extract text from agent result."""
-    return str(result).strip() or "Sonuc alinamadi."
+    return str(result).strip() or "No result returned."
 
 
 @tool
 def ask_coder(task: str) -> str:
-    """Kodlama gorevini kodcu uzmanina devret.
-    Kodcu; kod yazma, test etme, debug, refactoring yapar.
+    """Delegate a coding task to the coder specialist.
+    The coder writes code, runs tests, debugs, and refactors.
 
     Args:
-        task: Kodlama gorevi aciklamasi
+        task: Description of the coding task
     """
     if not _specialist_factory:
-        return "Hata: Specialist factory baslatilmamis."
+        return "Error: Specialist factory not started."
     coder = _specialist_factory.get("coder")
     result = coder(task)
     return _extract_text(result)
@@ -37,14 +37,14 @@ def ask_coder(task: str) -> str:
 
 @tool
 def ask_researcher(query: str) -> str:
-    """Arastirma gorevini arastirmaci uzmanina devret.
-    Arastirmaci; web arastirmasi, dokumantasyon okuma, bilgi toplama yapar.
+    """Delegate a research task to the researcher specialist.
+    The researcher performs web research, reads documentation, and gathers information.
 
     Args:
-        query: Arastirilacak konu veya soru
+        query: Topic or question to research
     """
     if not _specialist_factory:
-        return "Hata: Specialist factory baslatilmamis."
+        return "Error: Specialist factory not started."
     researcher = _specialist_factory.get("researcher")
     result = researcher(query)
     return _extract_text(result)
@@ -52,14 +52,14 @@ def ask_researcher(query: str) -> str:
 
 @tool
 def ask_analyst(data_task: str) -> str:
-    """Veri analizi gorevini analist uzmanina devret.
-    Analist; veri analizi, hesaplama, grafik olusturma, rapor yazma yapar.
+    """Delegate a data analysis task to the analyst specialist.
+    The analyst performs data analysis, computation, chart generation, and report writing.
 
     Args:
-        data_task: Analiz gorevi aciklamasi
+        data_task: Description of the analysis task
     """
     if not _specialist_factory:
-        return "Hata: Specialist factory baslatilmamis."
+        return "Error: Specialist factory not started."
     analyst = _specialist_factory.get("analyst")
     result = analyst(data_task)
     return _extract_text(result)
@@ -67,14 +67,14 @@ def ask_analyst(data_task: str) -> str:
 
 @tool
 def ask_planner(planning_task: str) -> str:
-    """Planlama gorevini planlayici uzmanina devret.
-    Planlayici; karmasik gorevleri adim adim boler, onceliklendirir.
+    """Delegate a planning task to the planner specialist.
+    The planner breaks complex tasks into step-by-step plans and prioritizes them.
 
     Args:
-        planning_task: Planlanacak gorev aciklamasi
+        planning_task: Description of the task to plan
     """
     if not _specialist_factory:
-        return "Hata: Specialist factory baslatilmamis."
+        return "Error: Specialist factory not started."
     planner = _specialist_factory.get("planner")
     result = planner(planning_task)
     return _extract_text(result)

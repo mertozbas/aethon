@@ -20,7 +20,7 @@ class SlackAdapter(ChannelAdapter):
         self.app_token = config.channels.slack.app_token
         if not self.bot_token or not self.app_token:
             raise ValueError(
-                "Slack bot_token ve app_token gerekli "
+                "Slack bot_token and app_token required "
                 "(config.channels.slack.bot_token, config.channels.slack.app_token)"
             )
         self.app = None
@@ -60,13 +60,13 @@ class SlackAdapter(ChannelAdapter):
             await handle_message(event, say)
 
         self.handler = AsyncSocketModeHandler(self.app, self.app_token)
-        logger.info("Slack Socket Mode baslatiliyor...")
+        logger.info("Starting Slack Socket Mode...")
         await self.handler.start_async()
 
     async def stop(self) -> None:
         if self.handler:
             await self.handler.close_async()
-        logger.info("Slack kapatildi.")
+        logger.info("Slack shut down.")
 
     async def send(self, message: OutboundMessage) -> None:
         if not self.app:

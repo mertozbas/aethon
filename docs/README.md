@@ -47,7 +47,6 @@
 | Document | Description |
 |----------|-------------|
 | [strands-agents-reference.md](references/strands-agents-reference.md) | Strands Agents SDK API reference |
-| [qwen3-coder-next-reference.md](references/qwen3-coder-next-reference.md) | Qwen3-Coder-Next model specifications |
 
 ---
 
@@ -71,8 +70,8 @@
 | Phase 2 — Channels + Memory | ✅ Completed | 120 tests | 42 items |
 | Phase 3 — Multi-Agent + SOP | ✅ Completed | 178 tests | 38 items |
 | Phase 4 — Polish + Advanced | ✅ Completed | 294 tests | 48 items |
-| Phase 5 — Dashboard & UX | 📋 Planned | - | 76 items |
-| Phase 6 — Infrastructure | 📋 Planned | - | 54 items |
-| Phase 7 — AI Capabilities | 📋 Planned | - | 53 items |
+| Phase 5 — Dashboard & UX | ✅ Completed | 346 tests | 76 items |
+| Phase 6 — Infrastructure | 🚧 In progress | - | 54 items |
+| Phase 7 — AI Capabilities | ⏭️ Deferred to v2 | - | 53 items |
 
-**Completed:** 294 tests, all passing. **Planned:** 183 checklist items across 3 phases.
+**Completed:** 346 tests, all passing.

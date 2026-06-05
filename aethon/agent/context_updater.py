@@ -39,7 +39,7 @@ class ContextUpdater:
             content = content.rstrip() + f"\n\n{replacement}\n"
 
         self.context_file.write_text(content, encoding="utf-8")
-        return f"CONTEXT.md guncellendi: {key}"
+        return f"CONTEXT.md updated: {key}"
 
     def get(self, key: str) -> str | None:
         """Read a context section value.

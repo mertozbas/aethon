@@ -12,7 +12,7 @@ def test_compose_empty_workspace(tmp_path):
     composer = SystemPromptComposer(str(workspace))
     prompt = composer.compose()
     # Should at least have timestamp
-    assert "Zaman" in prompt
+    assert "Time" in prompt
 
 
 def test_compose_with_soul(workspace_dir):
@@ -20,7 +20,7 @@ def test_compose_with_soul(workspace_dir):
     composer = SystemPromptComposer(str(workspace_dir))
     prompt = composer.compose()
     assert "Test kisilik" in prompt
-    assert "Kisilik" in prompt
+    assert "Personality" in prompt
 
 
 def test_compose_with_tools(workspace_dir):
@@ -28,7 +28,7 @@ def test_compose_with_tools(workspace_dir):
     composer = SystemPromptComposer(str(workspace_dir))
     prompt = composer.compose()
     assert "Test tercihler" in prompt
-    assert "Kullanici Tercihleri" in prompt
+    assert "User Preferences" in prompt
 
 
 def test_compose_with_context(workspace_dir):
@@ -43,21 +43,21 @@ def test_compose_with_session_id(workspace_dir):
     composer = SystemPromptComposer(str(workspace_dir))
     prompt = composer.compose(session_id="cli:local")
     assert "cli:local" in prompt
-    assert "Aktif Session" in prompt
+    assert "Active Session" in prompt
 
 
 def test_compose_without_session_id(workspace_dir):
     """No session section when session_id is empty."""
     composer = SystemPromptComposer(str(workspace_dir))
     prompt = composer.compose(session_id="")
-    assert "Aktif Session" not in prompt
+    assert "Active Session" not in prompt
 
 
 def test_compose_with_sops(workspace_with_sops):
     """SOP list included in prompt."""
     composer = SystemPromptComposer(str(workspace_with_sops))
     prompt = composer.compose()
-    assert "Kullanilabilir SOP Komutlari" in prompt
+    assert "Available SOP Commands" in prompt
     assert "/morning-brief" in prompt
     assert "/weekly-report" in prompt
 

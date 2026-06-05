@@ -15,7 +15,7 @@ def test_update_creates_new_section(tmp_path):
     """Update creates new section in CONTEXT.md."""
     updater = ContextUpdater(str(tmp_path))
     result = updater.update("Proje", "AETHON AI Asistan")
-    assert "guncellendi" in result
+    assert "updated" in result
     content = (tmp_path / "CONTEXT.md").read_text()
     assert "### Proje" in content
     assert "AETHON AI Asistan" in content

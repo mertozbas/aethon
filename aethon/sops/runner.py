@@ -31,9 +31,9 @@ class SOPRunner:
                 self._sops["code-assist"] = code_assist
                 self._sops["pdd"] = pdd
                 self._sops["codebase-summary"] = codebase_summary
-                logger.info(f"Dahili SOP'lar yuklendi: {list(self._sops.keys())}")
+                logger.info(f"Built-in SOPs loaded: {list(self._sops.keys())}")
             except ImportError:
-                logger.warning("strands-agents-sops yuklu degil — dahili SOP'lar atlanacak")
+                logger.warning("strands-agents-sops is not installed — built-in SOPs will be skipped")
 
         # 2. Custom SOPs (workspace/sops/*.sop.md)
         for sop_dir in self.sop_dirs:
@@ -42,7 +42,7 @@ class SOPRunner:
             for sop_file in sop_dir.glob("*.sop.md"):
                 name = sop_file.stem.removesuffix(".sop")
                 self._sops[name] = sop_file.read_text(encoding="utf-8")
-                logger.info(f"Ozel SOP yuklendi: {name}")
+                logger.info(f"Custom SOP loaded: {name}")
 
     def list_sops(self) -> list[dict]:
         """List available SOPs with name and description."""
@@ -63,7 +63,7 @@ class SOPRunner:
         """Execute a SOP on the given agent."""
         sop_content = self.get_sop(name)
         if not sop_content:
-            return f"SOP bulunamadi: {name}"
+            return f"SOP not found: {name}"
 
         prompt = (
             f'<agent-sop name="{name}">\n'

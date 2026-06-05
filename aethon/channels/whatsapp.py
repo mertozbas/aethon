@@ -25,14 +25,14 @@ class WhatsAppAdapter(ChannelAdapter):
             from neonize.utils import log as neonize_log
         except ImportError:
             raise ImportError(
-                "WhatsApp icin neonize gerekli: pip install neonize"
+                "WhatsApp requires neonize: pip install neonize"
             )
 
         self.client = NewClient("aethon_session")
 
         @self.client.event(ConnectedEv)
         def on_connected(_client, _event):
-            logger.info("WhatsApp: baglandi.")
+            logger.info("WhatsApp: connected.")
 
         @self.client.event(MessageEv)
         def on_message(_client, event):
@@ -64,7 +64,7 @@ class WhatsAppAdapter(ChannelAdapter):
             else:
                 loop.run_until_complete(self.on_message(inbound))
 
-        logger.info("WhatsApp: QR kod eslestirmesi bekleniyor...")
+        logger.info("WhatsApp: waiting for QR code pairing...")
         self.client.connect()
 
     async def stop(self) -> None:
@@ -73,7 +73,7 @@ class WhatsAppAdapter(ChannelAdapter):
                 self.client.disconnect()
             except Exception:
                 pass
-        logger.info("WhatsApp kapatildi.")
+        logger.info("WhatsApp shut down.")
 
     async def send(self, message: OutboundMessage) -> None:
         if not self.client:
@@ -86,4 +86,4 @@ class WhatsAppAdapter(ChannelAdapter):
             jid = build_jid(chat)
             self.client.send_message(jid, message.text)
         except Exception as e:
-            logger.error(f"WhatsApp mesaj gonderme hatasi: {e}")
+            logger.error(f"WhatsApp message send error: {e}")

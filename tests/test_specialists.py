@@ -25,30 +25,30 @@ def test_factory_creation(factory):
 def test_get_coder(factory):
     """Can create coder specialist."""
     agent = factory.get("coder")
-    assert agent.name == "Kodcu"
+    assert agent.name == "Coder"
 
 
 def test_get_researcher(factory):
     """Can create researcher specialist."""
     agent = factory.get("researcher")
-    assert agent.name == "Arastirmaci"
+    assert agent.name == "Researcher"
 
 
 def test_get_analyst(factory):
     """Can create analyst specialist."""
     agent = factory.get("analyst")
-    assert agent.name == "Analist"
+    assert agent.name == "Analyst"
 
 
 def test_get_planner(factory):
     """Can create planner specialist."""
     agent = factory.get("planner")
-    assert agent.name == "Planlayici"
+    assert agent.name == "Planner"
 
 
 def test_unknown_specialist_raises(factory):
     """Unknown specialist name raises ValueError."""
-    with pytest.raises(ValueError, match="Bilinmeyen uzman"):
+    with pytest.raises(ValueError, match="Unknown specialist"):
         factory.get("nonexistent")
 
 

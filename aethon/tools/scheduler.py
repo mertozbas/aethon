@@ -61,7 +61,7 @@ class AethonScheduler:
             "sop_name": sop_name,
             "channel": channel or self.default_channel,
         }
-        logger.info(f"Gorev zamanlandi: {job_id} -> {sop_name} ({cron})")
+        logger.info(f"Task scheduled: {job_id} -> {sop_name} ({cron})")
         return job_id
 
     async def _run_sop(self, sop_name: str, channel: str) -> None:
@@ -79,13 +79,13 @@ class AethonScheduler:
                     msg = OutboundMessage(
                         channel=channel,
                         recipient_id="default",
-                        text=f"[Zamanlanmis: {sop_name}]\n\n{result}",
+                        text=f"[Scheduled: {sop_name}]\n\n{result}",
                     )
                     await gw.adapters[channel].send(msg)
 
-            logger.info(f"Zamanlanmis gorev tamamlandi: {sop_name}")
+            logger.info(f"Scheduled task completed: {sop_name}")
         except Exception as e:
-            logger.error(f"Zamanlanmis gorev hatasi ({sop_name}): {e}")
+            logger.error(f"Scheduled task error ({sop_name}): {e}")
 
     def remove_job(self, job_id: str) -> bool:
         """Remove a scheduled job.
@@ -117,12 +117,12 @@ class AethonScheduler:
     def start(self):
         """Start the scheduler."""
         self.scheduler.start()
-        logger.info("Zamanlayici baslatildi")
+        logger.info("Scheduler started")
 
     def stop(self):
         """Stop the scheduler."""
         self.scheduler.shutdown(wait=False)
-        logger.info("Zamanlayici durduruldu")
+        logger.info("Scheduler stopped")
 
 
 # --- Agent Tools ---
@@ -131,51 +131,51 @@ class AethonScheduler:
 @tool
 def schedule_task(cron_expression: str, sop_name: str, job_id: str = "",
                   channel: str = "") -> str:
-    """Zamanlanmis gorev olustur veya guncelle. Belirtilen cron zamaninda SOP calistirir.
+    """Create or update a scheduled task. Runs the SOP at the specified cron time.
 
     Args:
-        cron_expression: Cron ifadesi (orn: "0 9 * * 1-5" hafta ici sabah 9)
-        sop_name: Calistirilacak SOP adi
-        job_id: Gorev ID (bos ise otomatik olusturulur)
-        channel: Sonucun gonderilecegi kanal (bos ise varsayilan)
+        cron_expression: Cron expression (e.g. "0 9 * * 1-5" for weekdays at 9 AM)
+        sop_name: Name of the SOP to run
+        job_id: Task ID (auto-generated if empty)
+        channel: Channel to send the result to (default if empty)
     """
     if not _scheduler_instance:
-        return "Hata: Zamanlayici baslatilmamis."
+        return "Error: Scheduler not started."
     if not job_id:
         job_id = f"task-{uuid.uuid4().hex[:8]}"
     try:
         _scheduler_instance.add_job(job_id, cron_expression, sop_name, channel)
-        return f"Gorev zamanlandi: {job_id} -> {sop_name} ({cron_expression})"
+        return f"Task scheduled: {job_id} -> {sop_name} ({cron_expression})"
     except Exception as e:
-        return f"Hata: Gorev zamanlanamadi ({e})"
+        return f"Error: Could not schedule task ({e})"
 
 
 @tool
 def list_scheduled_jobs() -> str:
-    """Zamanlanmis tum gorevleri listele."""
+    """List all scheduled tasks."""
     if not _scheduler_instance:
-        return "Hata: Zamanlayici baslatilmamis."
+        return "Error: Scheduler not started."
     jobs = _scheduler_instance.list_jobs()
     if not jobs:
-        return "Zamanlanmis gorev yok."
+        return "No scheduled tasks."
     lines = []
     for j in jobs:
         lines.append(
             f"- {j['job_id']}: {j['sop_name']} ({j['cron']}) -> {j['channel']} "
-            f"[sonraki: {j['next_run']}]"
+            f"[next: {j['next_run']}]"
         )
     return "\n".join(lines)
 
 
 @tool
 def remove_scheduled_job(job_id: str) -> str:
-    """Zamanlanmis gorevi kaldir.
+    """Remove a scheduled task.
 
     Args:
-        job_id: Kaldirilacak gorev ID'si
+        job_id: ID of the task to remove
     """
     if not _scheduler_instance:
-        return "Hata: Zamanlayici baslatilmamis."
+        return "Error: Scheduler not started."
     if _scheduler_instance.remove_job(job_id):
-        return f"Gorev kaldirildi: {job_id}"
-    return f"Gorev bulunamadi: {job_id}"
+        return f"Task removed: {job_id}"
+    return f"Task not found: {job_id}"

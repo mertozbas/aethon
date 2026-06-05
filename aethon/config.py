@@ -167,7 +167,9 @@ class MCPConfig(BaseModel):
 class PerformanceConfig(BaseModel):
     """Performance optimization configuration."""
 
-    model_warmup: bool = True
+    # Off by default: warm-up sends a real model request on every boot, which would
+    # spend Claude Max quota for no user benefit. Opt in if you want lower first-message latency.
+    model_warmup: bool = False
     session_cache_size: int = 10
     embedding_cache_size: int = 100
 

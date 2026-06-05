@@ -14,7 +14,7 @@ def test_discord_adapter_requires_token():
     )
     from aethon.channels.discord_adapter import DiscordAdapter
 
-    with pytest.raises(ValueError, match="Discord token gerekli"):
+    with pytest.raises(ValueError, match="Discord token required"):
         DiscordAdapter(config, router=None)
 
 

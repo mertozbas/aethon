@@ -198,8 +198,8 @@ class WebChatAdapter(ChannelAdapter):
   <div class="header">AETHON</div>
   <div class="messages" id="msgs"></div>
   <div class="input-area">
-    <input id="inp" placeholder="Mesajini yaz..." autofocus>
-    <button onclick="send()">Gonder</button>
+    <input id="inp" placeholder="Type your message..." autofocus>
+    <button onclick="send()">Send</button>
   </div>
 </div>
 """ + _CHAT_SCRIPT + "</body></html>"

@@ -9,11 +9,13 @@
 ```yaml
 # === Model ===
 model:
-  provider: ollama                    # ollama | openai | anthropic | litellm
-  model_id: qwen3-coder-next         # Ollama model name
-  host: http://localhost:11434        # Ollama server address
-  temperature: 1.0                    # Sampling temperature
-  max_tokens: 16384                   # Max output token count
+  provider: meridian                  # meridian | ollama | openai | anthropic | litellm
+  model_id: claude-opus-4-8           # Claude's most capable model; 1M context with Claude Max
+  host: http://localhost:11434        # Ollama server address (ignored by meridian)
+  temperature: 1.0                    # Sampling temperature (not sent for opus-4-8, which rejects it)
+  max_tokens: 8192                    # Max output token count
+  # provider: ollama                  # fully-local alternative:
+  # model_id: qwen3-coder-next
 
 # === Memory ===
 memory:
@@ -33,7 +35,7 @@ channels:
     enabled: true
   webchat:
     enabled: true
-    port: 8080
+    port: 18790
   telegram:
     enabled: false
     token: "${TELEGRAM_BOT_TOKEN}"    # Environment variable reference
@@ -133,11 +135,11 @@ paths:
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `provider` | str | `ollama` | Model provider: ollama, openai, anthropic, litellm |
-| `model_id` | str | `qwen3-coder-next` | Model name |
-| `host` | str | `http://localhost:11434` | Ollama server address |
-| `temperature` | float | `1.0` | Sampling temperature (0.0-2.0) |
-| `max_tokens` | int | `16384` | Max output token count |
+| `provider` | str | `meridian` | Model provider: meridian, ollama, openai, anthropic, litellm |
+| `model_id` | str | `claude-opus-4-8` | Model name |
+| `host` | str | `http://localhost:11434` | Ollama server address (ignored by meridian) |
+| `temperature` | float | `1.0` | Sampling temperature (0.0-2.0; not sent for opus-4-8) |
+| `max_tokens` | int | `8192` | Max output token count |
 
 ### Memory
 

@@ -174,8 +174,8 @@ ollama serve
 ### 2. Download Models
 
 ```bash
-ollama pull qwen3-coder-next      # Main model (80B MoE)
-ollama pull nomic-embed-text       # Embedding model
+ollama pull qwen3-coder-next      # a local LLM (only for the Ollama path; Claude via Meridian is the default)
+ollama pull nomic-embed-text       # embedding model
 ```
 
 ### 3. Install AETHON
@@ -219,9 +219,13 @@ channels:
     enabled: true
   webchat:
     enabled: true
-    port: 8080
+    port: 18790
 EOF
 ```
+
+To use the OpenAI API instead:
+
+```yaml
 model:
   provider: openai
   model_id: gpt-5-mini-2025-08-07
@@ -231,6 +235,7 @@ memory:
   embedding_provider: openai        # or "ollama"
   embedding_model: text-embedding-3-small
   embedding_api_key: ${OPENAI_API_KEY}
+```
 
 ---
 
@@ -255,13 +260,13 @@ Starting AETHON...
 
   Provider: meridian
   Model: claude-opus-4-8
-  WebChat: http://127.0.0.1:8080
+  WebChat: http://127.0.0.1:18790
   Memory: nomic-embed-text (active)
   Multi-Agent: active
   SOPs: 5 loaded
   Scheduler: active
   Telemetry: active
-  Dashboard: http://127.0.0.1:8080/dashboard
+  Dashboard: http://127.0.0.1:18790/dashboard
   Channels: CLI, WebChat
 
 AETHON>
@@ -278,22 +283,22 @@ AETHON> Schedule a briefing at 9 AM
 
 ### WebChat
 
-Open `http://127.0.0.1:8080/ui` in your browser.
+Open `http://127.0.0.1:18790/ui` in your browser.
 
 ### Dashboard
 
-`http://127.0.0.1:8080/dashboard` — Sessions, memory, telemetry, scheduled tasks.
+`http://127.0.0.1:18790/dashboard` — Sessions, memory, telemetry, scheduled tasks.
 
 ### Webhook
 
 ```bash
 # Trigger SOP
-curl -X POST http://127.0.0.1:8080/webhook/trigger \
+curl -X POST http://127.0.0.1:18790/webhook/trigger \
   -H "Content-Type: application/json" \
   -d '{"sop_name": "morning-brief", "channel": "telegram"}'
 
 # Plain message
-curl -X POST http://127.0.0.1:8080/webhook/trigger \
+curl -X POST http://127.0.0.1:18790/webhook/trigger \
   -H "Content-Type: application/json" \
   -d '{"text": "What is the project status?"}'
 ```
@@ -457,7 +462,7 @@ Detailed documentation is in the `docs/` directory:
 | Layer | Technology |
 |-------|-----------|
 | Agent Framework | [Strands Agents SDK](https://github.com/strands-agents/sdk-python) |
-| LLM | [Qwen3-Coder-Next](https://ollama.com/) via Ollama |
+| LLM | Claude (Opus 4.8) via [Meridian](https://github.com/mertozbas/strands-meridian) on your Claude Max quota — or any [Strands provider](https://github.com/strands-agents/sdk-python) (Ollama, Anthropic API, OpenAI, …) |
 | Embedding | nomic-embed-text via Ollama |
 | Gateway | FastAPI + Uvicorn |
 | CLI | prompt_toolkit + rich + click |

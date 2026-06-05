@@ -57,10 +57,10 @@ class AethonRuntime:
                     embedding_api_key=emb_api_key,
                 )
                 logger.info(
-                    f"VectorMemory: aktif ({emb_provider}/{config.memory.embedding_model})"
+                    f"VectorMemory: active ({emb_provider}/{config.memory.embedding_model})"
                 )
             except Exception as e:
-                logger.warning(f"VectorMemory baslatma hatasi: {e}")
+                logger.warning(f"VectorMemory startup error: {e}")
                 self.memory = None
 
         # SpecialistFactory + delegate tools
@@ -71,9 +71,9 @@ class AethonRuntime:
 
                 self.specialist_factory = SpecialistFactory(self.model)
                 set_specialist_factory(self.specialist_factory)
-                logger.info("Multi-agent: aktif")
+                logger.info("Multi-agent: active")
             except Exception as e:
-                logger.warning(f"Multi-agent baslatma hatasi: {e}")
+                logger.warning(f"Multi-agent startup error: {e}")
                 self.specialist_factory = None
 
         # SOPRunner
@@ -88,10 +88,10 @@ class AethonRuntime:
                     sop_dirs, config.sops.builtin_sops_enabled
                 )
                 logger.info(
-                    f"SOP'lar: {len(self.sop_runner.list_sops())} adet yuklendi"
+                    f"SOPs: {len(self.sop_runner.list_sops())} loaded"
                 )
             except Exception as e:
-                logger.warning(f"SOPRunner baslatma hatasi: {e}")
+                logger.warning(f"SOPRunner startup error: {e}")
                 self.sop_runner = None
 
         # TelemetryHookProvider
@@ -102,9 +102,9 @@ class AethonRuntime:
                 self._telemetry_hook = TelemetryHookProvider(
                     max_history=config.telemetry.max_history,
                 )
-                logger.info("Telemetry: aktif")
+                logger.info("Telemetry: active")
             except Exception as e:
-                logger.warning(f"Telemetry baslatma hatasi: {e}")
+                logger.warning(f"Telemetry startup error: {e}")
 
         # ContextUpdater
         try:
@@ -114,9 +114,9 @@ class AethonRuntime:
                 Path(config.paths.workspace).expanduser() / "CONTEXT.md"
             )
             self._context_updater = ContextUpdater(context_path)
-            logger.info("ContextUpdater: aktif")
+            logger.info("ContextUpdater: active")
         except Exception as e:
-            logger.warning(f"ContextUpdater baslatma hatasi: {e}")
+            logger.warning(f"ContextUpdater startup error: {e}")
 
         # MCP Tool Loader
         if config.mcp.enabled and config.mcp.servers:
@@ -126,10 +126,10 @@ class AethonRuntime:
                 self._mcp_loader = MCPToolLoader(config.mcp.servers)
                 self._mcp_loader.start()
                 logger.info(
-                    f"MCP: {len(self._mcp_loader.get_tools())} tool yuklendi"
+                    f"MCP: {len(self._mcp_loader.get_tools())} tools loaded"
                 )
             except Exception as e:
-                logger.warning(f"MCP baslatma hatasi: {e}")
+                logger.warning(f"MCP startup error: {e}")
                 self._mcp_loader = None
 
     def _sanitize_session(self, session_id: str) -> None:
@@ -184,7 +184,7 @@ class AethonRuntime:
                         if len(result_summary) > 500:
                             result_summary = result_summary[:500] + "..."
                         status = tr.get("status", "")
-                        new_content.append({"text": f"[Sonuc ({status}): {result_summary}]"})
+                        new_content.append({"text": f"[Result ({status}): {result_summary}]"})
                         changed = True
                     else:
                         # Unknown block type — keep as-is
@@ -196,12 +196,12 @@ class AethonRuntime:
                     sanitized += 1
 
             except Exception as e:
-                logger.debug(f"Mesaj sanitize edilemedi ({msg_file.name}): {e}")
+                logger.debug(f"Failed to sanitize message ({msg_file.name}): {e}")
 
         if sanitized:
             logger.warning(
-                f"Session sanitize edildi ({session_id}): "
-                f"{sanitized} mesajdaki tool bloklari text'e donusturuldu"
+                f"Session sanitized ({session_id}): "
+                f"tool blocks in {sanitized} messages converted to text"
             )
 
         # Evict from cache so it gets recreated with clean history
@@ -269,7 +269,7 @@ class AethonRuntime:
                     )
                 )
             except Exception as e:
-                logger.warning(f"MemoryGuard baslatma hatasi: {e}")
+                logger.warning(f"MemoryGuard startup error: {e}")
         # TelemetryHook
         if self._telemetry_hook:
             hooks.append(self._telemetry_hook)
@@ -280,7 +280,7 @@ class AethonRuntime:
             hooks.append(
                 ApprovalHookProvider(self.config.approval.requires_approval)
             )
-            logger.info("ApprovalHook: aktif")
+            logger.info("ApprovalHook: active")
         return hooks
 
     def get_or_create_agent(self, session_id: str) -> Agent:
@@ -328,20 +328,20 @@ class AethonRuntime:
     def warm_up(self):
         """Warm up the model with a dummy request.
 
-        Creates a temporary agent, sends 'Merhaba', discards.
+        Creates a temporary agent, sends 'Hi', discards.
         Helps reduce first-request latency.
         """
         try:
-            logger.info("Model warm-up baslatiliyor...")
+            logger.info("Model warm-up starting...")
             agent = Agent(
                 model=self.model,
-                system_prompt="Sadece 'Merhaba!' de.",
+                system_prompt="Just say 'Hi!'.",
                 tools=[],
             )
-            agent("Merhaba")
-            logger.info("Model warm-up tamamlandi")
+            agent("Hi")
+            logger.info("Model warm-up complete")
         except Exception as e:
-            logger.warning(f"Model warm-up hatasi: {e}")
+            logger.warning(f"Model warm-up error: {e}")
 
     def _process_sync(self, message: InboundMessage, session_id: str) -> str:
         """Process message synchronously (called from executor).
@@ -379,13 +379,13 @@ class AethonRuntime:
         except Exception as e:
             if allow_retry and self._is_session_format_error(e):
                 logger.warning(
-                    f"Session format uyumsuzlugu ({session_id}), "
-                    f"gecmis sifirlaniyor ve tekrar deneniyor: {e}"
+                    f"Session format mismatch ({session_id}), "
+                    f"resetting history and retrying: {e}"
                 )
                 self._sanitize_session(session_id)
                 return self._try_process(message, session_id, allow_retry=False)
 
-            logger.error(f"Model hatasi ({session_id}): {type(e).__name__}: {e}")
+            logger.error(f"Model error ({session_id}): {type(e).__name__}: {e}")
             raise
 
     @staticmethod

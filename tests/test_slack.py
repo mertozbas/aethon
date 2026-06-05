@@ -14,7 +14,7 @@ def test_slack_adapter_requires_tokens():
     )
     from aethon.channels.slack_adapter import SlackAdapter
 
-    with pytest.raises(ValueError, match="bot_token ve app_token gerekli"):
+    with pytest.raises(ValueError, match="bot_token and app_token required"):
         SlackAdapter(config, router=None)
 
 
@@ -29,7 +29,7 @@ def test_slack_adapter_requires_app_token():
     )
     from aethon.channels.slack_adapter import SlackAdapter
 
-    with pytest.raises(ValueError, match="bot_token ve app_token gerekli"):
+    with pytest.raises(ValueError, match="bot_token and app_token required"):
         SlackAdapter(config, router=None)
 
 

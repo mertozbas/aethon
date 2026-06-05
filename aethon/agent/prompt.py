@@ -28,17 +28,17 @@ class SystemPromptComposer:
         # 1. SOUL.md — Personality
         soul_path = self.workspace / "SOUL.md"
         if soul_path.exists():
-            layers.append(f"## Kisilik\n{soul_path.read_text(encoding='utf-8')}")
+            layers.append(f"## Personality\n{soul_path.read_text(encoding='utf-8')}")
 
         # 2. TOOLS.md — User preferences
         tools_path = self.workspace / "TOOLS.md"
         if tools_path.exists():
-            layers.append(f"## Kullanici Tercihleri\n{tools_path.read_text(encoding='utf-8')}")
+            layers.append(f"## User Preferences\n{tools_path.read_text(encoding='utf-8')}")
 
         # 3. CONTEXT.md — Current context
         context_path = self.workspace / "CONTEXT.md"
         if context_path.exists():
-            layers.append(f"## Mevcut Baglam\n{context_path.read_text(encoding='utf-8')}")
+            layers.append(f"## Current Context\n{context_path.read_text(encoding='utf-8')}")
 
         # 4. SOP list (built-in + workspace)
         sop_names = []
@@ -56,26 +56,26 @@ class SystemPromptComposer:
         if sop_names:
             sop_list = "\n".join(f"- /{name}" for name in sop_names)
             layers.append(
-                f"## Kullanilabilir SOP Komutlari\n"
-                f"Kullanici / ile baslayan komut yazarsa SOP tetiklenir:\n{sop_list}"
+                f"## Available SOP Commands\n"
+                f"When the user types a command starting with /, an SOP is triggered:\n{sop_list}"
             )
 
         # 5. Agent delegation instructions
         layers.append(
-            "## Agent Delegasyonu\n"
-            "Karmasik gorevlerde uzman agent'lari kullan:\n"
-            "- ask_coder: Kodlama gorevleri (kod yazma, test, debug)\n"
-            "- ask_researcher: Arastirma gorevleri (web arama, dokumantasyon)\n"
-            "- ask_analyst: Analiz gorevleri (veri analizi, rapor)\n"
-            "- ask_planner: Planlama gorevleri (gorev bolme, onceliklendirme)\n"
-            "Basit gorevleri kendin yap. Karmasik gorevlerde uygun uzmana devret."
+            "## Agent Delegation\n"
+            "For complex tasks, use the specialist agents:\n"
+            "- ask_coder: Coding tasks (writing code, testing, debugging)\n"
+            "- ask_researcher: Research tasks (web search, documentation)\n"
+            "- ask_analyst: Analysis tasks (data analysis, reporting)\n"
+            "- ask_planner: Planning tasks (breaking down work, prioritization)\n"
+            "Handle simple tasks yourself. For complex tasks, delegate to the right specialist."
         )
 
         # 6. Session info
         if session_id:
-            layers.append(f"## Aktif Session\n{session_id}")
+            layers.append(f"## Active Session\n{session_id}")
 
         # 6. Timestamp
-        layers.append(f"## Zaman\n{datetime.now().isoformat()}")
+        layers.append(f"## Time\n{datetime.now().isoformat()}")
 
         return "\n\n---\n\n".join(layers)

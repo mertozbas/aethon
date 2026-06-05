@@ -140,7 +140,7 @@ Glassmorphism + cyberpunk neon themed monitoring panel. Displays sessions, memor
 {
   "model": {
     "provider": "ollama",
-    "model_id": "qwen3-coder-next",
+    "model_id": "claude-opus-4-8",
     "host": "http://localhost:11434",
     "temperature": 1.0,
     "max_tokens": 16384

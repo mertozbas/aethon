@@ -125,8 +125,8 @@ class TelegramAdapter(ChannelAdapter):
         self.token = config.channels.telegram.token
         if not self.token:
             raise ValueError(
-                "Telegram token gerekli (config.channels.telegram.token veya "
-                "TELEGRAM_BOT_TOKEN ortam degiskeni)"
+                "Telegram token required (config.channels.telegram.token or "
+                "the TELEGRAM_BOT_TOKEN environment variable)"
             )
         self.bot = None
         self.dp = None
@@ -166,7 +166,7 @@ class TelegramAdapter(ChannelAdapter):
                 channel="telegram",
                 sender_id=str(tg_msg.from_user.id),
                 sender_name=tg_msg.from_user.full_name or "Unknown",
-                text=tg_msg.caption or "(gorsel)",
+                text=tg_msg.caption or "(image)",
                 media=[
                     MediaAttachment(
                         type="image",
@@ -191,7 +191,7 @@ class TelegramAdapter(ChannelAdapter):
                 channel="telegram",
                 sender_id=str(tg_msg.from_user.id),
                 sender_name=tg_msg.from_user.full_name or "Unknown",
-                text=tg_msg.caption or f"(dosya: {doc.file_name})",
+                text=tg_msg.caption or f"(file: {doc.file_name})",
                 media=[
                     MediaAttachment(
                         type="document",
@@ -207,7 +207,7 @@ class TelegramAdapter(ChannelAdapter):
             )
             await self.on_message(inbound)
 
-        logger.info("Telegram polling baslatiliyor...")
+        logger.info("Starting Telegram polling...")
         await self.dp.start_polling(self.bot)
 
     async def stop(self) -> None:
@@ -215,7 +215,7 @@ class TelegramAdapter(ChannelAdapter):
             await self.dp.stop_polling()
         if self.bot:
             await self.bot.session.close()
-        logger.info("Telegram kapatildi.")
+        logger.info("Telegram shut down.")
 
     async def send(self, message: OutboundMessage) -> None:
         if not self.bot:
@@ -251,7 +251,7 @@ class TelegramAdapter(ChannelAdapter):
                     parse_mode=ParseMode.HTML,
                 )
             except Exception as e:
-                logger.warning("HTML parse basarisiz, plain text gonderiliyor: %s", e)
+                logger.warning("HTML parse failed, sending plain text: %s", e)
                 await self.bot.send_message(
                     chat_id=chat_id,
                     text=message.text,

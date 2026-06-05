@@ -29,7 +29,7 @@ def test_get_gateway_none():
 def test_send_message_no_gateway():
     """send_message without gateway returns error."""
     result = send_message._tool_func(channel="telegram", text="test")
-    assert "Hata" in result
+    assert "Error" in result
     assert "Gateway" in result
 
 
@@ -39,7 +39,7 @@ def test_send_message_channel_not_found():
     gw.adapters = {"cli": MagicMock()}
     set_gateway(gw)
     result = send_message._tool_func(channel="telegram", text="test")
-    assert "bulunamadi" in result
+    assert "not found" in result
     assert "cli" in result
 
 
@@ -52,7 +52,7 @@ def test_send_message_success():
     set_gateway(gw)
 
     result = send_message._tool_func(channel="telegram", text="Merhaba")
-    assert "gonderildi" in result
+    assert "sent" in result
 
 
 def test_send_message_default_recipient():
@@ -78,4 +78,4 @@ def test_send_message_with_recipient():
     result = send_message._tool_func(
         channel="telegram", text="test", recipient="user123"
     )
-    assert "gonderildi" in result
+    assert "sent" in result

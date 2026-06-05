@@ -41,10 +41,10 @@ def test_store_action(memory_tool, memory):
     """store action saves content."""
     result = memory_tool(
         action="store",
-        content="Python 3.10+ kullan",
+        content="Use Python 3.10+",
         category="preferences",
     )
-    assert "Hafizaya kaydedildi" in result
+    assert "Saved to memory" in result
     assert "preferences" in result
     assert memory.count() == 1
 
@@ -56,18 +56,18 @@ def test_store_without_content(memory_tool):
         action="store",
         content="",
     )
-    assert "Hata" in result
+    assert "Error" in result
 
 
 @pytest.mark.ollama
 def test_search_action(memory_tool, memory):
     """search action finds stored content."""
-    memory.store("Python hizli bir dil")
-    memory.store("JavaScript web dili")
+    memory.store("Python is a fast language")
+    memory.store("JavaScript is a web language")
 
     result = memory_tool(
         action="search",
-        query="Python programlama",
+        query="Python programming",
     )
     assert "Python" in result
 
@@ -79,20 +79,20 @@ def test_search_without_query(memory_tool):
         action="search",
         query="",
     )
-    assert "Hata" in result
+    assert "Error" in result
 
 
 @pytest.mark.ollama
 def test_list_action(memory_tool, memory):
     """list action shows memories."""
-    memory.store("birinci")
-    memory.store("ikinci")
+    memory.store("first")
+    memory.store("second")
 
     result = memory_tool(
         action="list",
     )
-    assert "birinci" in result
-    assert "ikinci" in result
+    assert "first" in result
+    assert "second" in result
 
 
 @pytest.mark.ollama
@@ -101,19 +101,19 @@ def test_list_empty(memory_tool):
     result = memory_tool(
         action="list",
     )
-    assert "bos" in result
+    assert "empty" in result
 
 
 @pytest.mark.ollama
 def test_forget_action(memory_tool, memory):
     """forget action removes memory."""
-    mid = memory.store("silinecek")
+    mid = memory.store("to be deleted")
 
     result = memory_tool(
         action="forget",
         memory_id=mid,
     )
-    assert "silindi" in result
+    assert "deleted" in result
     assert memory.count() == 0
 
 
@@ -124,7 +124,7 @@ def test_forget_without_id(memory_tool):
         action="forget",
         memory_id=0,
     )
-    assert "Hata" in result
+    assert "Error" in result
 
 
 @pytest.mark.ollama
@@ -133,4 +133,4 @@ def test_unknown_action(memory_tool):
     result = memory_tool(
         action="unknown",
     )
-    assert "Bilinmeyen" in result
+    assert "Unknown" in result

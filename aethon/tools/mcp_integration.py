@@ -38,7 +38,7 @@ class MCPToolLoader:
         for cfg in self.server_configs:
             command = cfg.get("command", "")
             if not command:
-                logger.warning("MCP sunucu config'inde 'command' eksik, atlaniyor")
+                logger.warning("MCP server config is missing 'command', skipping")
                 continue
 
             args = cfg.get("args", [])
@@ -56,11 +56,11 @@ class MCPToolLoader:
                 self._clients.append(client)
                 self._tools.extend(tools)
                 logger.info(
-                    f"MCP sunucu baslatildi: {command} "
-                    f"({len(tools)} tool yuklendi)"
+                    f"MCP server started: {command} "
+                    f"({len(tools)} tools loaded)"
                 )
             except Exception as e:
-                logger.warning(f"MCP sunucu hatasi ({command}): {e}")
+                logger.warning(f"MCP server error ({command}): {e}")
 
         return self._tools
 
@@ -74,7 +74,7 @@ class MCPToolLoader:
             try:
                 client.stop()
             except Exception as e:
-                logger.warning(f"MCP client durdurma hatasi: {e}")
+                logger.warning(f"MCP client stop error: {e}")
         self._clients.clear()
         self._tools.clear()
-        logger.info("Tum MCP sunuculari durduruldu")
+        logger.info("All MCP servers stopped")

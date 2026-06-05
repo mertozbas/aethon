@@ -259,7 +259,7 @@ result = agent("Merhaba, bugun ne yapacagiz?")
    │  d. agent("Bu projedeki hatalari bul")
    │
 5. Strands Agent Event Loop:
-   │  a. Model call → Qwen3-Coder-Next
+   │  a. Model call → Claude (Opus 4.8 via Meridian)
    │  b. Model decides: call the ask_coder tool
    │  c. BeforeToolCallEvent hook → SecurityHookProvider check
    │  d. Tool runs: Coder Agent takes over
@@ -550,7 +550,7 @@ Search: Cosine similarity (computed on the Python side)
    │
 3. Environment variables (${TELEGRAM_BOT_TOKEN})
    │
-4. CLI arguments (--port 8080)
+4. CLI arguments (--port 18790)
 ```
 
 ### 8.2 Config Model (Pydantic)
@@ -559,7 +559,7 @@ Search: Cosine similarity (computed on the Python side)
 class ModelConfig(BaseModel):
     provider: str = "ollama"
     host: str = "http://localhost:11434"
-    model_id: str = "qwen3-coder-next"
+    model_id: str = "claude-opus-4-8"
     temperature: float = 1.0
     top_p: float = 0.95
     top_k: int = 40

@@ -296,7 +296,7 @@ def test_mcp_config_custom():
 def test_performance_config_defaults():
     """PerformanceConfig has correct defaults."""
     config = AethonConfig()
-    assert config.performance.model_warmup is True
+    assert config.performance.model_warmup is False  # opt-in (avoids quota burn on boot)
     assert config.performance.session_cache_size == 10
     assert config.performance.embedding_cache_size == 100
 

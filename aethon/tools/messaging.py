@@ -30,21 +30,21 @@ def get_gateway():
 
 @tool
 def send_message(channel: str, text: str, recipient: str = "") -> str:
-    """Belirtilen kanala mesaj gonder.
-    Ornegin Telegram'a bildirim gondermek veya Slack kanalina rapor iletmek icin kullan.
+    """Send a message to the specified channel.
+    Use this, for example, to send a notification to Telegram or deliver a report to a Slack channel.
 
     Args:
-        channel: Hedef kanal ("telegram", "discord", "slack", "webchat")
-        text: Gonderilecek mesaj metni
-        recipient: Alici ID (bos ise varsayilan kullanici)
+        channel: Target channel ("telegram", "discord", "slack", "webchat")
+        text: Message text to send
+        recipient: Recipient ID (default user if empty)
     """
     if not _gateway:
-        return "Hata: Gateway baslatilmamis."
+        return "Error: Gateway not started."
 
     adapter = _gateway.adapters.get(channel)
     if not adapter:
         available = list(_gateway.adapters.keys())
-        return f"Kanal bulunamadi veya etkin degil: {channel}. Mevcut: {available}"
+        return f"Channel not found or not enabled: {channel}. Available: {available}"
 
     outbound = OutboundMessage(
         channel=channel,
@@ -63,7 +63,7 @@ def send_message(channel: str, text: str, recipient: str = "") -> str:
         else:
             # No running loop (sync caller / worker thread) — run to completion.
             asyncio.run(adapter.send(outbound))
-        return f"Mesaj {channel} uzerinden gonderildi."
+        return f"Message sent via {channel}."
     except Exception as e:
-        logger.error(f"Mesaj gonderme hatasi: {e}")
-        return f"Hata: Mesaj gonderilemedi ({e})"
+        logger.error(f"Message send error: {e}")
+        return f"Error: Could not send message ({e})"

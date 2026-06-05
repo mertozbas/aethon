@@ -32,30 +32,30 @@ def create_memory_tool(memory: VectorMemory):
         category: str = "general",
         memory_id: int = 0,
     ) -> str:
-        """Uzun vadeli hafizayi yonet. Bilgi kaydet, ara, listele veya unut.
+        """Manage long-term memory. Store, search, list, or forget information.
 
         Args:
-            action: "store" (kaydet), "search" (ara), "list" (listele), "forget" (unut)
-            content: Kaydedilecek icerik (store icin)
-            query: Aranacak sorgu (search icin)
-            category: Kategori (store/search icin, varsayilan: "general")
-            memory_id: Silinecek hafiza ID (forget icin)
+            action: "store", "search", "list", or "forget"
+            content: Content to store (for store)
+            query: Query to search for (for search)
+            category: Category (for store/search, default: "general")
+            memory_id: ID of the memory to delete (for forget)
         """
         if action == "store":
             if not content:
-                return "Hata: 'content' parametresi gerekli."
+                return "Error: 'content' parameter is required."
             mid = memory.store(content, category)
-            return f"Hafizaya kaydedildi (id: {mid}, kategori: {category})."
+            return f"Saved to memory (id: {mid}, category: {category})."
 
         elif action == "search":
             if not query:
-                return "Hata: 'query' parametresi gerekli."
+                return "Error: 'query' parameter is required."
             results = memory.search(
                 query, top_k=5,
                 category=category if category != "general" else None,
             )
             if not results:
-                return "Sonuc bulunamadi."
+                return "No results found."
             lines = []
             for r in results:
                 lines.append(
@@ -66,7 +66,7 @@ def create_memory_tool(memory: VectorMemory):
         elif action == "list":
             items = memory.list_all(limit=20)
             if not items:
-                return "Hafiza bos."
+                return "Memory is empty."
             lines = [
                 f"#{item['id']} ({item['category']}) {item['content'][:100]}"
                 for item in items
@@ -75,12 +75,12 @@ def create_memory_tool(memory: VectorMemory):
 
         elif action == "forget":
             if not memory_id:
-                return "Hata: 'memory_id' parametresi gerekli."
+                return "Error: 'memory_id' parameter is required."
             deleted = memory.forget(memory_id)
             if deleted:
-                return f"Hafiza #{memory_id} silindi."
-            return f"Hafiza #{memory_id} bulunamadi."
+                return f"Memory #{memory_id} deleted."
+            return f"Memory #{memory_id} not found."
 
-        return f"Bilinmeyen action: {action}. Desteklenen: store, search, list, forget"
+        return f"Unknown action: {action}. Supported: store, search, list, forget"
 
     return manage_memory

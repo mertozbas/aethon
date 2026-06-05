@@ -18,7 +18,7 @@ def test_telegram_adapter_requires_token():
     )
     from aethon.channels.telegram import TelegramAdapter
 
-    with pytest.raises(ValueError, match="Telegram token gerekli"):
+    with pytest.raises(ValueError, match="Telegram token required"):
         TelegramAdapter(config, router=None)
 
 

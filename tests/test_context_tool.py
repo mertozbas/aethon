@@ -18,7 +18,7 @@ def test_tool_update_action(context_tool):
     """Update action stores key-value."""
     tool, tmp_path = context_tool
     result = tool._tool_func(action="update", key="Proje", value="AETHON")
-    assert "guncellendi" in result
+    assert "updated" in result
 
 
 def test_tool_get_action(context_tool):
@@ -43,32 +43,32 @@ def test_tool_update_missing_params(context_tool):
     """Update without key/value returns error."""
     tool, _ = context_tool
     result = tool._tool_func(action="update", key="", value="test")
-    assert "Hata" in result
+    assert "Error" in result
 
 
 def test_tool_get_missing_key(context_tool):
     """Get without key returns error."""
     tool, _ = context_tool
     result = tool._tool_func(action="get", key="")
-    assert "Hata" in result
+    assert "Error" in result
 
 
 def test_tool_get_nonexistent_key(context_tool):
     """Get with nonexistent key returns message."""
     tool, _ = context_tool
     result = tool._tool_func(action="get", key="Yok")
-    assert "bulunamadi" in result
+    assert "not found" in result
 
 
 def test_tool_list_empty(context_tool):
     """List on empty context returns message."""
     tool, _ = context_tool
     result = tool._tool_func(action="list")
-    assert "tanimlanmamis" in result
+    assert "No keys defined" in result
 
 
 def test_tool_unknown_action(context_tool):
     """Unknown action returns error message."""
     tool, _ = context_tool
     result = tool._tool_func(action="delete")
-    assert "Bilinmeyen" in result
+    assert "Unknown" in result

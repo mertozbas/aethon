@@ -23,7 +23,7 @@ def pytest_collection_modifyitems(config, items):
     """Auto-skip tests marked with @pytest.mark.ollama when Ollama is down."""
     if _OLLAMA_UP:
         return
-    skip = pytest.mark.skip(reason="Ollama erisilemez — atlaniyor")
+    skip = pytest.mark.skip(reason="Ollama not reachable — skipping")
     for item in items:
         if "ollama" in item.keywords:
             item.add_marker(skip)

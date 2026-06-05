@@ -53,7 +53,7 @@ def test_extract_result_empty():
         results = {}
 
     result = TeamOrchestrator._extract_result(FakeResult())
-    assert result == "Sonuc alinamadi."
+    assert result == "No result available."
 
 
 @pytest.mark.ollama

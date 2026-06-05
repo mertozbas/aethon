@@ -103,7 +103,7 @@ def test_schedule_task_tool_no_scheduler():
     result = schedule_task._tool_func(
         cron_expression="0 9 * * *", sop_name="test"
     )
-    assert "Hata" in result
+    assert "Error" in result
 
 
 def test_schedule_task_tool_with_scheduler(scheduler):
@@ -112,7 +112,7 @@ def test_schedule_task_tool_with_scheduler(scheduler):
     result = schedule_task._tool_func(
         cron_expression="0 9 * * *", sop_name="morning", job_id="test-tool"
     )
-    assert "zamanlandi" in result
+    assert "scheduled" in result
     assert "test-tool" in result
 
 
@@ -120,7 +120,7 @@ def test_list_scheduled_jobs_tool_empty(scheduler):
     """list_scheduled_jobs returns message when empty."""
     set_scheduler(scheduler)
     result = list_scheduled_jobs._tool_func()
-    assert "yok" in result
+    assert "No scheduled tasks" in result
 
 
 def test_list_scheduled_jobs_tool_with_jobs(scheduler):
@@ -137,11 +137,11 @@ def test_remove_scheduled_job_tool(scheduler):
     set_scheduler(scheduler)
     scheduler.add_job("j1", "0 9 * * *", "sop1")
     result = remove_scheduled_job._tool_func(job_id="j1")
-    assert "kaldirildi" in result
+    assert "removed" in result
 
 
 def test_remove_scheduled_job_tool_missing(scheduler):
     """remove_scheduled_job reports missing job."""
     set_scheduler(scheduler)
     result = remove_scheduled_job._tool_func(job_id="nonexistent")
-    assert "bulunamadi" in result
+    assert "not found" in result

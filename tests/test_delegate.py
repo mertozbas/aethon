@@ -39,28 +39,28 @@ def test_ask_coder_without_factory():
     set_specialist_factory(None)
     # DecoratedFunctionTool wraps the function — call the inner function
     result = ask_coder._tool_func(task="test")
-    assert "Hata" in result
+    assert "Error" in result
 
 
 def test_ask_researcher_without_factory():
     """ask_researcher returns error without factory."""
     set_specialist_factory(None)
     result = ask_researcher._tool_func(query="test")
-    assert "Hata" in result
+    assert "Error" in result
 
 
 def test_ask_analyst_without_factory():
     """ask_analyst returns error without factory."""
     set_specialist_factory(None)
     result = ask_analyst._tool_func(data_task="test")
-    assert "Hata" in result
+    assert "Error" in result
 
 
 def test_ask_planner_without_factory():
     """ask_planner returns error without factory."""
     set_specialist_factory(None)
     result = ask_planner._tool_func(planning_task="test")
-    assert "Hata" in result
+    assert "Error" in result
 
 
 @pytest.mark.ollama

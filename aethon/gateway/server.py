@@ -58,7 +58,7 @@ class AethonGateway:
         if self.config.channels.cli.enabled:
             self.adapters["cli"] = CLIAdapter(self.config, self.router)
             coroutines.append(self.adapters["cli"].start())
-            logger.info("CLI: aktif")
+            logger.info("CLI: active")
 
         # Telegram
         if self.config.channels.telegram.enabled:
@@ -69,10 +69,10 @@ class AethonGateway:
                     self.config, self.router
                 )
                 coroutines.append(self.adapters["telegram"].start())
-                logger.info("Telegram: aktif")
+                logger.info("Telegram: active")
             except ImportError:
                 logger.warning(
-                    "Telegram: aiogram yuklu degil — pip install aethon[channels]"
+                    "Telegram: aiogram is not installed — pip install aethon[channels]"
                 )
             except ValueError as e:
                 logger.warning(f"Telegram: {e}")
@@ -86,10 +86,10 @@ class AethonGateway:
                     self.config, self.router
                 )
                 coroutines.append(self.adapters["discord"].start())
-                logger.info("Discord: aktif")
+                logger.info("Discord: active")
             except ImportError:
                 logger.warning(
-                    "Discord: discord.py yuklu degil — pip install aethon[channels]"
+                    "Discord: discord.py is not installed — pip install aethon[channels]"
                 )
             except ValueError as e:
                 logger.warning(f"Discord: {e}")
@@ -103,10 +103,10 @@ class AethonGateway:
                     self.config, self.router
                 )
                 coroutines.append(self.adapters["slack"].start())
-                logger.info("Slack: aktif")
+                logger.info("Slack: active")
             except ImportError:
                 logger.warning(
-                    "Slack: slack-bolt yuklu degil — pip install aethon[channels]"
+                    "Slack: slack-bolt is not installed — pip install aethon[channels]"
                 )
             except ValueError as e:
                 logger.warning(f"Slack: {e}")
@@ -120,10 +120,10 @@ class AethonGateway:
                     self.config, self.router
                 )
                 coroutines.append(self.adapters["whatsapp"].start())
-                logger.info("WhatsApp: aktif (deneysel)")
+                logger.info("WhatsApp: active (experimental)")
             except ImportError:
                 logger.warning(
-                    "WhatsApp: neonize yuklu degil — pip install neonize"
+                    "WhatsApp: neonize is not installed — pip install neonize"
                 )
             except ValueError as e:
                 logger.warning(f"WhatsApp: {e}")
@@ -148,9 +148,9 @@ class AethonGateway:
                     )
                 set_scheduler(self._scheduler)
                 self._scheduler.start()
-                logger.info("Zamanlayici: aktif")
+                logger.info("Scheduler: active")
             except Exception as e:
-                logger.warning(f"Zamanlayici hatasi: {e}")
+                logger.warning(f"Scheduler error: {e}")
 
         # Webhook support on WebChat app
         if self.config.webhook.enabled and "webchat" in self.adapters:
@@ -162,9 +162,9 @@ class AethonGateway:
                     self.router,
                     self.config.webhook.secret,
                 )
-                logger.info("Webhook: aktif")
+                logger.info("Webhook: active")
             except Exception as e:
-                logger.warning(f"Webhook hatasi: {e}")
+                logger.warning(f"Webhook error: {e}")
 
         # Dashboard on WebChat app
         if self.config.dashboard.enabled and "webchat" in self.adapters:
@@ -177,19 +177,19 @@ class AethonGateway:
                     self.config,
                     event_bus=self.event_bus,
                 )
-                logger.info("Dashboard: aktif")
+                logger.info("Dashboard: active")
             except Exception as e:
-                logger.warning(f"Dashboard hatasi: {e}")
+                logger.warning(f"Dashboard error: {e}")
 
         # Model warm-up
         if self.config.performance.model_warmup:
             try:
                 self.runtime.warm_up()
             except Exception as e:
-                logger.warning(f"Warm-up hatasi: {e}")
+                logger.warning(f"Warm-up error: {e}")
 
         if not coroutines:
-            raise RuntimeError("Hicbir kanal etkin degil!")
+            raise RuntimeError("No channels are enabled!")
 
         # Register signal handlers within the running event loop
         loop = asyncio.get_running_loop()
@@ -217,33 +217,33 @@ class AethonGateway:
 
     async def shutdown(self):
         """Gracefully stop all adapters, scheduler, and MCP clients."""
-        logger.info("AETHON kapatiliyor...")
+        logger.info("Shutting down AETHON...")
 
         # Stop scheduler
         if self._scheduler:
             try:
                 self._scheduler.stop()
-                logger.info("Zamanlayici durduruldu")
+                logger.info("Scheduler stopped")
             except Exception as e:
-                logger.warning(f"Zamanlayici durdurma hatasi: {e}")
+                logger.warning(f"Scheduler stop error: {e}")
 
         # Stop MCP clients
         if self.runtime._mcp_loader:
             try:
                 self.runtime._mcp_loader.stop()
-                logger.info("MCP sunuculari durduruldu")
+                logger.info("MCP servers stopped")
             except Exception as e:
-                logger.warning(f"MCP durdurma hatasi: {e}")
+                logger.warning(f"MCP stop error: {e}")
 
         # Stop each adapter with a timeout
         for name, adapter in self.adapters.items():
             try:
                 await asyncio.wait_for(adapter.stop(), timeout=5.0)
-                logger.info(f"Kapatildi: {name}")
+                logger.info(f"Stopped: {name}")
             except asyncio.TimeoutError:
-                logger.warning(f"Zaman asimi: {name}")
+                logger.warning(f"Timeout: {name}")
             except Exception as e:
-                logger.warning(f"Hata ({name}): {e}")
+                logger.warning(f"Error ({name}): {e}")
 
         # Cancel any remaining tasks
         for task in self._tasks:
@@ -254,4 +254,4 @@ class AethonGateway:
             await asyncio.gather(*self._tasks, return_exceptions=True)
 
         self._tasks.clear()
-        logger.info("AETHON kapatildi.")
+        logger.info("AETHON shut down.")

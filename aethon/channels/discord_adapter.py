@@ -18,8 +18,8 @@ class DiscordAdapter(ChannelAdapter):
         self.token = config.channels.discord.token
         if not self.token:
             raise ValueError(
-                "Discord token gerekli (config.channels.discord.token veya "
-                "DISCORD_BOT_TOKEN ortam degiskeni)"
+                "Discord token required (config.channels.discord.token or "
+                "the DISCORD_BOT_TOKEN environment variable)"
             )
         self.client = None
 
@@ -32,7 +32,7 @@ class DiscordAdapter(ChannelAdapter):
 
         @self.client.event
         async def on_ready():
-            logger.info(f"Discord: {self.client.user} olarak giris yapildi.")
+            logger.info(f"Discord: logged in as {self.client.user}.")
 
         @self.client.event
         async def on_message(msg: discord.Message):
@@ -64,13 +64,13 @@ class DiscordAdapter(ChannelAdapter):
             )
             await self.on_message(inbound)
 
-        logger.info("Discord bot baslatiliyor...")
+        logger.info("Starting Discord bot...")
         await self.client.start(self.token)
 
     async def stop(self) -> None:
         if self.client:
             await self.client.close()
-        logger.info("Discord kapatildi.")
+        logger.info("Discord shut down.")
 
     async def send(self, message: OutboundMessage) -> None:
         if not self.client:

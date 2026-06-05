@@ -77,7 +77,7 @@ def setup_webhooks(app, router, secret: str = ""):
                     )
                     await gw.adapters[result_channel].send(msg)
             except Exception as e:
-                logger.warning(f"Webhook sonuc iletme hatasi: {e}")
+                logger.warning(f"Webhook result delivery error: {e}")
 
         return {
             "status": "ok",

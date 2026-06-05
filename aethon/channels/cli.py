@@ -31,20 +31,20 @@ class CLIAdapter(ChannelAdapter):
     async def start(self) -> None:
         """Start CLI input loop."""
         self.running = True
-        self.console.print("[bold cyan]AETHON[/] hazir. Cikmak icin 'exit' yaz.\n")
+        self.console.print("[bold cyan]AETHON[/] is ready. Type 'exit' to quit.\n")
 
         while self.running:
             try:
                 user_input = await asyncio.get_event_loop().run_in_executor(
                     None,
-                    lambda: self.prompt_session.prompt("sen > ")
+                    lambda: self.prompt_session.prompt("you > ")
                 )
 
                 if not user_input or not user_input.strip():
                     continue
 
                 if user_input.strip().lower() in ("exit", "quit", "q"):
-                    self.console.print("[dim]Gorusuruz![/]")
+                    self.console.print("[dim]See you![/]")
                     self.running = False
                     break
 
@@ -55,7 +55,7 @@ class CLIAdapter(ChannelAdapter):
                     text=user_input.strip(),
                 )
 
-                self.console.print("[dim]Dusunuyor...[/]")
+                self.console.print("[dim]Thinking...[/]")
 
                 try:
                     response = await self.router.handle(inbound)
@@ -65,10 +65,10 @@ class CLIAdapter(ChannelAdapter):
                         self.console.print(Markdown(response.text))
                         self.console.print()
                 except Exception as e:
-                    self.console.print(f"\n[red]HATA:[/] {type(e).__name__}: {e}\n")
+                    self.console.print(f"\n[red]ERROR:[/] {type(e).__name__}: {e}\n")
 
             except (KeyboardInterrupt, EOFError):
-                self.console.print("\n[dim]Gorusuruz![/]")
+                self.console.print("\n[dim]See you![/]")
                 self.running = False
                 break
 

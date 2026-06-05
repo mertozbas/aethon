@@ -51,9 +51,9 @@ class MemoryGuardHookProvider(HookProvider):
         for compiled in self._compiled:
             if compiled.search(content):
                 event.cancel_tool = (
-                    "ENGELLENDI: Hafizaya hassas bilgi (API key, sifre, token, "
-                    "kredi karti, SSN) kaydedilmek istendi. "
-                    "Bu bilgiler guvenlik nedeniyle hafizaya kaydedilmez."
+                    "BLOCKED: An attempt was made to store sensitive information "
+                    "(API key, password, token, credit card, SSN) in memory. "
+                    "This information is not saved to memory for security reasons."
                 )
-                logger.warning("MEMORY GUARD: Hassas bilgi tespit edildi")
+                logger.warning("MEMORY GUARD: Sensitive information detected")
                 return

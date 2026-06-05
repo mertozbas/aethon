@@ -58,7 +58,7 @@ Current AI assistant systems have the following issues:
 | Channel | Library | Connection |
 |---------|---------|------------|
 | CLI | `prompt_toolkit` | Terminal stdin/stdout |
-| WebChat | `FastAPI` + `websockets` | HTTP/WS localhost:8080 |
+| WebChat | `FastAPI` + `websockets` | HTTP/WS localhost:18790 |
 | Telegram | `aiogram` 3.x | Bot Token (BotFather) |
 | Discord | `discord.py` 2.x | Bot Token (Developer Portal) |
 | Slack | `slack-bolt` | Bot Token + App Token (Socket Mode) |
@@ -120,12 +120,12 @@ Trigger AETHON from external systems:
 
 ```bash
 # Channel-based
-curl -X POST http://localhost:8080/webhook/telegram \
+curl -X POST http://localhost:18790/webhook/telegram \
   -H "Content-Type: application/json" \
   -d '{"text": "Hello"}'
 
 # SOP trigger
-curl -X POST http://localhost:8080/webhook/trigger \
+curl -X POST http://localhost:18790/webhook/trigger \
   -d '{"sop_name": "code-assist", "text": "login ekranini yap"}'
 ```
 
@@ -133,7 +133,7 @@ Secure webhook validation with HMAC-SHA256 secret is supported.
 
 ### 3.6 Web Dashboard
 
-Monitor AETHON from the browser: `http://localhost:8080/dashboard`
+Monitor AETHON from the browser: `http://localhost:18790/dashboard`
 
 - **Sessions** — View active sessions
 - **Memory** — Search long-term memory contents
@@ -203,8 +203,8 @@ AETHON: update_context("project", "HashTrade v2") → CONTEXT.md is updated
 |-----------|------------|
 | **Language** | Python 3.10+ |
 | **Agent Framework** | Strands Agents SDK |
-| **LLM** | Qwen3-Coder-Next (via Ollama) |
-| **Model Provider** | OllamaModel (Strands SDK built-in) |
+| **LLM** | Claude (Opus 4.8) via Meridian — or any Strands provider |
+| **Model Provider** | MeridianModel ([strands-meridian](https://github.com/mertozbas/strands-meridian)); OllamaModel / OpenAI / Anthropic also supported |
 | **Multi-Agent** | Strands Swarm + GraphBuilder |
 | **Tool Ecosystem** | strands-agents-tools (47+ tools) |
 
@@ -223,22 +223,27 @@ AETHON: update_context("project", "HashTrade v2") → CONTEXT.md is updated
 
 ---
 
-## 5. Model: Qwen3-Coder-Next
+## 5. Model: Claude Opus 4.8 (default)
+
+AETHON defaults to **Claude Opus 4.8** on your Claude Max subscription quota, served through the
+local [Meridian](https://github.com/rynfar/meridian) proxy via the
+[strands-meridian](https://github.com/mertozbas/strands-meridian) provider. The model is
+provider-agnostic — switch to any Strands provider (Ollama, the Anthropic API, OpenAI, …) at any time.
 
 | Property | Value |
 |----------|-------|
-| Parameters | 80B total / 3B active (MoE) |
-| Context | 256K tokens |
-| Architecture | 48 layers, 512 experts / 10 active |
-| Mode | Non-thinking (ONLY) |
-| Tool Calling | Yes (ChatML format) |
-| FIM | Yes (Fill-in-the-Middle) |
-| Ollama | `ollama pull qwen3-coder-next` |
+| Default model | `claude-opus-4-8` (Claude's most capable) |
+| Context | 1M tokens (included with Claude Max) |
+| Thinking | Adaptive (Opus 4.8 rejects a fixed thinking budget) |
+| Tool Calling | Yes |
+| Billing | Your Claude subscription quota — no per-token API bills |
+| Setup | `npm i -g @rynfar/meridian && claude login` (auto-started by `aethon start`) |
 
-**Recommended Sampling:**
-- Temperature: 1.0
-- Top-P: 0.95
-- Top-K: 40
+> Sampling parameters (`temperature` / `top_p` / `top_k`) are **not sent** for `claude-opus-4-8`,
+> which rejects them; they still apply to the Ollama and OpenAI paths.
+
+**Local alternative — Ollama:** `ollama pull qwen3-coder-next` and set `provider: ollama` in
+`config.yaml` (recommended sampling: temperature 1.0, top-p 0.95, top-k 40).
 
 ---
 
@@ -288,12 +293,12 @@ AETHON:
 - **Single user** — No multi-user support (not needed)
 - **Local operation** — No cloud deployment (for security)
 - **6 channels** — The most important 6 messaging channels are supported
-- **Ollama-dependent** — Ollama required for model changes
+- **Local-first model** — runs against a local Meridian proxy by default; provider-agnostic
 
 ### 7.2 Model Limitations
-- Qwen3-Coder-Next works **only in non-thinking** mode
-- 80B model — RAM usage may be high on Mac
-- Tool calling reliability depends on the Ollama native API
+- Default path needs an active Claude subscription and a running Meridian proxy
+- The fully-local Ollama path needs enough RAM for the chosen model
+- Tool-calling reliability depends on the selected provider
 
 ---
 
@@ -302,7 +307,7 @@ AETHON:
 ### MVP (Phase 1) ✅
 - [x] Ability to chat with AETHON from CLI
 - [x] Ability to chat with AETHON from WebChat
-- [x] Ollama + Qwen3-Coder-Next is running
+- [x] Claude via Meridian (or Ollama) is running
 - [x] Basic tools are working (file_read, file_write, shell, editor)
 - [x] Session management is working (conversation history is preserved)
 - [x] Security hooks are active

@@ -37,7 +37,7 @@ def test_check_model_availability_meridian():
     if available:
         assert "Meridian OK" in msg
     else:
-        assert "erisilemez" in msg or "giris yapilmamis" in msg
+        assert "not reachable" in msg or "not logged in" in msg
 
 
 def test_create_model_ollama():
@@ -52,7 +52,7 @@ def test_create_model_ollama():
 def test_create_model_unknown_provider():
     """Unknown provider raises ValueError."""
     config = ModelConfig(provider="nonexistent")
-    with pytest.raises(ValueError, match="Bilinmeyen model provider"):
+    with pytest.raises(ValueError, match="Unknown model provider"):
         create_model(config)
 
 
@@ -66,7 +66,7 @@ def test_check_model_availability_ollama():
     if available:
         assert "Ollama OK" in msg
     else:
-        assert "erisilemez" in msg or "bulunamadi" in msg
+        assert "not reachable" in msg or "not found" in msg
 
 
 def test_check_model_availability_openai_no_key():
@@ -74,7 +74,7 @@ def test_check_model_availability_openai_no_key():
     config = ModelConfig(provider="openai", model_id="gpt-4o", api_key="")
     available, msg = check_model_availability(config)
     assert available is False
-    assert "API key gerekli" in msg
+    assert "API key required" in msg
 
 
 def test_check_model_availability_anthropic_no_key():
@@ -82,7 +82,7 @@ def test_check_model_availability_anthropic_no_key():
     config = ModelConfig(provider="anthropic", model_id="claude-sonnet-4-20250514", api_key="")
     available, msg = check_model_availability(config)
     assert available is False
-    assert "API key gerekli" in msg
+    assert "API key required" in msg
 
 
 def test_check_model_availability_anthropic_with_key():
@@ -94,7 +94,7 @@ def test_check_model_availability_anthropic_with_key():
     )
     available, msg = check_model_availability(config)
     assert available is True
-    assert "API key mevcut" in msg
+    assert "API key available" in msg
 
 
 def test_check_model_availability_litellm():
@@ -110,4 +110,4 @@ def test_check_model_availability_unknown():
     config = ModelConfig(provider="nonexistent")
     available, msg = check_model_availability(config)
     assert available is False
-    assert "Bilinmeyen provider" in msg
+    assert "Unknown provider" in msg

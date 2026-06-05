@@ -27,7 +27,7 @@ def test_guard_blocks_api_key():
     hook = MemoryGuardHookProvider()
     event = _make_event(content="api_key=sk-abc123xyz")
     hook.guard_memory(event)
-    assert "ENGELLENDI" in str(event.cancel_tool)
+    assert "BLOCKED" in str(event.cancel_tool)
 
 
 def test_guard_blocks_password():
@@ -35,7 +35,7 @@ def test_guard_blocks_password():
     hook = MemoryGuardHookProvider()
     event = _make_event(content="password=mysecretpass123")
     hook.guard_memory(event)
-    assert "ENGELLENDI" in str(event.cancel_tool)
+    assert "BLOCKED" in str(event.cancel_tool)
 
 
 def test_guard_blocks_token():
@@ -43,7 +43,7 @@ def test_guard_blocks_token():
     hook = MemoryGuardHookProvider()
     event = _make_event(content="secret=ghp_xxxxxxxxxxxx")
     hook.guard_memory(event)
-    assert "ENGELLENDI" in str(event.cancel_tool)
+    assert "BLOCKED" in str(event.cancel_tool)
 
 
 def test_guard_blocks_credit_card():
@@ -51,7 +51,7 @@ def test_guard_blocks_credit_card():
     hook = MemoryGuardHookProvider()
     event = _make_event(content="Kart numaram 4111 1111 1111 1111")
     hook.guard_memory(event)
-    assert "ENGELLENDI" in str(event.cancel_tool)
+    assert "BLOCKED" in str(event.cancel_tool)
 
 
 def test_guard_blocks_ssn():
@@ -59,7 +59,7 @@ def test_guard_blocks_ssn():
     hook = MemoryGuardHookProvider()
     event = _make_event(content="SSN: 123-45-6789")
     hook.guard_memory(event)
-    assert "ENGELLENDI" in str(event.cancel_tool)
+    assert "BLOCKED" in str(event.cancel_tool)
 
 
 def test_guard_blocks_private_key():
@@ -69,7 +69,7 @@ def test_guard_blocks_private_key():
         content="-----BEGIN RSA PRIVATE KEY-----\nMIIEpA..."
     )
     hook.guard_memory(event)
-    assert "ENGELLENDI" in str(event.cancel_tool)
+    assert "BLOCKED" in str(event.cancel_tool)
 
 
 def test_guard_blocks_ssh_key():
@@ -77,7 +77,7 @@ def test_guard_blocks_ssh_key():
     hook = MemoryGuardHookProvider()
     event = _make_event(content="ssh-rsa AAAAB3NzaC1yc2EAAAA user@host")
     hook.guard_memory(event)
-    assert "ENGELLENDI" in str(event.cancel_tool)
+    assert "BLOCKED" in str(event.cancel_tool)
 
 
 def test_guard_allows_normal_content():
@@ -109,7 +109,7 @@ def test_guard_custom_patterns():
     hook = MemoryGuardHookProvider(custom_patterns=[r"CUSTOM_SECRET_\w+"])
     event = _make_event(content="benim CUSTOM_SECRET_abc123 degerim")
     hook.guard_memory(event)
-    assert "ENGELLENDI" in str(event.cancel_tool)
+    assert "BLOCKED" in str(event.cancel_tool)
 
 
 def test_guard_register_hooks():

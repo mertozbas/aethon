@@ -150,8 +150,8 @@ def create_model(config: ModelConfig) -> Model:
 
     else:
         raise ValueError(
-            f"Bilinmeyen model provider: '{provider}'. "
-            f"Desteklenen: meridian, ollama, openai, anthropic, bedrock, gemini, litellm, mistral, fake"
+            f"Unknown model provider: '{provider}'. "
+            f"Supported: meridian, ollama, openai, anthropic, bedrock, gemini, litellm, mistral, fake"
         )
 
 
@@ -170,15 +170,15 @@ def check_model_availability(config: ModelConfig) -> tuple[bool, str]:
             info = health_check(_meridian_base_url(config))
         except MeridianError as e:
             return False, (
-                f"Meridian erisilemez: {e}\n"
-                f"  Baslat: meridian (once: claude login)"
+                f"Meridian not reachable: {e}\n"
+                f"  Start: meridian (first: claude login)"
             )
         auth = info.get("auth", {})
         if auth.get("loggedIn"):
             sub = auth.get("subscriptionType", "?")
             email = auth.get("email", "?")
-            return True, f"Meridian OK: {config.model_id} ({sub} kota, {email})"
-        return False, "Meridian calisiyor ama giris yapilmamis. Calistir: claude login"
+            return True, f"Meridian OK: {config.model_id} ({sub} quota, {email})"
+        return False, "Meridian is running but you are not logged in. Run: claude login"
 
     elif provider in ("fake", "echo"):
         return True, f"Fake/echo provider OK: {config.model_id} (offline, no backend)"
@@ -192,24 +192,24 @@ def check_model_availability(config: ModelConfig) -> tuple[bool, str]:
             if any(config.model_id in m for m in models):
                 return True, f"Ollama OK: {config.model_id}"
             return False, (
-                f"Model '{config.model_id}' Ollama'da bulunamadi.\n"
-                f"  Mevcut modeller: {', '.join(models)}\n"
-                f"  Indir: ollama pull {config.model_id}"
+                f"Model '{config.model_id}' not found in Ollama.\n"
+                f"  Available models: {', '.join(models)}\n"
+                f"  Download: ollama pull {config.model_id}"
             )
         except Exception:
             return False, (
-                f"Ollama ({config.host}) erisilemez.\n"
-                f"  Baslat: ollama serve"
+                f"Ollama ({config.host}) not reachable.\n"
+                f"  Start: ollama serve"
             )
 
     elif provider in ("openai", "anthropic", "gemini", "mistral"):
         if not config.api_key:
             return False, (
-                f"{provider} icin API key gerekli.\n"
+                f"API key required for {provider}.\n"
                 f"  config.yaml: model.api_key: 'sk-...'\n"
-                f"  veya: AETHON_{provider.upper()}_API_KEY ortam degiskeni"
+                f"  or: AETHON_{provider.upper()}_API_KEY environment variable"
             )
-        return True, f"{provider} OK: {config.model_id} (API key mevcut)"
+        return True, f"{provider} OK: {config.model_id} (API key available)"
 
     elif provider == "bedrock":
         try:
@@ -218,9 +218,9 @@ def check_model_availability(config: ModelConfig) -> tuple[bool, str]:
             boto3.client("bedrock-runtime", region_name=config.region)
             return True, f"Bedrock OK: {config.model_id} ({config.region})"
         except Exception as e:
-            return False, f"AWS Bedrock erisim hatasi: {e}"
+            return False, f"AWS Bedrock access error: {e}"
 
     elif provider == "litellm":
         return True, f"LiteLLM OK: {config.model_id}"
 
-    return False, f"Bilinmeyen provider: {provider}"
+    return False, f"Unknown provider: {provider}"

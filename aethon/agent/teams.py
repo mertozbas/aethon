@@ -42,7 +42,7 @@ class TeamOrchestrator:
             node_timeout=self.config.node_timeout,
         )
 
-        logger.info(f"Swarm baslatiliyor: {len(all_agents)} agent")
+        logger.info(f"Swarm starting: {len(all_agents)} agents")
         result = swarm(task)
         return self._extract_result(result)
 
@@ -68,7 +68,7 @@ class TeamOrchestrator:
 
         graph = builder.build()
 
-        logger.info(f"Graph pipeline baslatiliyor: {' -> '.join(pipeline)}")
+        logger.info(f"Graph pipeline starting: {' -> '.join(pipeline)}")
         result = graph(task)
         return self._extract_result(result)
 
@@ -81,4 +81,4 @@ class TeamOrchestrator:
                 text = str(agent_results[-1]).strip()
                 if text:
                     return text
-        return "Sonuc alinamadi."
+        return "No result available."

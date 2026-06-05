@@ -17,43 +17,43 @@ logger = logging.getLogger("aethon.specialists")
 
 SPECIALIST_CONFIGS = {
     "coder": {
-        "name": "Kodcu",
+        "name": "Coder",
         "system_prompt": (
-            "Sen bir yazilim gelistirme uzmanisin.\n"
-            "Gorevlerin: kod yazma, test etme, debug etme, refactoring.\n"
-            "TDD prensiplerini takip et: once test yaz, sonra implement et.\n"
-            "Kisa, temiz, yorumsuz kod yaz.\n"
-            "Isini bitirdiginde sonucu acikca bildir."
+            "You are a software development specialist.\n"
+            "Your responsibilities: writing code, testing, debugging, refactoring.\n"
+            "Follow TDD principles: write the test first, then implement.\n"
+            "Write concise, clean code without comments.\n"
+            "When you finish, report the result clearly."
         ),
         "tools": [file_read, file_write, editor, shell, python_repl, think],
     },
     "researcher": {
-        "name": "Arastirmaci",
+        "name": "Researcher",
         "system_prompt": (
-            "Sen bir arastirma uzmanisin.\n"
-            "Gorevlerin: web arastirmasi, dokumantasyon okuma, bilgi toplama.\n"
-            "Kaynaklari belirt. Ozet ve analizle sun.\n"
-            "Net, dogrulanabilir bilgiler ver."
+            "You are a research specialist.\n"
+            "Your responsibilities: web research, reading documentation, gathering information.\n"
+            "Cite your sources. Present findings with a summary and analysis.\n"
+            "Provide clear, verifiable information."
         ),
         "tools": [http_request, file_read, think, current_time],
     },
     "analyst": {
-        "name": "Analist",
+        "name": "Analyst",
         "system_prompt": (
-            "Sen bir veri analisti ve raporlamacisin.\n"
-            "Gorevlerin: veri analizi, hesaplama, grafik olusturma, rapor yazma.\n"
-            "Net, olculebilir sonuclar sun.\n"
-            "Sayisal verileri tablo formatinda goster."
+            "You are a data analyst and report writer.\n"
+            "Your responsibilities: data analysis, calculations, creating charts, writing reports.\n"
+            "Present clear, measurable results.\n"
+            "Show numerical data in table format."
         ),
         "tools": [python_repl, calculator, file_read, file_write, think],
     },
     "planner": {
-        "name": "Planlayici",
+        "name": "Planner",
         "system_prompt": (
-            "Sen bir proje planlayicisisin.\n"
-            "Gorevlerin: karmasik gorevleri adim adim bolme, onceliklendirme.\n"
-            "Her adimi net, somut ve uygulanabilir yap.\n"
-            "Bagimliliklar ve riskleri belirt."
+            "You are a project planner.\n"
+            "Your responsibilities: breaking complex tasks into steps, prioritization.\n"
+            "Make each step clear, concrete, and actionable.\n"
+            "Call out dependencies and risks."
         ),
         "tools": [file_read, file_write, think],
     },
@@ -72,7 +72,7 @@ class SpecialistFactory:
         if specialist_name not in self._cache:
             config = SPECIALIST_CONFIGS.get(specialist_name)
             if not config:
-                raise ValueError(f"Bilinmeyen uzman: {specialist_name}")
+                raise ValueError(f"Unknown specialist: {specialist_name}")
 
             self._cache[specialist_name] = Agent(
                 model=self.model,
@@ -81,7 +81,7 @@ class SpecialistFactory:
                 name=config["name"],
                 agent_id=specialist_name,
             )
-            logger.info(f"Uzman agent olusturuldu: {config['name']}")
+            logger.info(f"Specialist agent created: {config['name']}")
 
         return self._cache[specialist_name]
 
