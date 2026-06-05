@@ -37,7 +37,7 @@
 ║  │  │                                                          │   │  ║
 ║  │  │   System Prompt       ┌───────────────────┐             │   │  ║
 ║  │  │   Composer      ────▶ │  STRANDS AGENT    │             │   │  ║
-║  │  │                       │  (OllamaModel)    │             │   │  ║
+║  │  │                       │ (configured Model)│             │   │  ║
 ║  │  │   Hook Pipeline ────▶ │                   │             │   │  ║
 ║  │  │                       │   ┌─────────────┐ │             │   │  ║
 ║  │  │   Tool Registry ────▶ │   │ Tool Loop   │ │             │   │  ║
@@ -59,7 +59,7 @@
 ║  │                    INFRASTRUCTURE LAYER                          │  ║
 ║  │                                                                  │  ║
 ║  │  ┌──────────┐ ┌────────────┐ ┌────────┐ ┌──────────────────┐  │  ║
-║  │  │ Vector   │ │ File       │ │ YAML   │ │ OllamaModel     │  │  ║
+║  │  │ Vector   │ │ File       │ │ YAML   │ │ Model Factory   │  │  ║
 ║  │  │ Memory   │ │ Session    │ │ Config │ │ (LLM Provider)  │  │  ║
 ║  │  │ (SQLite) │ │ Manager    │ │        │ │                  │  │  ║
 ║  │  └──────────┘ └────────────┘ └────────┘ └──────────────────┘  │  ║
@@ -182,12 +182,12 @@ from strands.agent.conversation_manager import SummarizingConversationManager
 from aethon.agent.model_factory import create_model
 
 # Model creation — automatic based on provider in config
-# provider: "ollama" → OllamaModel
-# provider: "openai" → OpenAIModel
+# provider: "openai" → OpenAIModel  (default; official API or any OpenAI-compatible host)
 # provider: "anthropic" → AnthropicModel
+# provider: "ollama" → OllamaModel  (fully local, no API key)
 # provider: "bedrock" → BedrockModel
 # provider: "gemini" → GeminiModel
-# ... etc.
+# ... litellm / mistral also supported
 model = create_model(config.model)
 
 # Session manager — separate instance for each session
@@ -226,10 +226,10 @@ result = agent("Merhaba, bugun ne yapacagiz?")
 
 | Component | Technology | Description |
 |-----------|------------|-------------|
-| Vector Memory | SQLite + Ollama `/api/embed` | Long-term semantic memory (LRU embedding cache) |
+| Vector Memory | SQLite + embeddings | Long-term semantic memory (LRU embedding cache) |
 | Session | FileSessionManager | Conversation history (LRU session cache) |
 | Config | PyYAML + Pydantic | `~/.aethon/config.yaml` |
-| Model | **Multi-Provider Factory** | Ollama, OpenAI, Anthropic, Bedrock, Gemini, LiteLLM, Mistral |
+| Model | **Multi-Provider Factory** | OpenAI (default), Anthropic, Ollama, Bedrock, Gemini, LiteLLM, Mistral |
 | Scheduler | APScheduler | Cron-based SOP triggering |
 | Telemetry | TelemetryHookProvider | Tool/model metric collection (deque) |
 | Dashboard | FastAPI + Vanilla JS | Web monitoring panel + WebSocket stream |
@@ -259,7 +259,7 @@ result = agent("Merhaba, bugun ne yapacagiz?")
    │  d. agent("Bu projedeki hatalari bul")
    │
 5. Strands Agent Event Loop:
-   │  a. Model call → Claude (Opus 4.8 via Meridian)
+   │  a. Model call → configured provider (OpenAI `gpt-4o` by default)
    │  b. Model decides: call the ask_coder tool
    │  c. BeforeToolCallEvent hook → SecurityHookProvider check
    │  d. Tool runs: Coder Agent takes over
@@ -492,7 +492,7 @@ Runs in a deterministic order: Planning → Research → Coding
 ```
 ┌─────────────────────────────────────────┐
 │           LONG-TERM MEMORY              │
-│     (SQLite + Ollama Embeddings)        │
+│     (SQLite + vector embeddings)        │
 │                                         │
 │  User preferences, knowledge,           │
 │  learned patterns                       │
@@ -533,7 +533,7 @@ SQLite Table: memories
 │ PK     │         │           │ JSON     │ JSON      │ ISO 8601   │
 └────────┴─────────┴───────────┴──────────┴───────────┴────────────┘
 
-Embedding: Ollama /api/embed endpoint
+Embedding: provider embeddings (e.g. OpenAI, or Ollama /api/embed for a fully-local setup)
 Search: Cosine similarity (computed on the Python side)
 ```
 
@@ -557,9 +557,10 @@ Search: Cosine similarity (computed on the Python side)
 
 ```python
 class ModelConfig(BaseModel):
-    provider: str = "ollama"
-    host: str = "http://localhost:11434"
-    model_id: str = "claude-opus-4-8"
+    provider: str = "openai"               # openai (default) | anthropic | ollama | bedrock | gemini | litellm | mistral
+    api_key: str | None = None             # OpenAI / Anthropic API key (e.g. ${OPENAI_API_KEY})
+    host: str | None = None                # OpenAI-compatible base URL, or Ollama host (http://localhost:11434)
+    model_id: str = "gpt-4o"
     temperature: float = 1.0
     top_p: float = 0.95
     top_k: int = 40
@@ -569,7 +570,8 @@ class ChannelConfig(BaseModel):
     # Channel-specific fields in subclass
 
 class SecurityConfig(BaseModel):
-    workspace_only: bool = False  # opt in to confine file tools to the workspace
+    bypass_tool_consent: bool = True  # headless by default: no per-tool approval prompts
+    workspace_only: bool = False  # opt in to confine file tools to the workspace ($HOME allowed by default, minus blocked system/credential paths)
     require_approval: list[str] = ["shell", "file_write", "send_message"]  # reserved; not wired
     blocked_commands: list[str] = ["rm -rf /", "sudo", "mkfs"]
 

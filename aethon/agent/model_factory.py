@@ -1,8 +1,8 @@
 """Multi-provider model factory.
 
 Creates the appropriate Strands Model based on config provider setting.
-Supported: meridian (Claude on your Claude Max quota — default), ollama, openai,
-anthropic, bedrock, gemini, litellm, mistral, fake (offline no-op for tests/CI).
+Supported: openai (default), anthropic, ollama, bedrock, gemini, litellm, mistral,
+fake (offline no-op for tests/CI).
 """
 
 from __future__ import annotations
@@ -14,24 +14,10 @@ from strands.models import Model
 if TYPE_CHECKING:
     from aethon.config import ModelConfig
 
-# `host` defaults to the Ollama URL. For Meridian we treat that default (and an
-# empty value) as "unset" so the proxy falls back to MERIDIAN_BASE_URL or its
-# own 127.0.0.1:3456 default.
-_OLLAMA_DEFAULT_HOST = "http://localhost:11434"
-
-
-def _meridian_base_url(config: ModelConfig) -> str | None:
-    """Resolve the Meridian base URL from config.host, or None to use defaults."""
-    host = config.host
-    if host and host != _OLLAMA_DEFAULT_HOST:
-        return host
-    return None
-
 
 def _anthropic_params(config: ModelConfig) -> dict:
-    """Build Anthropic ``params``. Opus 4.7+ (and the Meridian ``opus`` / ``opus[1m]``
-    aliases that resolve to the latest Opus) reject ``temperature``/``top_p``/``top_k``
-    with a 400, so omit sampling params for those models."""
+    """Build Anthropic ``params``. Opus 4.7+ models reject ``temperature``/``top_p``/
+    ``top_k`` with a 400, so omit sampling params for those models."""
     model = (config.model_id or "").lower()
     rejects_sampling = model in ("opus", "opus[1m]") or "opus-4-7" in model or "opus-4-8" in model
     if rejects_sampling:
@@ -53,20 +39,7 @@ def create_model(config: ModelConfig) -> Model:
     """
     provider = config.provider.lower()
 
-    if provider == "meridian":
-        # Claude on your Claude Max subscription quota, via the local Meridian proxy.
-        # Native Anthropic transport, so prompt caching, structured output and
-        # streaming are preserved. See https://github.com/mertozbas/strands-meridian
-        from strands_meridian import MeridianModel
-
-        return MeridianModel(
-            model_id=config.model_id,
-            base_url=_meridian_base_url(config),
-            max_tokens=config.max_tokens,
-            params=_anthropic_params(config),
-        )
-
-    elif provider in ("fake", "echo"):
+    if provider in ("fake", "echo"):
         # No-network, no-dependency model — used by tests/CI and as a safe fallback
         # when no real provider is configured. Streams a fixed canned reply.
         from aethon.agent.fake_model import EchoModel
@@ -159,7 +132,7 @@ def create_model(config: ModelConfig) -> Model:
     else:
         raise ValueError(
             f"Unknown model provider: '{provider}'. "
-            f"Supported: meridian, ollama, openai, anthropic, bedrock, gemini, litellm, mistral, fake"
+            f"Supported: openai, anthropic, ollama, bedrock, gemini, litellm, mistral, fake"
         )
 
 
@@ -171,24 +144,7 @@ def check_model_availability(config: ModelConfig) -> tuple[bool, str]:
     """
     provider = config.provider.lower()
 
-    if provider == "meridian":
-        from strands_meridian import MeridianError, health_check
-
-        try:
-            info = health_check(_meridian_base_url(config))
-        except MeridianError as e:
-            return False, (
-                f"Meridian not reachable: {e}\n"
-                f"  Start: meridian (first: claude login)"
-            )
-        auth = info.get("auth", {})
-        if auth.get("loggedIn"):
-            sub = auth.get("subscriptionType", "?")
-            email = auth.get("email", "?")
-            return True, f"Meridian OK: {config.model_id} ({sub} quota, {email})"
-        return False, "Meridian is running but you are not logged in. Run: claude login"
-
-    elif provider in ("fake", "echo"):
+    if provider in ("fake", "echo"):
         return True, f"Fake/echo provider OK: {config.model_id} (offline, no backend)"
 
     elif provider == "ollama":

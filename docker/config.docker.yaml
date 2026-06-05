@@ -4,22 +4,27 @@
 # against an empty data volume. To use your own settings, edit it inside the mounted
 # volume or bind-mount a config over /home/aethon/.aethon/config.yaml.
 #
-# Model backend:
-#   - The default below talks to a Meridian proxy running on your HOST machine
-#     (start `meridian` on the host; the container reaches it via host.docker.internal).
-#   - Or switch to an API provider that needs no host proxy (see the commented block).
+# Model backend — bring your own provider:
+#   - The default below uses the OpenAI API (set OPENAI_API_KEY in the environment).
+#   - Or point `host` at ANY OpenAI-compatible base URL — e.g. a local server (vLLM /
+#     LM Studio / LocalAI) or another service on your host/network. On Linux/macOS you
+#     can reach a server on the host via host.docker.internal (add it to extra_hosts in
+#     docker-compose.yml), e.g. host: http://host.docker.internal:8000/v1
+#   - Or run fully-local inference with Ollama (see the commented block).
 
 model:
-  provider: meridian
-  model_id: claude-opus-4-8
-  host: http://host.docker.internal:3456   # Meridian proxy on the host
-  # --- API-provider alternative (no host proxy needed) ---
+  provider: openai
+  model_id: gpt-4o
+  api_key: ${OPENAI_API_KEY}
+  # host: http://host.docker.internal:8000/v1   # any OpenAI-compatible base URL
+  # --- Fully-local alternative (no API key) ---
+  # provider: ollama
+  # model_id: llama3.1
+  # host: http://ollama:11434
+  # --- Anthropic API alternative ---
   # provider: anthropic
   # model_id: claude-opus-4-8
   # api_key: ${ANTHROPIC_API_KEY}
-
-meridian:
-  auto_start: false        # the slim image ships no Node runtime; run Meridian on the host
 
 channels:
   cli:

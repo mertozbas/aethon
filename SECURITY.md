@@ -27,15 +27,16 @@ Please allow a reasonable period for a fix to ship before any public disclosure.
 ## Security model
 
 AETHON is **local-first**. By default every listening service is reachable only
-from the machine it runs on, secrets are kept out of the config file, and tool
-actions are constrained to the workspace.
+from the machine it runs on and secrets are kept out of the config file. You
+bring your own model provider, so no model credentials are required by AETHON
+itself — they live in your environment (`${ENV_VAR}` references) or your local
+provider.
 
 ### Network exposure
 
 - **Loopback by default.** The WebChat/dashboard server binds to
   `127.0.0.1` (`channels.webchat.host`, default `127.0.0.1`; default port
-  `18790`), so it is reachable only from the local machine. The Meridian proxy
-  likewise runs on `127.0.0.1:3456`.
+  `18790`), so it is reachable only from the local machine.
 - **Exposing on a network is opt-in.** To listen on other interfaces (for
   example `0.0.0.0`, as in the Docker image), you must change the bind host
   explicitly. **Before exposing the dashboard or WebChat beyond loopback, set
@@ -72,8 +73,14 @@ actions are constrained to the workspace.
 
 Tool execution is governed by the `security` configuration section:
 
-- **`workspace_only`** (default `true`) restricts file and tool operations to
-  the workspace directory (`~/.aethon/workspace`).
+- **`workspace_only`** (default `false`) restricts file and tool operations to
+  the workspace directory (`~/.aethon/workspace`) when enabled. With the default
+  (`false`), file tools may operate under `$HOME`, while sensitive system and
+  credential paths remain blocked. Set it to `true` to confine all file and tool
+  activity to the workspace.
+- **`bypass_tool_consent`** (default `true`) runs tools headlessly without a
+  per-tool confirmation prompt — appropriate for an unattended assistant. Set it
+  to `false` to require interactive consent for each tool invocation.
 - **`blocked_commands`** (default `["rm -rf /", "sudo", "mkfs"]`) blocks shell
   commands containing any of the listed substrings. Extend this list to match
   your environment.
@@ -85,7 +92,8 @@ Tool execution is governed by the `security` configuration section:
 ### Hardening checklist before exposing AETHON
 
 - Set `dashboard.auth_token` (and `webhook.secret` if webhooks are enabled).
-- Keep `security.workspace_only` enabled and review `blocked_commands`.
+- Enable `security.workspace_only` to confine file/tool activity to the
+  workspace, and review `blocked_commands`.
 - Store all tokens and API keys as `${ENV_VAR}` references, not literals.
 - Place AETHON behind a TLS-terminating reverse proxy if it must be reachable
   off-host; the built-in server speaks plain HTTP.

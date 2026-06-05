@@ -2,8 +2,9 @@
 #
 # AETHON container image — headless web UI + dashboard + webhook + messaging bots.
 # Build:  docker build -t aethon .
-# Run:    docker run -p 18790:18790 --add-host host.docker.internal:host-gateway aethon
-#         (with `meridian` running on the host, or an API key configured — see docker/config.docker.yaml)
+# Run:    docker run -p 18790:18790 -e OPENAI_API_KEY=sk-... aethon
+#         (bring your own model provider — set an API key, point at any OpenAI-compatible
+#          base URL, or run local Ollama — see docker/config.docker.yaml)
 
 ############################
 # Builder

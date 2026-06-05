@@ -9,50 +9,67 @@
 | Requirement | Minimum |
 |-------------|---------|
 | **Python** | 3.10+ |
-| **Backend** | A [Claude](https://claude.ai) subscription — default, via Meridian — *or* [Ollama](https://ollama.com) for fully-local inference |
-| **Node.js** | 18+ (only for the default Meridian path) |
+| **Model provider** | An [OpenAI](https://platform.openai.com) API key (default) — *or* any OpenAI-compatible endpoint (vLLM / LM Studio / LocalAI / …) — *or* [Ollama](https://ollama.com) for fully-local inference |
 | **RAM** | 8 GB (16 GB+ if running a local model via Ollama) |
 | **OS** | macOS, Linux, or Windows |
+
+AETHON is **provider-agnostic** — you bring your own model provider. The default is **OpenAI**,
+either through the official API (set an `api_key`) or by pointing `host` at any OpenAI-compatible
+base URL. If you prefer to run everything locally with no API key, use **Ollama** instead.
 
 ---
 
 ## 2. Installation
 
-AETHON defaults to **Claude on your Claude Max subscription quota** through the local
-[Meridian](https://github.com/rynfar/meridian) proxy — no per-token API bills. The Ollama
-steps below are only needed if you prefer fully-local inference instead.
-
-### 2.1 Set up the model backend
-
-**Default — Claude via Meridian:**
+### 2.1 Install AETHON
 
 ```bash
-npm install -g @rynfar/meridian
-claude login          # one-time, uses your Claude subscription
-meridian              # proxy on http://127.0.0.1:3456
+pip install aethon-ai
 ```
 
-`aethon start` auto-starts Meridian in the background for you, so you don't have to keep this running by hand.
+This installs the `aethon` command (and the `aethon` import). To work from source:
 
-**Alternative — fully local via Ollama:**
+```bash
+git clone https://github.com/mertozbas/aethon aethon
+cd aethon
+pip install -e ".[all]"
+```
+
+### 2.2 Choose a model provider
+
+AETHON defaults to **OpenAI**. Provide one of the following:
+
+**Default — OpenAI API:**
+
+```bash
+export OPENAI_API_KEY=sk-...   # your OpenAI API key
+```
+
+**OpenAI-compatible endpoint (local or hosted):** point `host` at any base URL that speaks the
+OpenAI API — e.g. a local vLLM / LM Studio / LocalAI server, or any compatible service. No
+official OpenAI key is needed in that case; the endpoint's own key (if any) goes in `api_key`.
+
+**Alternative — fully local via Ollama (no API key):**
 
 ```bash
 brew install ollama
 ollama serve
 ollama pull qwen3-coder-next     # a local LLM
-ollama pull nomic-embed-text     # embedding model (used by both paths for memory)
+ollama pull nomic-embed-text     # embedding model (used for vector memory)
 ```
 
-### 2.3 Install AETHON
+> The fastest way to wire all of this up is the setup wizard — see **2.3**.
+
+### 2.3 Run the setup wizard (recommended)
 
 ```bash
-# Clone the project
-git clone <repo-url> aethon
-cd aethon
-
-# Install dependencies
-pip install -e ".[all]"
+aethon init
 ```
+
+`aethon init` walks you through a provider menu (**openai / anthropic / ollama**). For **openai**
+it asks for an API key and, optionally, an OpenAI-compatible base URL. It also configures your
+messaging bots (Telegram / Discord / Slack) and, when you choose Ollama embeddings, offers to
+install Ollama and pull the embedding model for you.
 
 ---
 
@@ -60,7 +77,8 @@ pip install -e ".[all]"
 
 ### 3.1 Default Config
 
-On first run, AETHON automatically creates the `~/.aethon/` directory and default files. For custom configuration:
+On first run, AETHON automatically creates the `~/.aethon/` directory and default files. The
+quickest way to generate a config is `aethon init` (see 2.3). For custom configuration:
 
 ```bash
 mkdir -p ~/.aethon
@@ -70,9 +88,12 @@ Create `~/.aethon/config.yaml`:
 
 ```yaml
 model:
-  provider: meridian                 # Claude on your Claude Max quota (default)
-  model_id: claude-opus-4-8          # most capable; 1M context included with Claude Max
-  # provider: ollama                 # fully-local alternative:
+  provider: openai                   # default — official OpenAI API
+  model_id: gpt-4o
+  api_key: ${OPENAI_API_KEY}
+  # host: https://your-openai-compatible-endpoint/v1   # OR any OpenAI-compatible base URL
+  #                                                     # (vLLM / LM Studio / LocalAI / …)
+  # provider: ollama                 # fully-local alternative (no API key):
   # model_id: qwen3-coder-next
   # host: http://localhost:11434
 
@@ -123,8 +144,8 @@ Console output:
 ```
 Starting AETHON...
 
-  Provider: meridian
-  Model: claude-opus-4-8
+  Provider: openai
+  Model: gpt-4o
   WebChat: http://127.0.0.1:18790
   Memory: nomic-embed-text (active)
   Multi-Agent: active

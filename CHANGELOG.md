@@ -7,7 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+- **Meridian provider removed.** AETHON no longer ships or defaults to the Meridian
+  proxy (which relayed a Claude Max subscription — against Anthropic's terms and a
+  real account-suspension risk). The `meridian` provider, its auto-start, the
+  `meridian:` config section, and the `strands-meridian` dependency are all gone.
+
 ### Changed
+- **Default provider is now `openai`** (model `gpt-4o`): set an `api_key` for the
+  official OpenAI API, or point `host` at any OpenAI-compatible endpoint (base URL).
+  Existing configs with `provider: meridian` must be switched (`aethon init`).
+  `security.workspace_only` now defaults to `false` (file tools work under `$HOME`
+  except blocked system/credential paths).
 - The CLI no longer prints each reply twice — agents run with `callback_handler=None`,
   so only the channel renders the response (the model's text still comes from the result).
 - Tool consent prompts are now bypassed by default (`security.bypass_tool_consent: true`):

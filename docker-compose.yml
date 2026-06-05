@@ -1,12 +1,13 @@
 # AETHON — Docker Compose
 #
-# Default — run AETHON headless (web UI + dashboard + webhook + messaging bots) and
-# talk to a Meridian proxy running on your HOST machine (start `meridian` there first):
+# Default — run AETHON headless (web UI + dashboard + webhook + messaging bots).
+# Bring your own model provider: set OPENAI_API_KEY (default provider: openai), or point
+# the config's model.host at any OpenAI-compatible base URL.
 #
-#     docker compose up --build
+#     OPENAI_API_KEY=sk-... docker compose up --build
 #     # open http://127.0.0.1:18790
 #
-# Fully-local inference instead (no host Meridian; runs an Ollama service in Compose):
+# Fully-local inference instead (runs an Ollama service in Compose, no API key):
 #
 #     docker compose --profile local up --build
 #     # build the image with EXTRAS=ollama (below) so it has the Ollama client, then set
@@ -26,9 +27,13 @@ services:
     volumes:
       - aethon-data:/home/aethon/.aethon
     extra_hosts:
-      - "host.docker.internal:host-gateway"   # so the container can reach host Meridian on Linux too
+      # Lets the container reach an OpenAI-compatible server running on the host
+      # (set model.host to http://host.docker.internal:<port>/v1 in your config).
+      - "host.docker.internal:host-gateway"
     environment:
-      # API-provider path: uncomment and switch provider to `anthropic` in your config.
+      # Default provider is `openai`; pass your key through:
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      # Anthropic API path: uncomment and switch provider to `anthropic` in your config.
       # ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       # Enable dashboard auth when exposing beyond localhost:
       AETHON_DASHBOARD_TOKEN: ${AETHON_DASHBOARD_TOKEN:-}

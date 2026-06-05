@@ -1,8 +1,8 @@
 """Interactive first-run setup wizard (`aethon init`).
 
-Detects Meridian (Claude on your Claude Max quota) and otherwise guides the user
-to any Strands provider — Ollama, OpenAI, Anthropic — then validates the choice
-and writes ``~/.aethon/config.yaml``. The default and recommended path is Meridian.
+Guides the user to a Strands provider — OpenAI (official API or an OpenAI-compatible
+endpoint), Anthropic, or Ollama (fully local) — then validates the choice and writes
+``~/.aethon/config.yaml``. The default is OpenAI.
 """
 
 from __future__ import annotations
@@ -23,23 +23,17 @@ _OLLAMA_DEFAULT_HOST = "http://localhost:11434"
 
 # provider -> (description, default_model, needs_api_key, api_key_env)
 PROVIDERS: dict[str, tuple[str, str, bool, Optional[str]]] = {
-    "meridian": (
-        "Claude on your Claude Max subscription quota, via the Meridian proxy (recommended)",
-        "claude-opus-4-8",
-        False,
-        None,
+    "openai": (
+        "OpenAI API, or any OpenAI-compatible endpoint (set the host/base URL)",
+        "gpt-4o",
+        True,
+        "OPENAI_API_KEY",
     ),
     "anthropic": (
         "Claude via an Anthropic API key (per-token billing)",
         "claude-opus-4-8",
         True,
         "ANTHROPIC_API_KEY",
-    ),
-    "openai": (
-        "OpenAI GPT models via an API key",
-        "gpt-4o",
-        True,
-        "OPENAI_API_KEY",
     ),
     "ollama": (
         "Local models via Ollama — fully offline, no API key",
@@ -50,31 +44,14 @@ PROVIDERS: dict[str, tuple[str, str, bool, Optional[str]]] = {
 }
 
 
-def meridian_status() -> tuple[bool, str]:
-    """Return (logged_in, human_status) for the local Meridian proxy."""
-    try:
-        from strands_meridian import health_check
-
-        info = health_check()
-        auth = info.get("auth") or {}
-        if auth.get("loggedIn"):
-            return True, (
-                f"running — logged in as {auth.get('email', '?')} "
-                f"({auth.get('subscriptionType', '?')} quota)"
-            )
-        return False, "running, but not logged in — run: claude login"
-    except Exception:
-        return False, (
-            "not reachable — install with `npm i -g @rynfar/meridian`, "
-            "then run `claude login` and `meridian`"
-        )
-
-
 def build_model_config(provider: str, *, model_id: str, api_key: str = "", host: str = "") -> dict:
     """Build the ``model:`` section of config.yaml (pure — no I/O)."""
     model: dict = {"provider": provider, "model_id": model_id}
     if provider == "ollama":
         model["host"] = host or _OLLAMA_DEFAULT_HOST
+    elif host:
+        # OpenAI-compatible base URL (e.g. a local proxy). Empty = official API.
+        model["host"] = host
     if api_key:
         model["api_key"] = api_key
     return model
@@ -161,9 +138,6 @@ def run_wizard(config_path: str = "~/.aethon/config.yaml", *, force: bool = Fals
             console.print("[yellow]Keeping the existing config.[/]")
             return path
 
-    up, status = meridian_status()
-    console.print(f"Meridian (Claude Max): [{'green' if up else 'yellow'}]{status}[/]\n")
-
     console.print("Which AI provider should AETHON use?")
     keys = list(PROVIDERS)
     for i, key in enumerate(keys, 1):
@@ -177,6 +151,12 @@ def run_wizard(config_path: str = "~/.aethon/config.yaml", *, force: bool = Fals
     host = ""
     if provider == "ollama":
         host = click.prompt("Ollama host", default=_OLLAMA_DEFAULT_HOST)
+    elif provider == "openai":
+        # Optional: a local OpenAI-compatible endpoint (e.g. a proxy). Blank = official API.
+        host = click.prompt(
+            "OpenAI base URL (leave blank for the official API; or a local endpoint)",
+            default="",
+        ).strip()
 
     api_key = ""
     if needs_key:
@@ -189,7 +169,7 @@ def run_wizard(config_path: str = "~/.aethon/config.yaml", *, force: bool = Fals
 
     model = build_model_config(provider, model_id=model_id, api_key=api_key, host=host)
 
-    # Validate the choice (network check for meridian/ollama; key presence for the rest).
+    # Validate the choice (network check for ollama; key presence for the API providers).
     available, msg = check_model_availability(ModelConfig(**model))
     console.print(f"\nProvider check: [{'green' if available else 'yellow'}]{msg}[/]")
     if not available and not click.confirm("Provider isn't ready yet. Save the config anyway?", default=True):

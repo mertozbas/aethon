@@ -16,7 +16,6 @@ dependencies = [
     # Core
     "strands-agents>=1.0.0",
     "strands-agents-tools>=0.1.0",
-    "strands-meridian>=0.1.0",  # Claude via Claude Max quota (default provider)
     "strands-agents-sops>=1.0.0",  # built-in SOPs (enabled by default)
     "apscheduler>=3.10.0",  # scheduler (enabled by default)
 

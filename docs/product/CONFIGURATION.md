@@ -9,13 +9,15 @@
 ```yaml
 # === Model ===
 model:
-  provider: meridian                  # meridian | ollama | openai | anthropic | litellm
-  model_id: claude-opus-4-8           # Claude's most capable model; 1M context with Claude Max
-  host: http://localhost:11434        # Ollama server address (ignored by meridian)
-  temperature: 1.0                    # Sampling temperature (not sent for opus-4-8, which rejects it)
+  provider: openai                    # openai | anthropic | ollama | bedrock | gemini | litellm | mistral | fake
+  model_id: gpt-4o                    # default model id
+  api_key: ${OPENAI_API_KEY}          # official OpenAI API key
+  # host: https://your-endpoint/v1    # OR any OpenAI-compatible base URL (vLLM / LM Studio / LocalAI / …)
+  temperature: 1.0                    # Sampling temperature (0.0-2.0)
   max_tokens: 8192                    # Max output token count
-  # provider: ollama                  # fully-local alternative:
+  # provider: ollama                  # fully-local alternative (no API key):
   # model_id: qwen3-coder-next
+  # host: http://localhost:11434      # Ollama server address
 
 # === Memory ===
 memory:
@@ -51,6 +53,9 @@ channels:
 
 # === Security ===
 security:
+  bypass_tool_consent: true           # Headless: run tools without a per-tool prompt (default true)
+  workspace_only: false               # If false, file tools may work under $HOME
+                                      #   (system/credential paths stay blocked); default false
   blocked_commands:                   # Blocked commands
     - "rm -rf /"
     - "sudo "
@@ -135,11 +140,15 @@ paths:
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `provider` | str | `meridian` | Model provider: meridian, ollama, openai, anthropic, litellm |
-| `model_id` | str | `claude-opus-4-8` | Model name |
-| `host` | str | `http://localhost:11434` | Ollama server address (ignored by meridian) |
-| `temperature` | float | `1.0` | Sampling temperature (0.0-2.0; not sent for opus-4-8) |
+| `provider` | str | `openai` | Model provider: `openai` (default), `anthropic`, `ollama`, `bedrock`, `gemini`, `litellm`, `mistral`, or `fake`/`echo` (offline test) |
+| `model_id` | str | `gpt-4o` | Model name |
+| `api_key` | str | `${OPENAI_API_KEY}` | API key for the provider (OpenAI / Anthropic / etc.); not needed for Ollama |
+| `host` | str | — | Base URL of an OpenAI-compatible endpoint (vLLM / LM Studio / LocalAI / …), or the Ollama server address (e.g. `http://localhost:11434`) |
+| `temperature` | float | `1.0` | Sampling temperature (0.0-2.0) |
 | `max_tokens` | int | `8192` | Max output token count |
+
+`bedrock` / `gemini` / `litellm` / `mistral` each require their own SDK installed
+(`boto3` / `google-genai` / `litellm` / `mistralai`, respectively).
 
 ### Memory
 
@@ -158,6 +167,15 @@ For each channel:
 | `enabled` | bool | Whether the channel is active |
 | `token` | str | Bot token (supports environment variables: `${VAR}`) |
 | `port` | int | Listening port for WebChat |
+
+### Security
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `bypass_tool_consent` | bool | `true` | Run tools headlessly without a per-tool consent prompt |
+| `workspace_only` | bool | `false` | When `false`, file tools may operate anywhere under `$HOME`; system and credential paths remain blocked. Set `true` to confine file tools to the workspace |
+| `blocked_commands` | list[str] | (see example) | Shell command prefixes that are always refused |
+| `allowed_senders` | dict | `{}` | Per-channel allow-lists of user IDs |
 
 ### Telemetry
 

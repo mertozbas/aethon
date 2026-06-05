@@ -51,16 +51,24 @@ Optional feature extras, only when you're working on that feature:
 
 Install them alongside dev, e.g. `pip install -e ".[dev,ollama]"`.
 
-The default model provider is **Meridian** (Claude via your Claude Max quota).
-To exercise the real provider locally you'll need it set up once on the host:
+The default model provider is **OpenAI** (`gpt-4o`). To exercise a real provider
+locally, configure one in `~/.aethon/config.yaml` (or run `aethon init`):
 
-```bash
-npm install -g @rynfar/meridian
-claude login            # one-time, uses your Claude subscription
+```yaml
+model:
+  provider: openai
+  model_id: gpt-4o
+  api_key: ${OPENAI_API_KEY}   # official OpenAI API
+  # host: http://localhost:11434/v1  # or point at any OpenAI-compatible base URL
+# Local, no API key:
+# model:
+#   provider: ollama
+#   model_id: llama3.1
 ```
 
-`aethon start` auto-starts the Meridian proxy in the background for you. You do
-**not** need Meridian (or any network model) for the test suite — tests use the
+`openai` works against the official OpenAI API (set `api_key`) or any
+OpenAI-compatible endpoint (set `host` to its base URL — e.g. vLLM, LM Studio,
+LocalAI). You do **not** need any network model for the test suite — tests use the
 offline `fake`/`echo` provider.
 
 ## Running the test suite
@@ -105,8 +113,7 @@ at import/runtime. If `ruff` isn't on your PATH, install it with `pip install ru
 aethon/                  # the package
   __main__.py            # click CLI: init / doctor / start (+ --version)
   config.py              # Pydantic config models + YAML loader (AethonConfig)
-  setup_wizard.py        # interactive `aethon init` wizard, meridian_status()
-  meridian_manager.py    # Meridian proxy lifecycle (find / spawn / health)
+  setup_wizard.py        # interactive `aethon init` wizard (provider menu, bots, embeddings)
   agent/
     model_factory.py     # create_model() — provider dispatch
     runtime.py           # AethonRuntime: assembles the main agent + its tools
@@ -151,8 +158,8 @@ Model providers are dispatched in `aethon/agent/model_factory.py`.
 1. In `create_model(config)`, add an `elif provider == "<name>":` branch that
    constructs and returns a Strands `Model` from the `ModelConfig` fields
    (`model_id`, `temperature`, `top_p`, `top_k`, `max_tokens`, `host`, `api_key`,
-   `region`, `extra`). Follow the existing branches (meridian, ollama, openai,
-   anthropic, bedrock, gemini, litellm, mistral) as templates, and add your name
+   `region`, `extra`). Follow the existing branches (openai, anthropic, ollama,
+   bedrock, gemini, litellm, mistral) as templates, and add your name
    to the "Supported:" message in the final `else`.
 2. Add a matching branch to `check_model_availability(config)` in the same file so
    `aethon doctor` and `aethon start` can report whether the provider is reachable.
@@ -263,8 +270,8 @@ else is added conditionally.
 
 Open an issue at <https://github.com/mertozbas/aethon/issues>. Include your OS,
 Python version, AETHON version (`aethon --version`), and — where relevant — the
-output of `aethon doctor`, which reports your provider, model, Meridian status, and
-memory configuration.
+output of `aethon doctor`, which reports your provider, model, provider
+reachability, and memory configuration.
 
 For **security vulnerabilities**, do not open a public issue — follow the private
 reporting process in [`SECURITY.md`](SECURITY.md).

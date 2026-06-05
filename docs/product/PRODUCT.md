@@ -10,7 +10,7 @@
 AETHON is **a personal AI assistant system that runs on your own machine, is accessible from all messaging channels, and is powered by a multi-agent team.**
 
 - **Single user** — designed as your personal AI assistant
-- **Runs locally** — with Ollama on Mac, no cloud dependency
+- **Self-hosted, provider-agnostic** — bring your own model provider (OpenAI by default, or any OpenAI-compatible endpoint, Anthropic, or fully-local Ollama)
 - **Access from anywhere** — WhatsApp, Telegram, Discord, Slack, WebChat, CLI
 - **Smart team** — not a single agent, but a specialist agent team
 - **Structured workflows** — repeatable tasks with SOPs
@@ -162,7 +162,7 @@ Tools from MCP servers are automatically added to the agent.
 | Network | Gateway listens only on 127.0.0.1 — external access impossible |
 | Identity | Allowlist-based sender verification |
 | Tool | Dangerous operations blocked via SecurityHookProvider |
-| File | Workspace-only access — access to other directories is blocked |
+| File | Path guard — blocks system/credential paths; `workspace_only` (default off) can confine file tools to the workspace |
 | Memory | Sensitive information detection via MemoryGuardHook (API key, password, token) |
 | Content | Content filtering from external sources |
 | Approval | Interrupt-based user approval via ApprovalHookProvider |
@@ -173,9 +173,9 @@ Tools from MCP servers are automatically added to the agent.
 |-------|------------|----------|
 | Working Memory | SummarizingConversationManager | Each model call |
 | Session Memory | FileSessionManager | Duration of session |
-| Long-Term Memory | SQLite + Ollama Embeddings | Months/years |
+| Long-Term Memory | SQLite + vector embeddings | Months/years |
 
-With embedding LRU cache, no repeated API calls for the same text.
+With embedding LRU cache, no repeated embedding calls for the same text.
 
 ### 3.10 Telemetry and Observability
 
@@ -203,8 +203,8 @@ AETHON: update_context("project", "HashTrade v2") → CONTEXT.md is updated
 |-----------|------------|
 | **Language** | Python 3.10+ |
 | **Agent Framework** | Strands Agents SDK |
-| **LLM** | Claude (Opus 4.8) via Meridian — or any Strands provider |
-| **Model Provider** | MeridianModel ([strands-meridian](https://github.com/mertozbas/strands-meridian)); OllamaModel / OpenAI / Anthropic also supported |
+| **LLM** | Configurable — bring your own (OpenAI `gpt-4o` by default; Anthropic / Ollama / etc.) |
+| **Model Provider** | Multi-provider factory: `openai` (default; official API or any OpenAI-compatible endpoint), `anthropic`, `ollama`, plus `bedrock` / `gemini` / `litellm` / `mistral` |
 | **Multi-Agent** | Strands Swarm + GraphBuilder |
 | **Tool Ecosystem** | strands-agents-tools (47+ tools) |
 
@@ -223,27 +223,43 @@ AETHON: update_context("project", "HashTrade v2") → CONTEXT.md is updated
 
 ---
 
-## 5. Model: Claude Opus 4.8 (default)
+## 5. Model: Bring Your Own Provider (OpenAI default)
 
-AETHON defaults to **Claude Opus 4.8** on your Claude Max subscription quota, served through the
-local [Meridian](https://github.com/rynfar/meridian) proxy via the
-[strands-meridian](https://github.com/mertozbas/strands-meridian) provider. The model is
-provider-agnostic — switch to any Strands provider (Ollama, the Anthropic API, OpenAI, …) at any time.
+AETHON is **provider-agnostic — you bring your own model provider.** Out of the box it defaults to
+the **`openai`** provider with model id `gpt-4o`. Point it at the official OpenAI API with an API key,
+or set `host` to **any OpenAI-compatible base URL** — a local server such as vLLM / LM Studio /
+LocalAI, or any service that speaks the OpenAI API. Switch to a different provider (the Anthropic API,
+fully-local Ollama, …) at any time by editing `config.yaml` or re-running `aethon init`.
 
 | Property | Value |
 |----------|-------|
-| Default model | `claude-opus-4-8` (Claude's most capable) |
-| Context | 1M tokens (included with Claude Max) |
-| Thinking | Adaptive (Opus 4.8 rejects a fixed thinking budget) |
+| Default provider | `openai` |
+| Default model | `gpt-4o` |
+| Endpoint | Official OpenAI API (`api_key`), or any OpenAI-compatible `host` base URL (vLLM / LM Studio / LocalAI / …) |
 | Tool Calling | Yes |
-| Billing | Your Claude subscription quota — no per-token API bills |
-| Setup | `npm i -g @rynfar/meridian && claude login` (auto-started by `aethon start`) |
+| Billing | Your own provider account / API key (or free for a local server) |
+| Setup | `aethon init` — pick a provider and, for OpenAI, enter an API key and optionally an OpenAI-compatible base URL |
 
-> Sampling parameters (`temperature` / `top_p` / `top_k`) are **not sent** for `claude-opus-4-8`,
-> which rejects them; they still apply to the Ollama and OpenAI paths.
+```yaml
+model:
+  provider: openai            # default
+  api_key: ${OPENAI_API_KEY}
+  model_id: gpt-4o
+  # host: http://localhost:8000/v1   # optional: any OpenAI-compatible endpoint (vLLM / LM Studio / LocalAI)
 
-**Local alternative — Ollama:** `ollama pull qwen3-coder-next` and set `provider: ollama` in
-`config.yaml` (recommended sampling: temperature 1.0, top-p 0.95, top-k 40).
+# Local alternative — Ollama (fully local, no API key):
+# model:
+#   provider: ollama
+#   host: http://localhost:11434
+#   model_id: qwen3-coder-next
+#   temperature: 1.0
+#   top_p: 0.95
+#   top_k: 40
+```
+
+**Supported providers:** `openai` (default), `anthropic` (API key), `ollama` (fully local, no key),
+plus `bedrock` / `gemini` / `litellm` / `mistral` (each needs its own SDK installed: boto3 /
+google-genai / litellm / mistralai). A `fake`/`echo` provider is available for offline testing.
 
 ---
 
@@ -291,14 +307,14 @@ AETHON:
 
 ### 7.1 Intentional Constraints
 - **Single user** — No multi-user support (not needed)
-- **Local operation** — No cloud deployment (for security)
+- **Self-hosted** — No multi-tenant cloud deployment (for security)
 - **6 channels** — The most important 6 messaging channels are supported
-- **Local-first model** — runs against a local Meridian proxy by default; provider-agnostic
+- **Bring your own provider** — no bundled model; you supply an API key or point at a local/compatible endpoint
 
 ### 7.2 Model Limitations
-- Default path needs an active Claude subscription and a running Meridian proxy
+- Default OpenAI path needs an API key (or an OpenAI-compatible `host` endpoint you run)
 - The fully-local Ollama path needs enough RAM for the chosen model
-- Tool-calling reliability depends on the selected provider
+- Tool-calling reliability depends on the selected provider and model
 
 ---
 
@@ -307,7 +323,7 @@ AETHON:
 ### MVP (Phase 1) ✅
 - [x] Ability to chat with AETHON from CLI
 - [x] Ability to chat with AETHON from WebChat
-- [x] Claude via Meridian (or Ollama) is running
+- [x] Configured model provider (OpenAI / Anthropic / Ollama) is running
 - [x] Basic tools are working (file_read, file_write, shell, editor)
 - [x] Session management is working (conversation history is preserved)
 - [x] Security hooks are active
@@ -316,7 +332,7 @@ AETHON:
 - [x] All 6 channel support (CLI, WebChat, Telegram, Discord, Slack, WhatsApp)
 - [x] Multi-agent team is working (Orchestrator, Coder, Researcher, Analyst, Planner)
 - [x] SOPs are working (3 built-in + custom SOP support)
-- [x] Long-term memory is working (SQLite + Ollama Embeddings)
+- [x] Long-term memory is working (SQLite + vector embeddings)
 - [x] Scheduler is working (APScheduler + cron)
 - [x] Dashboard is working (7 APIs + WebSocket + UI)
 - [x] Webhook support is working (HMAC-SHA256)

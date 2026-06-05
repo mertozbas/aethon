@@ -16,7 +16,7 @@ T = TypeVar("T")
 
 DEFAULT_REPLY = (
     "This is aethon's built-in fake model — no AI backend is configured. "
-    "Run `aethon init` to connect Meridian (Claude) or another provider."
+    "Run `aethon init` to connect a provider (OpenAI, Anthropic, Ollama, …)."
 )
 
 

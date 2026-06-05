@@ -35,7 +35,6 @@ def init(config: str, force: bool):
 def doctor(config: str):
     """Diagnose the current configuration and provider availability."""
     from aethon.agent.model_factory import check_model_availability
-    from aethon.setup_wizard import meridian_status
 
     cfg_path = Path(config).expanduser()
     console.print(f"\n[bold cyan]AETHON doctor[/]  (config: {cfg_path})\n")
@@ -50,9 +49,6 @@ def doctor(config: str):
 
     available, msg = check_model_availability(cfg.model)
     console.print(f"  Provider check: [{'green' if available else 'red'}]{msg}[/]")
-
-    up, status = meridian_status()
-    console.print(f"  Meridian: [{'green' if up else 'yellow'}]{status}[/]")
 
     console.print(
         f"  Memory:   [{'green' if cfg.memory.enabled else 'dim'}]"
@@ -76,18 +72,6 @@ def start(config: str):
     console.print("[bold cyan]AETHON[/] starting...\n")
 
     cfg = AethonConfig.load(config)
-
-    # Auto-start Meridian in the background if it's our provider and not already up,
-    # so the user never has to launch it by hand or keep a terminal open.
-    if cfg.model.provider == "meridian" and cfg.meridian.auto_start:
-        from aethon.agent.model_factory import _meridian_base_url
-        from aethon.meridian_manager import ensure_running, is_running
-
-        base = _meridian_base_url(cfg.model) or "http://127.0.0.1:3456"
-        if not is_running(base):
-            console.print("  Meridian: [dim]starting in the background…[/]")
-        ok, mmsg = ensure_running(base)
-        console.print(f"  Meridian: [{'green' if ok else 'yellow'}]{mmsg}[/]")
 
     _ensure_workspace(cfg)
 

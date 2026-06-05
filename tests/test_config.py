@@ -34,8 +34,8 @@ def test_version_matches_pyproject():
 def test_config_defaults():
     """Default config loads with correct values."""
     config = AethonConfig()
-    assert config.model.provider == "meridian"
-    assert config.model.model_id == "claude-opus-4-8"
+    assert config.model.provider == "openai"
+    assert config.model.model_id == "gpt-4o"
     assert config.model.temperature == 1.0
     assert config.model.top_p == 0.95
     assert config.model.top_k == 40
@@ -94,7 +94,7 @@ def test_config_load_from_yaml(tmp_path):
 def test_config_load_nonexistent():
     """Missing config file returns defaults."""
     config = AethonConfig.load("/tmp/nonexistent_aethon_config.yaml")
-    assert config.model.provider == "meridian"
+    assert config.model.provider == "openai"
 
 
 def test_config_security_defaults():

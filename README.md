@@ -8,7 +8,7 @@
 [![License: PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/license-PolyForm--Noncommercial--1.0.0-orange.svg)](LICENSE)
 [![Built with Strands Agents SDK](https://img.shields.io/badge/built%20with-Strands%20Agents%20SDK-7d4cdb.svg)](https://github.com/strands-agents)
 
-> By default, AETHON runs **Claude (Opus 4.8)** on **your Claude Max subscription quota** through the local **Meridian** proxy — **no per-token API bills**. It still works with **any Strands provider** (Anthropic API, OpenAI, Ollama, Bedrock, Gemini, LiteLLM, Mistral) if you prefer.
+> **Bring your own model provider.** AETHON is provider-agnostic: point it at the **OpenAI API** (default) or **any OpenAI-compatible endpoint** (vLLM, LM Studio, LocalAI, or any service speaking the OpenAI API), the **Anthropic API**, or a fully-local **Ollama** model — and it also supports **Bedrock, Gemini, LiteLLM, and Mistral**. You run it; you choose the backend.
 
 ---
 
@@ -25,9 +25,9 @@ AETHON is a **personal AI assistant you run yourself**. It is a single Python pa
 
 Under the hood, AETHON is built on the **Strands Agents SDK**. A main orchestrator agent can delegate to **specialist sub-agents** (Coder, Researcher, Analyst, Planner), keep **long-term vector memory** of what matters to you, follow **SOPs** (Standard Operating Procedures — reusable, slash-invoked workflows), and call **tools** (files, shell, scheduling, messaging, MCP servers).
 
-The headline value is the **default model backend**. Instead of paying per token to an API, AETHON defaults to **Claude Opus 4.8 served through Meridian** — a small local proxy that bridges the Claude Code SDK to Anthropic using your **Claude Max subscription**. You install Meridian once, log in with your Claude account, and AETHON auto-starts the proxy for you. Because everything is **local-first** (services bind to `127.0.0.1` by default and your data lives under `~/.aethon`), you stay in control of your data and your bill.
+**You bring the model provider.** AETHON defaults to **OpenAI** (`gpt-4o`): set an `api_key` for the official OpenAI API, or point `host` at **any OpenAI-compatible endpoint** — a local server like vLLM, LM Studio, or LocalAI, or any service that speaks the OpenAI API. Because everything is **local-first** (services bind to `127.0.0.1` by default and your data lives under `~/.aethon`), you stay in control of your data and your bill.
 
-**Provider-agnostic by design:** flip one line in your config (`model.provider`) to switch to the Anthropic API, OpenAI, a fully-local Ollama model, Bedrock, Gemini, LiteLLM, or Mistral.
+**Provider-agnostic by design:** flip one line in your config (`model.provider`) to switch between OpenAI, the Anthropic API, a fully-local Ollama model, Bedrock, Gemini, LiteLLM, or Mistral.
 
 - **Author:** Mert Özbaş
 - **Repository:** https://github.com/mertozbas/aethon
@@ -39,9 +39,9 @@ The headline value is the **default model backend**. Instead of paying per token
 ## Features
 
 **Model backends**
-- Defaults to **Claude Opus 4.8** via the **Meridian** proxy on your **Claude Max** quota — no API key, no per-token cost.
-- **Auto-starts Meridian** in the background on `aethon start` (no extra terminal to babysit).
-- Works with **any Strands provider**: `meridian`, `anthropic`, `openai`, `ollama`, `bedrock`, `gemini`, `litellm`, `mistral` (plus `fake`/`echo` for testing).
+- **Bring your own provider** — defaults to **OpenAI** (`gpt-4o`) via an API key, **or** any **OpenAI-compatible base URL** (vLLM, LM Studio, LocalAI, …).
+- Works with **any Strands provider**: `openai` (default), `anthropic`, `ollama`, `bedrock`, `gemini`, `litellm`, `mistral` (plus `fake`/`echo` for testing).
+- Run **fully local** with Ollama — no API key, no cloud calls.
 - Guided **setup wizard** (`aethon init`) and a **diagnostics** command (`aethon doctor`).
 
 **Channels (all in one package)**
@@ -100,19 +100,21 @@ The headline value is the **default model backend**. Instead of paying per token
 
 ## Quick Start
 
-The fastest path runs AETHON on your **Claude Max** quota via Meridian — no API key required.
+Pick a provider, run the wizard, and you're chatting in your browser.
 
 ```bash
-# 1) Install Meridian once (Node/npm), and log in with your Claude account.
-npm install -g @rynfar/meridian
-claude login          # one-time; uses your Claude subscription
-
-# 2) Install AETHON. (The PyPI distribution is named "aethon-ai";
+# 1) Install AETHON. (The PyPI distribution is named "aethon-ai";
 #    the command and import stay "aethon".)
 pip install aethon-ai
 
-# 3) Start. The first run launches the setup wizard if no config exists,
-#    and auto-starts the Meridian proxy in the background for you.
+# 2) Run the setup wizard. Choose a provider:
+#      - OpenAI  → paste an API key (or point it at an OpenAI-compatible base URL)
+#      - Ollama  → fully local, no key
+#      - Anthropic → paste an Anthropic API key
+aethon init
+
+# 3) Start. (Runs the wizard first if no config exists,
+#    then launches the gateway and all enabled channels.)
 aethon start
 
 # 4) Open the Web UI.
@@ -121,7 +123,7 @@ aethon start
 
 That's it. You can also chat right in your terminal (the CLI channel is on by default), and visit the dashboard at **http://127.0.0.1:18790/dashboard**.
 
-> If you'd rather not run on Claude Max, see [Model Backends](#model-backends) for the Anthropic API, OpenAI, and fully-local Ollama paths.
+> See [Model Backends](#model-backends) for the OpenAI (default), Anthropic API, fully-local Ollama, and OpenAI-compatible-endpoint paths.
 
 ---
 
@@ -130,8 +132,9 @@ That's it. You can also chat right in your terminal (the CLI channel is on by de
 ### Requirements
 
 - **Python 3.10, 3.11, or 3.12** (`requires-python = ">=3.10"`).
-- **For the default Meridian/Claude-Max backend:** Node.js + npm (to install `@rynfar/meridian`) and a Claude subscription (`claude login`).
-- **For vector memory with the default settings:** a running **Ollama** with the `nomic-embed-text` model pulled (see [Memory](#memory-vector--embeddings)). Memory is enabled by default but only needs Ollama when you keep the default `ollama` embedding provider.
+- **For the default OpenAI backend:** an OpenAI API key, **or** an OpenAI-compatible endpoint (a base URL) you can reach — e.g. a local vLLM / LM Studio / LocalAI server.
+- **For the fully-local Ollama backend:** a running Ollama (no API key); install the `ollama` extra.
+- **For vector memory with the default settings:** a running **Ollama** with the `nomic-embed-text` model pulled (see [Memory](#memory-vector--embeddings)). Memory is enabled by default but only needs Ollama when you keep the default `ollama` embedding provider. (`aethon init` can install Ollama and pull the embedding model for you.)
 - **Build backend:** `hatchling` (only relevant if you build from source).
 
 ### Install with pip
@@ -142,7 +145,7 @@ pip install aethon-ai
 
 > **Note on names:** the PyPI distribution is **`aethon-ai`** (the plain `aethon` name was already taken), but the importable package and the CLI command are both **`aethon`** — so you run `aethon start` and `import aethon` as usual. To track the latest `main` instead, install from GitHub: `pip install "git+https://github.com/mertozbas/aethon.git"`.
 
-The **core install ships every entry point in one package**: CLI + WebChat + dashboard + Telegram (`aiogram`) + Discord (`discord.py`) + Slack (`slack-bolt`) + memory (`aiosqlite`) + SOPs (`strands-agents-sops`) + scheduler (`apscheduler`), plus the Strands core and the default `strands-meridian` provider.
+The **core install ships every entry point in one package**: CLI + WebChat + dashboard + Telegram (`aiogram`) + Discord (`discord.py`) + Slack (`slack-bolt`) + memory (`aiosqlite`) + SOPs (`strands-agents-sops`) + scheduler (`apscheduler`), plus the Strands core and the default OpenAI provider (`strands-agents[openai]`).
 
 #### Optional extras
 
@@ -158,12 +161,12 @@ Request an extra with `pip install "aethon-ai[ollama]"`. From a local clone, the
 
 ### Install with Docker
 
-The image is **headless** (web UI + dashboard + webhook + messaging bots; the interactive CLI is disabled inside a container). It defaults to talking to a **Meridian proxy running on your host** at `http://host.docker.internal:3456`, so start `meridian` on the host first.
+The image is **headless** (web UI + dashboard + webhook + messaging bots; the interactive CLI is disabled inside a container). Supply a provider via the seeded config or environment — by default the config uses `provider: openai` with `OPENAI_API_KEY` (or point `model.host` at an OpenAI-compatible base URL reachable from the container).
 
 **Docker Compose (recommended):**
 
 ```bash
-docker compose up --build
+OPENAI_API_KEY=sk-... docker compose up --build
 # open http://127.0.0.1:18790
 ```
 
@@ -172,7 +175,7 @@ docker compose up --build
 ```bash
 docker build -t aethon .
 docker run -p 18790:18790 \
-  --add-host host.docker.internal:host-gateway \
+  -e OPENAI_API_KEY=sk-... \
   aethon
 ```
 
@@ -197,10 +200,10 @@ docker compose --profile local up --build
 - Base image: multi-stage `python:3.12-slim` (builder + runtime), runs as non-root user `aethon` (uid 10001) at `WORKDIR /home/aethon`.
 - State/config live in the named volume **`aethon-data`** mounted at `/home/aethon/.aethon`. The seeded `docker/config.docker.yaml` is copied to `/home/aethon/.aethon/config.yaml` **only when the volume is empty** — a mounted config/volume takes precedence.
 - WebChat binds **`0.0.0.0:18790`** inside the container so the `18790:18790` port mapping reaches it.
-- **Meridian auto-start is OFF in Docker** (the slim image has no Node runtime) — run Meridian on the host.
+- **Provider:** the seeded config defaults to `provider: openai` reading `OPENAI_API_KEY` from the environment; pass it with `-e OPENAI_API_KEY=…` (or `environment:` in Compose), or set `model.host` to an OpenAI-compatible base URL.
 - **Memory is disabled by default in the image** (it needs an Ollama embedding backend).
 - Healthcheck probes `http://127.0.0.1:18790/health` inside the container.
-- **API-key alternative:** uncomment `ANTHROPIC_API_KEY` in `docker-compose.yml` and switch `provider: anthropic` in the config. Set `AETHON_DASHBOARD_TOKEN` to enable dashboard auth when exposing beyond localhost.
+- **Other providers:** switch `provider` in the config and supply the matching credentials (e.g. `ANTHROPIC_API_KEY` for `anthropic`). Set `AETHON_DASHBOARD_TOKEN` to enable dashboard auth when exposing beyond localhost.
 
 ### Install from source
 
@@ -216,39 +219,32 @@ aethon --version
 
 ## Model Backends
 
-AETHON picks the provider from `model.provider` in `~/.aethon/config.yaml`. The default is **`meridian`** (Claude on your Claude Max quota). The setup wizard (`aethon init`) offers a provider menu of **meridian / anthropic / openai / ollama**, defaulting to **meridian**.
+AETHON picks the provider from `model.provider` in `~/.aethon/config.yaml`. The default is **`openai`** (`gpt-4o`). The setup wizard (`aethon init`) offers a provider menu of **openai / anthropic / ollama**, defaulting to **openai**.
 
-### The default path — Claude on Claude Max via Meridian (step by step)
+### OpenAI (default)
 
-1. **Install Meridian** (one time, on the host):
-   ```bash
-   npm install -g @rynfar/meridian
-   ```
-2. **Log in** with your Claude account (one time):
-   ```bash
-   claude login
-   ```
-3. **Start AETHON.** Because `model.provider` is `meridian` and `meridian.auto_start` is `true`, AETHON checks whether the proxy is reachable at `http://127.0.0.1:3456` and, if not, **spawns it detached in the background** for you:
-   ```bash
-   aethon start
-   ```
-   On start you'll see lines like `Meridian: starting in the background…` then `Meridian: started in the background (pid …; logs: …)`.
+There are two ways to run the default provider — the official OpenAI API, or any **OpenAI-compatible endpoint**.
 
-**What Meridian does:** it bridges the Claude Code SDK to the Anthropic API using your **Claude Max subscription**, so you don't pay per token and you don't need an API key. The proxy listens on **`http://127.0.0.1:3456`**. AETHON launches it from a neutral working directory (`~/.aethon`) so another project's `CLAUDE.md` doesn't leak into the assistant's context, logs to `~/.aethon/logs/meridian.log`, and writes its pid to `~/.aethon/meridian.pid`.
-
-**Default model config (no key needed):**
+**Official OpenAI API** — supply an API key:
 
 ```yaml
 model:
-  provider: meridian
-  model_id: claude-opus-4-8     # 1M context included with Claude Max
-  # host is ignored by Meridian; the proxy is used at 127.0.0.1:3456
-
-meridian:
-  auto_start: true              # set false to manage Meridian yourself
+  provider: openai
+  model_id: gpt-4o
+  api_key: ${OPENAI_API_KEY}   # resolved from the environment
 ```
 
-> Prefer to run Meridian by hand? Set `meridian.auto_start: false` and start `meridian` yourself before `aethon start`.
+**Any OpenAI-compatible endpoint** — point `host` at a base URL instead. This works with local servers like **vLLM**, **LM Studio**, or **LocalAI**, or any service that speaks the OpenAI API. Many local servers don't need a real key (use any non-empty placeholder if one is required):
+
+```yaml
+model:
+  provider: openai
+  model_id: gpt-4o            # use whatever model id your endpoint serves
+  host: http://localhost:8000/v1   # your OpenAI-compatible base URL
+  api_key: ${OPENAI_API_KEY}       # may be a placeholder for local servers
+```
+
+> The `aethon init` wizard asks for your OpenAI API key and, optionally, an OpenAI-compatible base URL — so you usually don't hand-edit this.
 
 ### Anthropic API
 
@@ -257,17 +253,6 @@ model:
   provider: anthropic
   model_id: claude-opus-4-8
   api_key: ${ANTHROPIC_API_KEY}   # resolved from the environment
-```
-
-### OpenAI
-
-Requires the OpenAI SDK (not bundled): `pip install openai`.
-
-```yaml
-model:
-  provider: openai
-  model_id: gpt-4o
-  api_key: ${OPENAI_API_KEY}
 ```
 
 ### Ollama (fully local)
@@ -302,13 +287,13 @@ model:
 aethon init
 ```
 
-The wizard sets the provider, model, and memory and **writes the config file** for you. Use `--config / -c` to choose a path (default `~/.aethon/config.yaml`) and `--force` to overwrite an existing config without asking. After configuring, verify everything with:
+The wizard walks a provider menu (**openai / anthropic / ollama**). For **openai** it asks for an API key and, optionally, an OpenAI-compatible base URL; it also configures messaging bots and, when you use Ollama embeddings for memory, offers to install Ollama and pull the embedding model. The wizard sets the provider, model, and memory and **writes the config file** for you. Use `--config / -c` to choose a path (default `~/.aethon/config.yaml`) and `--force` to overwrite an existing config without asking. After configuring, verify everything with:
 
 ```bash
 aethon doctor
 ```
 
-`aethon doctor` prints your provider/model, runs a provider availability check, reports Meridian status, and shows whether memory is enabled and which embedding provider it uses.
+`aethon doctor` prints your provider/model, runs a provider availability check, and shows whether memory is enabled and which embedding provider it uses.
 
 ---
 
@@ -337,9 +322,9 @@ channels:
 
 | Field | Type | Default | Meaning |
 |---|---|---|---|
-| `provider` | str | `"meridian"` | Model provider backend (meridian, anthropic, openai, ollama, …). |
-| `host` | str | `"http://localhost:11434"` | Ollama host URL; Meridian ignores it and uses `127.0.0.1:3456`. |
-| `model_id` | str | `"claude-opus-4-8"` | Model identifier; 1M context included with Claude Max. |
+| `provider` | str | `"openai"` | Model provider backend (openai, anthropic, ollama, bedrock, gemini, litellm, mistral, …). |
+| `host` | str | `"http://localhost:11434"` | Base URL: the Ollama host, or an OpenAI-compatible endpoint when `provider: openai`. |
+| `model_id` | str | `"gpt-4o"` | Model identifier. |
 | `api_key` | str | `""` | API key for the provider. |
 | `temperature` | float | `1.0` | Sampling temperature. |
 | `top_p` | float | `0.95` | Nucleus sampling probability mass. |
@@ -347,12 +332,6 @@ channels:
 | `max_tokens` | int | `8192` | Max tokens to generate per response. |
 | `region` | str | `"us-west-2"` | Provider region (e.g. for Bedrock-style backends). |
 | `extra` | dict | `{}` | Arbitrary extra provider params. |
-
-#### `meridian`
-
-| Field | Type | Default | Meaning |
-|---|---|---|---|
-| `auto_start` | bool | `true` | Auto-start Meridian in the background on `aethon start` if not running; set false to manage it yourself. |
 
 #### `channels`
 
@@ -518,7 +497,7 @@ channels:
 
 ## Usage
 
-When you run `aethon start`, the console prints a status block: the provider and model, the WebChat URL (`http://127.0.0.1:18790`), the Meridian/memory/multi-agent/SOP/scheduler/telemetry status, and (when enabled) the dashboard and webhook URLs and the list of active channels. Then the gateway starts.
+When you run `aethon start`, the console prints a status block: the provider and model, the WebChat URL (`http://127.0.0.1:18790`), the memory/multi-agent/SOP/scheduler/telemetry status, and (when enabled) the dashboard and webhook URLs and the list of active channels. Then the gateway starts.
 
 ### Interactive CLI
 
@@ -756,9 +735,9 @@ aethon [--version] <command> [options]
 
 | Command | Description | Options |
 |---|---|---|
-| `aethon init` | Set up AETHON (provider, model, memory) and write the config file. | `--config, -c <path>` (default `~/.aethon/config.yaml`); `--force` (overwrite an existing config without asking). |
-| `aethon doctor` | Diagnose the current configuration and provider availability (provider/model, provider check, Meridian status, memory). | `--config, -c <path>` (default `~/.aethon/config.yaml`). |
-| `aethon start` | Start AETHON (runs the setup wizard first if no config exists; auto-starts Meridian when applicable; launches the gateway and all enabled channels). | `--config, -c <path>` (default `~/.aethon/config.yaml`). |
+| `aethon init` | Set up AETHON (provider menu openai/anthropic/ollama, model, memory, messaging bots) and write the config file. | `--config, -c <path>` (default `~/.aethon/config.yaml`); `--force` (overwrite an existing config without asking). |
+| `aethon doctor` | Diagnose the current configuration and provider availability (provider/model, provider check, memory). | `--config, -c <path>` (default `~/.aethon/config.yaml`). |
+| `aethon start` | Start AETHON (runs the setup wizard first if no config exists; launches the gateway and all enabled channels). | `--config, -c <path>` (default `~/.aethon/config.yaml`). |
 | `aethon --version` | Print `aethon, version 0.1.0` and exit. | — |
 
 ---
@@ -782,16 +761,7 @@ AETHON is **local-first** and ships safe defaults:
 
 ## Troubleshooting
 
-**Meridian not reachable / `Provider not ready`.** Ensure Meridian is installed and you're logged in:
-
-```bash
-npm install -g @rynfar/meridian
-claude login
-```
-
-AETHON auto-starts Meridian on `aethon start` (when `provider: meridian` and `meridian.auto_start: true`). If auto-start times out, check the log at `~/.aethon/logs/meridian.log` and re-run `claude login` if needed. The proxy listens on `http://127.0.0.1:3456`. Run `aethon doctor` to see Meridian status.
-
-**Provider not ready (other backends).** `aethon start` runs an availability check; if it fails it prints `Provider not ready: <msg>` and a hint. Run `aethon init` to reconfigure or `aethon doctor` to diagnose. For API providers, confirm the `api_key` (or its `${ENV_VAR}`) is actually set — remember missing env vars resolve to an empty string.
+**Provider not ready.** `aethon start` runs an availability check; if it fails it prints `Provider not ready: <msg>` and a hint. Run `aethon init` to reconfigure or `aethon doctor` to diagnose. For API providers (OpenAI, Anthropic, …), confirm the `api_key` (or its `${ENV_VAR}`) is actually set — remember missing env vars resolve to an empty string. If you're using an **OpenAI-compatible endpoint**, double-check `model.host` is the right base URL, that the server is running, and that it serves the `model_id` you configured. For **Ollama**, make sure the daemon is running at `model.host` (default `http://localhost:11434`) and the model is pulled.
 
 **Port already in use (18790).** Another process holds the WebChat port. Change `channels.webchat.port`, or stop the other process. In Docker, adjust the `18790:18790` mapping.
 
@@ -803,7 +773,7 @@ ollama pull nomic-embed-text
 
 On start you'll see `Memory: nomic-embed-text not found — ollama pull nomic-embed-text` if it's missing, or `Memory: Ollama connection error` if Ollama isn't reachable. Alternatively switch to `embedding_provider: openai` (with `embedding_api_key`), or disable memory.
 
-**Docker can't reach host Meridian.** The container talks to host Meridian at `http://host.docker.internal:3456`. Make sure `meridian` is running on the host, and that `host.docker.internal` resolves — Compose sets `extra_hosts: host.docker.internal:host-gateway`; for plain `docker run`, add `--add-host host.docker.internal:host-gateway`.
+**Docker can't reach your provider.** If `model.host` points at a service on the host (e.g. a local OpenAI-compatible server or Ollama), use `http://host.docker.internal:<port>` from inside the container and make sure `host.docker.internal` resolves — Compose sets `extra_hosts: host.docker.internal:host-gateway`; for plain `docker run`, add `--add-host host.docker.internal:host-gateway`. For the official OpenAI API, just pass `OPENAI_API_KEY` into the container.
 
 **Messaging bot didn't start.** Missing libs log a warning and missing tokens log a `ValueError` — the gateway keeps running. Check that the channel is `enabled: true`, the token env var is set, and (Discord) the MESSAGE CONTENT intent / (Slack) Socket Mode + event subscriptions are configured.
 
@@ -812,7 +782,7 @@ On start you'll see `Memory: nomic-embed-text not found — ollama pull nomic-em
 ## FAQ
 
 **Do I need an API key?**
-No — not for the default path. With `provider: meridian` and a Claude subscription (`claude login`), AETHON runs Claude Opus 4.8 on your **Claude Max** quota with no API key and no per-token bill. API keys are only needed if you choose the Anthropic API, OpenAI, etc.
+For the default OpenAI provider, yes — supply `OPENAI_API_KEY` (or point `model.host` at an OpenAI-compatible endpoint, where local servers often accept a placeholder key). To run with **no key at all**, use the fully-local **Ollama** provider. API providers like Anthropic also need their own key.
 
 **Where does AETHON store my data?**
 Under `~/.aethon` — config (`config.yaml`), workspace (`workspace/`), sessions (`sessions/`), logs (`logs/`), vector memory (`memory.sqlite`), and credentials (`credentials/`).
@@ -887,7 +857,7 @@ Contributions follow the same noncommercial terms; see [CONTRIBUTING.md](CONTRIB
 
 ## Roadmap
 
-**v1 (0.1.0) ships:** the full provider-agnostic assistant — CLI + WebChat + dashboard, Telegram/Discord/Slack channels, SQLite vector memory, multi-agent specialists with `ask_*` delegation, built-in and custom SOPs, scheduler, webhooks, telemetry, the Meridian/Claude-Max default backend with background auto-start, and Docker + CI infrastructure.
+**v1 (0.1.0) ships:** the full provider-agnostic assistant — CLI + WebChat + dashboard, Telegram/Discord/Slack channels, SQLite vector memory, multi-agent specialists with `ask_*` delegation, built-in and custom SOPs, scheduler, webhooks, telemetry, bring-your-own model provider (OpenAI default, plus Anthropic / Ollama / Bedrock / Gemini / LiteLLM / Mistral), and Docker + CI infrastructure.
 
 **Deferred to v2:**
 - Response **streaming**.
@@ -915,9 +885,8 @@ See the full text in [LICENSE](LICENSE).
 ## Acknowledgements
 
 - **[Strands Agents SDK](https://github.com/strands-agents)** — the agent framework AETHON is built on.
-- **[Meridian](https://github.com/rynfar/meridian)** (`@rynfar/meridian`) — the local proxy that bridges the Claude Code SDK to Anthropic using your Claude Max subscription.
-- **[strands-meridian](https://github.com/mertozbas/strands-meridian)** — the Strands provider that wraps Meridian (AETHON's default backend).
-- **[Anthropic Claude](https://www.anthropic.com/claude)** — the default model (Claude Opus 4.8).
+- **[OpenAI](https://platform.openai.com/)** — the default model provider (`gpt-4o`); also reachable via any OpenAI-compatible endpoint.
+- **[Ollama](https://ollama.com/)** — fully-local model serving and the default memory-embedding backend.
 
 ---
 

@@ -14,14 +14,15 @@ from pydantic import BaseModel, Field
 class ModelConfig(BaseModel):
     """Model provider configuration.
 
-    Defaults to ``meridian`` — Claude on your Claude Max subscription quota via
-    the local Meridian proxy (https://github.com/mertozbas/strands-meridian).
-    Set ``provider: ollama`` (with ``host``/``model_id``) to run fully locally.
+    Defaults to ``openai``: set ``api_key`` for the official OpenAI API, or point
+    ``host`` at a local OpenAI-compatible endpoint (base_url). Other providers:
+    ``anthropic``, ``ollama`` (fully local), ``bedrock``, ``gemini``, ``litellm``,
+    ``mistral``. Pick and configure one with ``aethon init``.
     """
 
-    provider: str = "meridian"
-    host: str = "http://localhost:11434"  # Ollama default; Meridian ignores it and uses 127.0.0.1:3456
-    model_id: str = "claude-opus-4-8"     # most capable model; 1M context included with Claude Max
+    provider: str = "openai"
+    host: str = "http://localhost:11434"  # Ollama default; openai treats this default as "unset" and uses the official API
+    model_id: str = "gpt-4o"
     api_key: str = ""
     temperature: float = 1.0
     top_p: float = 0.95
@@ -182,7 +183,7 @@ class PerformanceConfig(BaseModel):
     """Performance optimization configuration."""
 
     # Off by default: warm-up sends a real model request on every boot, which would
-    # spend Claude Max quota for no user benefit. Opt in if you want lower first-message latency.
+    # spend API credits/quota for no user benefit. Opt in if you want lower first-message latency.
     model_warmup: bool = False
     session_cache_size: int = 10
     embedding_cache_size: int = 100
@@ -203,19 +204,10 @@ class PathsConfig(BaseModel):
     credentials: str = "~/.aethon/credentials"
 
 
-class MeridianConfig(BaseModel):
-    """Meridian proxy lifecycle (used when provider is 'meridian')."""
-
-    # Start Meridian automatically (in the background) on `aethon start` if it
-    # isn't already running. Set false to manage Meridian yourself.
-    auto_start: bool = True
-
-
 class AethonConfig(BaseModel):
     """Root configuration model."""
 
     model: ModelConfig = ModelConfig()
-    meridian: MeridianConfig = MeridianConfig()
     channels: ChannelsConfig = ChannelsConfig()
     security: SecurityConfig = SecurityConfig()
     session: SessionConfig = SessionConfig()

@@ -1,6 +1,6 @@
 """End-to-end boot smoke: the real `aethon start` serves over HTTP + WebSocket.
 
-Uses the offline ``echo`` provider so no model backend (Meridian / API key) is needed.
+Uses the offline ``echo`` provider so no model backend (an API key) is needed.
 Marked ``e2e`` (it spawns a subprocess and binds a socket) — deselect with
 ``pytest -m 'not e2e'``.
 """
@@ -43,9 +43,7 @@ def test_aethon_start_serves_end_to_end(tmp_path):
     config.write_text(
         "model:\n"
         "  provider: echo\n"
-        "  model_id: claude-opus-4-8\n"
-        "meridian:\n"
-        "  auto_start: false\n"
+        "  model_id: gpt-4o\n"
         "channels:\n"
         "  cli:\n"
         "    enabled: false\n"

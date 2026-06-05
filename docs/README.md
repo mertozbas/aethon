@@ -1,6 +1,6 @@
 # AETHON — Documentation
 
-> Personal AI Assistant — Local LLM, multi-channel, multi-agent, full control.
+> Self-hosted, provider-agnostic personal AI assistant — multi-channel, multi-agent, full control. Bring your own model provider.
 
 ---
 
