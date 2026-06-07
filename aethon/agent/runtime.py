@@ -439,18 +439,30 @@ class AethonRuntime:
         ])
 
     def _reset_session(self, session_id: str) -> None:
-        """Clear a session's message history (e.g. after a context-window overflow) so
-        the next turn starts fresh. Long-term memory and CONTEXT.md are unaffected."""
+        """Clear a session's message history (e.g. after a context-window overflow) so the
+        next turn starts fresh. The old messages are MOVED to a ``cleared/batch_N`` backup
+        (not deleted) so nothing is lost; long-term memory and CONTEXT.md are unaffected."""
         sessions_dir = Path(self.config.session.storage_dir).expanduser()
-        messages_dir = (
-            sessions_dir / f"session_{session_id}" / "agents" / "agent_main" / "messages"
-        )
-        if messages_dir.exists():
-            for msg_file in messages_dir.glob("message_*.json"):
-                try:
-                    msg_file.unlink()
-                except Exception:
-                    pass
+        agent_dir = sessions_dir / f"session_{session_id}" / "agents" / "agent_main"
+        messages_dir = agent_dir / "messages"
+        if not messages_dir.exists():
+            self.agents.pop(session_id, None)
+            return
+        files = sorted(messages_dir.glob("message_*.json"))
+        if files:
+            try:
+                backup_root = agent_dir / "cleared"
+                backup_root.mkdir(exist_ok=True)
+                batch = backup_root / f"batch_{len(list(backup_root.glob('batch_*')))}"
+                batch.mkdir()
+                for f in files:
+                    f.rename(batch / f.name)  # preserve history for recovery
+            except Exception:
+                for f in files:
+                    try:
+                        f.unlink()
+                    except Exception:
+                        pass
         self.agents.pop(session_id, None)
 
     async def process(self, message: InboundMessage, session_id: str) -> str:

@@ -40,5 +40,8 @@ def test_reset_session_clears_message_history(tmp_path):
 
     rt._reset_session("cli:local")
 
-    assert list(msgs.glob("message_*.json")) == []   # history cleared
+    assert list(msgs.glob("message_*.json")) == []   # history cleared from the live dir
     assert "cli:local" not in rt.agents              # agent evicted (reloads fresh)
+    # Not deleted — moved to a backup batch so nothing is lost.
+    backed_up = list((msgs.parent / "cleared").glob("batch_*/message_*.json"))
+    assert len(backed_up) == 2
