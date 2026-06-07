@@ -182,6 +182,33 @@ class MCPConfig(BaseModel):
     servers: list[dict] = Field(default_factory=list)
 
 
+class CapabilityFlag(BaseModel):
+    """Simple on/off toggle for a vendored capability tool."""
+
+    enabled: bool = True
+
+
+class NotifyCapability(BaseModel):
+    """Native notification capability."""
+
+    enabled: bool = True
+    method: str = "auto"  # auto | native | tui | bell | speak | sound | all
+
+
+class CapabilitiesConfig(BaseModel):
+    """Toggles for the vendored capability tools.
+
+    Grouped on/off flags for low-risk utility tools (web scraping, GitHub GraphQL,
+    JSON-RPC, native notifications). Each tool is import-guarded at registration, so
+    a missing optional dependency simply skips it rather than breaking startup.
+    """
+
+    scraper: CapabilityFlag = CapabilityFlag()
+    github: CapabilityFlag = CapabilityFlag()
+    jsonrpc: CapabilityFlag = CapabilityFlag()
+    notify: NotifyCapability = NotifyCapability()
+
+
 class PerformanceConfig(BaseModel):
     """Performance optimization configuration."""
 
@@ -224,6 +251,7 @@ class AethonConfig(BaseModel):
     dashboard: DashboardConfig = DashboardConfig()
     webhook: WebhookConfig = WebhookConfig()
     mcp: MCPConfig = MCPConfig()
+    capabilities: CapabilitiesConfig = CapabilitiesConfig()
     performance: PerformanceConfig = PerformanceConfig()
     paths: PathsConfig = PathsConfig()
 

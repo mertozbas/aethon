@@ -71,7 +71,16 @@ whatsapp = [
 mcp = [
     "mcp>=1.0.0",
 ]
-all = ["aethon-ai[anthropic,ollama,whatsapp,mcp]"]
+scraper = [
+    "beautifulsoup4>=4.9.0",  # HTML/XML parsing for the `scraper` tool
+]
+github = [
+    "colorama>=0.4.0",  # colored output for `use_github` (requests/rich already core)
+]
+jsonrpc = [
+    "websockets>=12.0",  # WebSocket transport for `jsonrpc` (already in core deps)
+]
+all = ["aethon-ai[anthropic,ollama,whatsapp,mcp,scraper,github,jsonrpc]"]
 dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",

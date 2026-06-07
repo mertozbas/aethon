@@ -89,10 +89,30 @@ class SecurityHookProvider(HookProvider):
                 logger.warning(f"BLOCKED PATH: {path}")
                 return
 
-        # 3. Log network operations
+        # 3. Log network operations (auth material is always redacted)
         if tool_name == "http_request":
             url = tool_input.get("url", "")
             logger.info(f"NETWORK: {tool_name} -> {url}")
+        elif tool_name == "scraper":
+            # Log the scrape target URL (mirrors http_request logging). No blocking.
+            url = tool_input.get("url", "")
+            action = tool_input.get("action", "")
+            logger.info(f"NETWORK: scraper {action} -> {url}")
+        elif tool_name == "use_github":
+            # GitHub GraphQL — the token comes from $GITHUB_TOKEN (never in tool_input);
+            # log the operation with the token redacted.
+            query_type = tool_input.get("query_type", "?")
+            logger.info(
+                f"NETWORK: use_github -> {query_type} (token=***redacted***)"
+            )
+        elif tool_name == "jsonrpc":
+            # JSON-RPC over HTTP/WS — log endpoint + method, never the auth value.
+            endpoint = tool_input.get("endpoint", "")
+            method = tool_input.get("method", "")
+            logger.info(
+                f"NETWORK: jsonrpc -> {endpoint} method={method} "
+                f"(auth=***redacted***)"
+            )
 
     def _is_safe_path(self, path: str) -> bool:
         """Check if a path is within allowed boundaries.

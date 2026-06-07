@@ -251,6 +251,46 @@ class AethonRuntime:
         # MCP tools
         if self._mcp_loader:
             tools.extend(self._mcp_loader.get_tools())
+        # Vendored capability tools (config-gated; import-guarded so a missing
+        # optional dependency just skips the tool rather than breaking startup).
+        caps = getattr(self.config, "capabilities", None)
+        if caps:
+            if caps.scraper.enabled:
+                try:
+                    from aethon.tools.vendor.scraper import scraper
+
+                    tools.append(scraper)
+                except Exception:
+                    pass
+            if caps.github.enabled:
+                try:
+                    from aethon.tools.vendor.use_github import use_github
+
+                    tools.append(use_github)
+                except Exception:
+                    pass
+            if caps.jsonrpc.enabled:
+                try:
+                    from aethon.tools.vendor.jsonrpc import jsonrpc
+
+                    tools.append(jsonrpc)
+                except Exception:
+                    pass
+            if caps.notify.enabled:
+                try:
+                    from aethon.tools.vendor.notify import notify
+
+                    tools.append(notify)
+                except Exception:
+                    pass
+        # manage_messages — introspective only (reads message history; no mutation,
+        # no gating needed). Always available when importable.
+        try:
+            from aethon.tools.manage_messages import manage_messages
+
+            tools.append(manage_messages)
+        except Exception:
+            pass
         return tools
 
     def _get_hooks(self) -> list:
