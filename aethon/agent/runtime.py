@@ -306,6 +306,15 @@ class AethonRuntime:
                     tools.append(apple_notes)
                 except Exception:
                     pass
+        # LSP tool — opt-in (avoid spawning language servers on boot).
+        lsp_cfg = getattr(self.config, "lsp", None)
+        if lsp_cfg and lsp_cfg.enabled:
+            try:
+                from aethon.tools.lsp_tool import lsp
+
+                tools.append(lsp)
+            except Exception:
+                pass
         # record_learning — persists discoveries to LEARNINGS.md (read back into
         # the prompt by SystemPromptComposer when prompt.include_learnings).
         prompt_cfg = getattr(self.config, "prompt", None)
@@ -351,6 +360,20 @@ class AethonRuntime:
                 )
             except Exception as e:
                 logger.warning(f"MemoryGuard startup error: {e}")
+        # LSP diagnostics hook (opt-in; only when the LSP tool is also enabled)
+        lsp_cfg = getattr(self.config, "lsp", None)
+        if lsp_cfg and lsp_cfg.enabled and lsp_cfg.auto_diagnostics:
+            try:
+                from aethon.agent.hooks.lsp import LSPDiagnosticsHookProvider
+
+                hooks.append(
+                    LSPDiagnosticsHookProvider(
+                        config=lsp_cfg, workspace=self.config.paths.workspace
+                    )
+                )
+                logger.info("LSPDiagnosticsHook: active")
+            except Exception as e:
+                logger.warning(f"LSP diagnostics hook startup error: {e}")
         # TelemetryHook
         if self._telemetry_hook:
             hooks.append(self._telemetry_hook)

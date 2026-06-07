@@ -86,7 +86,12 @@ macos = [
     "html2text>=2.0.0",
     "mistune>=3.0.0",
 ]
-all = ["aethon-ai[anthropic,ollama,whatsapp,mcp,scraper,github,jsonrpc,macos]"]
+lsp = [
+    # Primary Python language server for the `lsp` tool. Other languages: install
+    # typescript-language-server / gopls / rust-analyzer / clangd on PATH yourself.
+    "pyright>=1.1.0",
+]
+all = ["aethon-ai[anthropic,ollama,whatsapp,mcp,scraper,github,jsonrpc,macos,lsp]"]
 dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",

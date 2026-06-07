@@ -182,6 +182,18 @@ class MCPConfig(BaseModel):
     servers: list[dict] = Field(default_factory=list)
 
 
+class LSPConfig(BaseModel):
+    """Language Server Protocol integration.
+
+    Off by default to avoid spawning language servers on boot. Install servers
+    separately: pyright via the ``[lsp]`` extra; typescript-language-server /
+    gopls / rust-analyzer / clangd on PATH for those languages.
+    """
+
+    enabled: bool = False
+    auto_diagnostics: bool = False  # append diagnostics after file-modifying tools
+
+
 class PromptConfig(BaseModel):
     """System-prompt composition options.
 
@@ -293,6 +305,7 @@ class AethonConfig(BaseModel):
     webhook: WebhookConfig = WebhookConfig()
     mcp: MCPConfig = MCPConfig()
     macos: MacOSConfig = MacOSConfig()
+    lsp: LSPConfig = LSPConfig()
     prompt: PromptConfig = PromptConfig()
     capabilities: CapabilitiesConfig = CapabilitiesConfig()
     performance: PerformanceConfig = PerformanceConfig()
