@@ -154,6 +154,17 @@ class SecurityHookProvider(HookProvider):
         # 5. Dynamic tool loading — gate manage_tools dangerous actions.
         if tool_name == "manage_tools" and self.runtime_tools is not None:
             action = str(tool_input.get("action", "")).strip().lower()
+            # Enforce `enabled` here too, decoupling the block from registration
+            # (robust even if the tool is ever registered unconditionally).
+            if action in ("create", "fetch", "add", "reload") and not getattr(
+                self.runtime_tools, "enabled", False
+            ):
+                event.cancel_tool = (
+                    "BLOCKED: dynamic tool loading is disabled. Set "
+                    "runtime_tools.enabled=true to enable."
+                )
+                logger.warning(f"BLOCKED TOOL: manage_tools {action}")
+                return
             if action in ("create", "fetch") and not getattr(
                 self.runtime_tools, "allow_create", False
             ):

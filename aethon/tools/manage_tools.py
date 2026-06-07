@@ -714,17 +714,18 @@ def manage_tools(
     # AETHON gating (defense-in-depth; the SecurityHookProvider is the primary gate).
     # Prefer the injected runtime config; fall back to the env var for legacy callers.
     _dangerous = ("add", "reload", "create", "fetch")
+    _act = str(action).strip().lower()  # normalized for the gate (matches the security hook)
     _aethon_cfg = getattr(agent, "__aethon_config__", None) if agent else None
     _rt_cfg = getattr(_aethon_cfg, "runtime_tools", None) if _aethon_cfg else None
     if _rt_cfg is not None:
-        if action in _dangerous and not getattr(_rt_cfg, "enabled", False):
+        if _act in _dangerous and not getattr(_rt_cfg, "enabled", False):
             return {"status": "error", "content": [{"text": "⚠️ Dynamic tool loading disabled (runtime_tools.enabled=false)."}]}
-        if action in ("create", "fetch") and not getattr(_rt_cfg, "allow_create", False):
+        if _act in ("create", "fetch") and not getattr(_rt_cfg, "allow_create", False):
             return {"status": "error", "content": [{"text": "⚠️ Dynamic tool creation disabled (set runtime_tools.allow_create=true; the sandbox validates code before loading)."}]}
-        if action in ("add", "reload") and not getattr(_rt_cfg, "allow_install", False):
+        if _act in ("add", "reload") and not getattr(_rt_cfg, "allow_install", False):
             return {"status": "error", "content": [{"text": "⚠️ Dynamic tool install/reload disabled (set runtime_tools.allow_install=true)."}]}
     elif os.environ.get(ENV_DISABLE_LOAD, "").lower() == "true":
-        if action in _dangerous:
+        if _act in _dangerous:
             return {
                 "status": "error",
                 "content": [
