@@ -423,6 +423,8 @@ def setup_dashboard(app, runtime, config, event_bus=None):
 
         except WebSocketDisconnect:
             pass
+        except asyncio.CancelledError:
+            pass  # server shutting down — not an error
         except Exception as e:
             logger.debug(f"WS dashboard error: {e}")
         finally:

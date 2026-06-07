@@ -246,13 +246,15 @@ class AethonGateway:
             except Exception as e:
                 logger.warning(f"Error ({name}): {e}")
 
-        # Cancel any remaining tasks
-        for task in self._tasks:
-            if not task.done():
-                task.cancel()
-
+        # Let tasks finish gracefully first — adapter.stop() above already signalled
+        # uvicorn via should_exit. Only force-cancel stragglers after a short grace
+        # period; cancelling uvicorn mid-serve spews CancelledError tracebacks.
         if self._tasks:
-            await asyncio.gather(*self._tasks, return_exceptions=True)
+            _done, pending = await asyncio.wait(self._tasks, timeout=3.0)
+            for task in pending:
+                task.cancel()
+            if pending:
+                await asyncio.gather(*pending, return_exceptions=True)
 
         self._tasks.clear()
         logger.info("AETHON shut down.")

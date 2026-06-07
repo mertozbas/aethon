@@ -138,8 +138,8 @@ class WebChatAdapter(ChannelAdapter):
                     response = await self.router.handle(inbound)
                     if response:
                         await websocket.send_text(response.text)
-            except WebSocketDisconnect:
-                pass
+            except (WebSocketDisconnect, asyncio.CancelledError):
+                pass  # client closed or server shutting down — not an error
 
         @self.app.get("/api/status")
         async def status():
