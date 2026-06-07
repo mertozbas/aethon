@@ -38,16 +38,29 @@ class SecurityHookProvider(HookProvider):
         "~/.aethon/credentials/",
     ]
 
+    # use_mac action prefix -> the MacOSConfig flag that must be enabled for it.
+    MACOS_ACTION_GATES = {
+        "calendar.": "enable_calendar",
+        "reminders.": "enable_reminders",
+        "mail.": "enable_mail",
+        "shortcuts.": "enable_shortcuts",
+        "messages.": "enable_messages",
+        "keychain.": "enable_keychain",
+    }
+
     def __init__(
         self,
         workspace: str,
         blocked_commands: list[str] | None = None,
         workspace_only: bool = False,
+        macos=None,
     ):
         self.workspace = str(Path(workspace).expanduser().resolve())
         # When True, file tools are confined to the workspace. When False (default),
         # they may touch anything under $HOME except the BLOCKED_PATHS list.
         self.workspace_only = workspace_only
+        # Optional MacOSConfig — when present, gates disabled use_mac action groups.
+        self.macos = macos
         if blocked_commands:
             self.BLOCKED_COMMANDS = self.BLOCKED_COMMANDS + blocked_commands
 
@@ -113,6 +126,25 @@ class SecurityHookProvider(HookProvider):
                 f"NETWORK: jsonrpc -> {endpoint} method={method} "
                 f"(auth=***redacted***)"
             )
+
+        # 4. macOS native tool — hard-block disabled action groups, then log
+        #    (keychain passwords are never logged).
+        if tool_name == "use_mac" and self.macos is not None:
+            action = str(tool_input.get("action", ""))
+            for prefix, flag in self.MACOS_ACTION_GATES.items():
+                if action.startswith(prefix) and not getattr(self.macos, flag, True):
+                    event.cancel_tool = (
+                        f"BLOCKED: macOS action '{action}' is disabled. "
+                        f"Set macos.{flag}=true in config to enable it."
+                    )
+                    logger.warning(
+                        f"BLOCKED macOS ACTION: {action} (macos.{flag} is off)"
+                    )
+                    return
+            if action == "keychain.set":
+                logger.info(f"MACOS: use_mac {action} (password=***redacted***)")
+            else:
+                logger.info(f"MACOS: use_mac {action}")
 
     def _is_safe_path(self, path: str) -> bool:
         """Check if a path is within allowed boundaries.

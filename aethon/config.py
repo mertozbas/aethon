@@ -182,6 +182,31 @@ class MCPConfig(BaseModel):
     servers: list[dict] = Field(default_factory=list)
 
 
+class MacOSConfig(BaseModel):
+    """macOS native integration (use_mac + apple_notes).
+
+    Effective only on Darwin — registration is platform-guarded, so these flags
+    are inert on other operating systems. The two most powerful action groups
+    (Messages and Keychain) default OFF and must be explicitly opted into; the
+    security hook hard-blocks their actions while disabled. ``apple_notes`` is
+    registered only when ``enable_notes`` is set.
+    """
+
+    enabled: bool = True
+    enable_calendar: bool = True
+    enable_reminders: bool = True
+    enable_mail: bool = True
+    enable_notes: bool = True
+    enable_shortcuts: bool = True
+    enable_messages: bool = False  # explicit opt-in
+    enable_keychain: bool = False  # explicit opt-in (security)
+    # Actions gated by the approval hook (only when approval.enabled and use_mac
+    # is on the requires_approval list). Identifiers are use_mac action names.
+    actions_requiring_approval: list[str] = Field(
+        default_factory=lambda: ["mail.send", "messages.send", "keychain.set"]
+    )
+
+
 class CapabilityFlag(BaseModel):
     """Simple on/off toggle for a vendored capability tool."""
 
@@ -251,6 +276,7 @@ class AethonConfig(BaseModel):
     dashboard: DashboardConfig = DashboardConfig()
     webhook: WebhookConfig = WebhookConfig()
     mcp: MCPConfig = MCPConfig()
+    macos: MacOSConfig = MacOSConfig()
     capabilities: CapabilitiesConfig = CapabilitiesConfig()
     performance: PerformanceConfig = PerformanceConfig()
     paths: PathsConfig = PathsConfig()

@@ -80,7 +80,13 @@ github = [
 jsonrpc = [
     "websockets>=12.0",  # WebSocket transport for `jsonrpc` (already in core deps)
 ]
-all = ["aethon-ai[anthropic,ollama,whatsapp,mcp,scraper,github,jsonrpc]"]
+macos = [
+    # Richer Markdown<->HTML for `apple_notes`; it degrades to a naive regex
+    # fallback when absent. `use_mac` needs nothing beyond the stdlib + osascript.
+    "html2text>=2.0.0",
+    "mistune>=3.0.0",
+]
+all = ["aethon-ai[anthropic,ollama,whatsapp,mcp,scraper,github,jsonrpc,macos]"]
 dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",

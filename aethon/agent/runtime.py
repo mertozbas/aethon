@@ -6,6 +6,7 @@ Creates and manages Strands Agent instances per session.
 import asyncio
 import logging
 import os
+import platform
 from collections import OrderedDict
 from pathlib import Path
 
@@ -283,6 +284,24 @@ class AethonRuntime:
                     tools.append(notify)
                 except Exception:
                     pass
+        # macOS native tools (Darwin-only; config-gated; import-guarded). The
+        # security hook hard-blocks disabled action groups (Messages/Keychain
+        # default off); apple_notes registers only when macos.enable_notes is set.
+        macos_cfg = getattr(self.config, "macos", None)
+        if macos_cfg and macos_cfg.enabled and platform.system() == "Darwin":
+            try:
+                from aethon.tools.vendor.use_mac import use_mac
+
+                tools.append(use_mac)
+            except Exception:
+                pass
+            if macos_cfg.enable_notes:
+                try:
+                    from aethon.tools.vendor.apple_notes import apple_notes
+
+                    tools.append(apple_notes)
+                except Exception:
+                    pass
         # manage_messages — introspective only (reads message history; no mutation,
         # no gating needed). Always available when importable.
         try:
@@ -303,6 +322,7 @@ class AethonRuntime:
                 workspace=self.config.paths.workspace,
                 blocked_commands=self.config.security.blocked_commands,
                 workspace_only=self.config.security.workspace_only,
+                macos=getattr(self.config, "macos", None),
             ),
         ]
         # MemoryGuardHook
@@ -325,7 +345,10 @@ class AethonRuntime:
             from aethon.agent.hooks.approval import ApprovalHookProvider
 
             hooks.append(
-                ApprovalHookProvider(self.config.approval.requires_approval)
+                ApprovalHookProvider(
+                    self.config.approval.requires_approval,
+                    macos=getattr(self.config, "macos", None),
+                )
             )
             logger.info("ApprovalHook: active")
         return hooks
