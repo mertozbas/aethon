@@ -168,9 +168,10 @@ def _check_embedding_model(config: AethonConfig):
             console.print(f"  Memory: [yellow]{emb_model}[/] (openai, API key missing)")
         return
 
-    # Default: Ollama
+    # Default: Ollama (use the memory embedding host, not the chat model's host)
+    emb_host = getattr(config.memory, "embedding_host", "") or config.model.host
     try:
-        r = requests.get(f"{config.model.host}/api/tags", timeout=5)
+        r = requests.get(f"{emb_host}/api/tags", timeout=5)
         models = [m["name"] for m in r.json().get("models", [])]
         if any(emb_model in m for m in models):
             console.print(f"  Memory: [green]{emb_model}[/] (ollama, active)")
