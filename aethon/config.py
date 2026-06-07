@@ -130,7 +130,7 @@ class ApprovalConfig(BaseModel):
 
     enabled: bool = False
     requires_approval: list[str] = Field(
-        default_factory=lambda: ["shell", "file_write"]
+        default_factory=lambda: ["shell", "file_write", "manage_tools"]
     )
 
 
@@ -180,6 +180,22 @@ class MCPConfig(BaseModel):
 
     enabled: bool = False
     servers: list[dict] = Field(default_factory=list)
+
+
+class RuntimeToolsConfig(BaseModel):
+    """Dynamic tool loading (``manage_tools``).
+
+    Off by default — opt-in. ``enabled`` gates registration; ``allow_create``
+    permits create/fetch (the subprocess sandbox validates first); ``allow_install``
+    permits add/reload (auto-installing missing packages). The SecurityHookProvider
+    enforces these per action.
+    """
+
+    enabled: bool = False
+    allow_create: bool = False
+    allow_install: bool = False
+    sandbox_timeout: int = 30
+    cache_dir: str = "~/.aethon/runtime_tools_cache"
 
 
 class LSPConfig(BaseModel):
@@ -305,6 +321,7 @@ class AethonConfig(BaseModel):
     webhook: WebhookConfig = WebhookConfig()
     mcp: MCPConfig = MCPConfig()
     macos: MacOSConfig = MacOSConfig()
+    runtime_tools: RuntimeToolsConfig = RuntimeToolsConfig()
     lsp: LSPConfig = LSPConfig()
     prompt: PromptConfig = PromptConfig()
     capabilities: CapabilitiesConfig = CapabilitiesConfig()

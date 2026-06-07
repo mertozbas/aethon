@@ -19,10 +19,12 @@ class ApprovalHookProvider(HookProvider):
 
     # apple_notes actions that mutate (gated); the rest are read-only.
     APPLE_NOTES_WRITE_ACTIONS = {"create", "edit", "append", "delete", "move"}
+    # manage_tools actions that load/execute code (gated); others auto-approve.
+    MANAGE_TOOLS_DANGEROUS = {"create", "fetch", "add", "reload"}
 
     def __init__(self, requires_approval: list[str] | None = None, macos=None):
         self.requires_approval = set(
-            requires_approval or ["shell", "file_write"]
+            requires_approval or ["shell", "file_write", "manage_tools"]
         )
         # Optional MacOSConfig — narrows use_mac approval to its sensitive actions.
         self.macos = macos
@@ -59,6 +61,14 @@ class ApprovalHookProvider(HookProvider):
             tool_name == "apple_notes"
             and str(tool_input.get("action", "")).strip().lower()
             not in self.APPLE_NOTES_WRITE_ACTIONS
+        ):
+            return
+        # manage_tools: only code-loading actions need approval; list/discover/
+        # sandbox/remove are safe.
+        if (
+            tool_name == "manage_tools"
+            and str(tool_input.get("action", "")).strip().lower()
+            not in self.MANAGE_TOOLS_DANGEROUS
         ):
             return
 

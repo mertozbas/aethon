@@ -54,6 +54,7 @@ class SecurityHookProvider(HookProvider):
         blocked_commands: list[str] | None = None,
         workspace_only: bool = False,
         macos=None,
+        runtime_tools=None,
     ):
         self.workspace = str(Path(workspace).expanduser().resolve())
         # When True, file tools are confined to the workspace. When False (default),
@@ -61,6 +62,8 @@ class SecurityHookProvider(HookProvider):
         self.workspace_only = workspace_only
         # Optional MacOSConfig — when present, gates disabled use_mac action groups.
         self.macos = macos
+        # Optional RuntimeToolsConfig — gates manage_tools dangerous actions.
+        self.runtime_tools = runtime_tools
         if blocked_commands:
             self.BLOCKED_COMMANDS = self.BLOCKED_COMMANDS + blocked_commands
 
@@ -147,6 +150,29 @@ class SecurityHookProvider(HookProvider):
                 logger.info(f"MACOS: use_mac {action} (password=***redacted***)")
             else:
                 logger.info(f"MACOS: use_mac {action}")
+
+        # 5. Dynamic tool loading — gate manage_tools dangerous actions.
+        if tool_name == "manage_tools" and self.runtime_tools is not None:
+            action = str(tool_input.get("action", "")).strip().lower()
+            if action in ("create", "fetch") and not getattr(
+                self.runtime_tools, "allow_create", False
+            ):
+                event.cancel_tool = (
+                    "BLOCKED: dynamic tool creation is disabled. Set "
+                    "runtime_tools.allow_create=true to enable (the sandbox "
+                    "validates code before loading)."
+                )
+                logger.warning(f"BLOCKED TOOL: manage_tools {action}")
+                return
+            if action in ("add", "reload") and not getattr(
+                self.runtime_tools, "allow_install", False
+            ):
+                event.cancel_tool = (
+                    "BLOCKED: dynamic tool install/reload is disabled. Set "
+                    "runtime_tools.allow_install=true to enable."
+                )
+                logger.warning(f"BLOCKED TOOL: manage_tools {action}")
+                return
 
     def _is_safe_path(self, path: str) -> bool:
         """Check if a path is within allowed boundaries.

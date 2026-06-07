@@ -333,6 +333,16 @@ class AethonRuntime:
             tools.append(manage_messages)
         except Exception:
             pass
+        # manage_tools — dynamic tool loading. Opt-in; the security/approval hooks
+        # and the tool's own config check gate the dangerous actions.
+        rt_cfg = getattr(self.config, "runtime_tools", None)
+        if rt_cfg and rt_cfg.enabled:
+            try:
+                from aethon.tools.manage_tools import manage_tools
+
+                tools.append(manage_tools)
+            except Exception:
+                pass
         return tools
 
     def _get_hooks(self) -> list:
@@ -346,6 +356,7 @@ class AethonRuntime:
                 blocked_commands=self.config.security.blocked_commands,
                 workspace_only=self.config.security.workspace_only,
                 macos=getattr(self.config, "macos", None),
+                runtime_tools=getattr(self.config, "runtime_tools", None),
             ),
         ]
         # MemoryGuardHook
@@ -452,6 +463,8 @@ class AethonRuntime:
             # (otherwise the CLI shows every answer twice).
             callback_handler=None,
         )
+        # Inject config so config-aware tools (e.g. manage_tools) can read their gates.
+        self.agents[session_id].__aethon_config__ = self.config
 
         return self.agents[session_id]
 

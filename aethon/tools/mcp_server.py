@@ -69,6 +69,8 @@ def build_server(runtime):
         hooks=hooks,
         callback_handler=None,
     )
+    # Config-aware tools (e.g. manage_tools) read their gates from this.
+    agent.__aethon_config__ = runtime.config
     approval = _find_hook(hooks, "ApprovalHookProvider")
 
     specs: list = []
