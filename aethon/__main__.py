@@ -60,6 +60,27 @@ def doctor(config: str):
 
 @main.command()
 @click.option("--config", "-c", default="~/.aethon/config.yaml", help="Config file path")
+def mcp(config: str):
+    """Serve AETHON's tools to MCP clients (e.g. Claude Desktop) over stdio."""
+    # stdio is the MCP transport — keep all informational output on stderr so it
+    # never corrupts the JSON-RPC protocol stream on stdout.
+    if not Path(config).expanduser().exists():
+        click.echo("No config found. Run 'aethon init' first.", err=True)
+        return
+    try:
+        from aethon.tools.mcp_server import run_mcp_server
+    except ImportError:
+        click.echo(
+            "MCP support requires the 'mcp' extra: pip install aethon-ai[mcp]",
+            err=True,
+        )
+        return
+    click.echo("AETHON MCP server starting (stdio)…", err=True)
+    run_mcp_server(config)
+
+
+@main.command()
+@click.option("--config", "-c", default="~/.aethon/config.yaml", help="Config file path")
 def start(config: str):
     """Start AETHON."""
     if not Path(config).expanduser().exists():

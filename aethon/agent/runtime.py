@@ -367,6 +367,26 @@ class AethonRuntime:
             logger.info("ApprovalHook: active")
         return hooks
 
+    def get_tools_schemas(self) -> dict:
+        """Return ``{tool_name: {"description", "inputSchema"}}`` for every tool.
+
+        Used by the MCP server to advertise AETHON's tools to external clients.
+        Schemas come from a Strands tool registry, so decorated and module tools
+        are normalized uniformly.
+        """
+        agent = Agent(model=self.model, tools=self._get_tools(), callback_handler=None)
+        schemas: dict = {}
+        for name, spec in agent.tool_registry.get_all_tools_config().items():
+            input_schema = spec.get("inputSchema") or {}
+            json_schema = (
+                input_schema.get("json", {}) if isinstance(input_schema, dict) else {}
+            )
+            schemas[name] = {
+                "description": spec.get("description", "") or "",
+                "inputSchema": json_schema or {"type": "object", "properties": {}},
+            }
+        return schemas
+
     def get_or_create_agent(self, session_id: str) -> Agent:
         """Get or create agent for a session.
 
