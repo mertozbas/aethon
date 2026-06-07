@@ -36,7 +36,11 @@ class AethonRuntime:
         if getattr(config.security, "bypass_tool_consent", True):
             os.environ.setdefault("BYPASS_TOOL_CONSENT", "true")
         self.model = create_model(config.model)
-        self.prompt_composer = SystemPromptComposer(config.paths.workspace)
+        self.prompt_composer = SystemPromptComposer(
+            config.paths.workspace,
+            config=getattr(config, "prompt", None),
+            logs_dir=getattr(config.paths, "logs", None),
+        )
         self._session_cache_size = config.performance.session_cache_size
         self.agents: OrderedDict[str, Agent] = OrderedDict()
         self.memory = None
@@ -302,6 +306,16 @@ class AethonRuntime:
                     tools.append(apple_notes)
                 except Exception:
                     pass
+        # record_learning — persists discoveries to LEARNINGS.md (read back into
+        # the prompt by SystemPromptComposer when prompt.include_learnings).
+        prompt_cfg = getattr(self.config, "prompt", None)
+        if prompt_cfg is None or prompt_cfg.include_learnings:
+            try:
+                from aethon.tools.learning import create_learning_tool
+
+                tools.append(create_learning_tool(self.config.paths.workspace))
+            except Exception:
+                pass
         # manage_messages — introspective only (reads message history; no mutation,
         # no gating needed). Always available when importable.
         try:

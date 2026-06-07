@@ -80,6 +80,7 @@ def start(config: str):
     cfg = AethonConfig.load(config)
 
     _ensure_workspace(cfg)
+    _setup_file_logging(cfg)
 
     from aethon.agent.model_factory import check_model_availability
 
@@ -208,6 +209,37 @@ def _print_channels(config: AethonConfig):
     console.print(f"  Channels: [green]{', '.join(channels)}[/]")
 
 
+def _setup_file_logging(config: AethonConfig) -> None:
+    """Attach a rotating file handler to the 'aethon' logger.
+
+    Persists logs to <paths.logs>/aethon.log so the system prompt's recent-logs
+    layer and post-hoc debugging have a source. Console output is unaffected.
+    """
+    import logging
+    from logging.handlers import RotatingFileHandler
+
+    try:
+        logs_dir = Path(config.paths.logs).expanduser()
+        logs_dir.mkdir(parents=True, exist_ok=True)
+        root = logging.getLogger("aethon")
+        for h in root.handlers:
+            if getattr(h, "_aethon_file", False):
+                return  # already configured
+        handler = RotatingFileHandler(
+            logs_dir / "aethon.log", maxBytes=2_000_000, backupCount=3, encoding="utf-8"
+        )
+        handler._aethon_file = True
+        handler.setLevel(logging.INFO)
+        handler.setFormatter(
+            logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
+        )
+        root.addHandler(handler)
+        if root.level == logging.NOTSET:
+            root.setLevel(logging.INFO)
+    except Exception:
+        pass
+
+
 def _ensure_workspace(config: AethonConfig):
     """Create workspace directory with default files if not exists."""
     workspace = Path(config.paths.workspace).expanduser()
@@ -258,6 +290,10 @@ def _ensure_workspace(config: AethonConfig):
             "- Save important information with `manage_memory`.\n"
             "- Use categories: preferences, projects, decisions, learnings\n"
             "- Don't store sensitive data (API keys, passwords).\n\n"
+            "## Persistent Learning\n\n"
+            "- When you discover an important pattern, fix, or preference, record "
+            "it with `record_learning(category='...', content='...')` so it "
+            "persists across sessions (read back into your prompt from LEARNINGS.md).\n\n"
             "## Context\n\n"
             "- Keep CONTEXT.md current with `update_context`.\n"
             "- Update project, decision, and status changes.\n",

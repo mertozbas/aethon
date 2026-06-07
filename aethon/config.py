@@ -182,6 +182,22 @@ class MCPConfig(BaseModel):
     servers: list[dict] = Field(default_factory=list)
 
 
+class PromptConfig(BaseModel):
+    """System-prompt composition options.
+
+    Controls which optional awareness layers the SystemPromptComposer injects.
+    Shell history is off by default for privacy; everything else is low-risk.
+    """
+
+    include_environment: bool = True
+    include_shell_history: bool = False  # privacy — opt-in
+    include_recent_logs: bool = True
+    include_learnings: bool = True
+    shell_history_lines: int = 50
+    log_lines: int = 50
+    session_id_format: str = "aethon-{date}"
+
+
 class MacOSConfig(BaseModel):
     """macOS native integration (use_mac + apple_notes).
 
@@ -277,6 +293,7 @@ class AethonConfig(BaseModel):
     webhook: WebhookConfig = WebhookConfig()
     mcp: MCPConfig = MCPConfig()
     macos: MacOSConfig = MacOSConfig()
+    prompt: PromptConfig = PromptConfig()
     capabilities: CapabilitiesConfig = CapabilitiesConfig()
     performance: PerformanceConfig = PerformanceConfig()
     paths: PathsConfig = PathsConfig()
