@@ -388,6 +388,14 @@ class AethonRuntime:
                 return str(result)
 
         except Exception as e:
+            if allow_retry and self._is_context_overflow_error(e):
+                logger.warning(
+                    f"Context window overflow ({session_id}); clearing the session "
+                    f"history and retrying. Long-term memory and CONTEXT.md are kept. ({e})"
+                )
+                self._reset_session(session_id)
+                return self._try_process(message, session_id, allow_retry=False)
+
             if allow_retry and self._is_session_format_error(e):
                 logger.warning(
                     f"Session format mismatch ({session_id}), "
@@ -414,6 +422,36 @@ class AethonRuntime:
             "conversation history",  # Generic history error
         ]
         return any(ind in msg for ind in indicators)
+
+    @staticmethod
+    def _is_context_overflow_error(exc: Exception) -> bool:
+        """Check if an exception is a model context-window overflow."""
+        msg = str(exc).lower()
+        return any(s in msg for s in [
+            "context window",
+            "context length",
+            "context_length_exceeded",
+            "exceeds the context",
+            "maximum context",
+            "too many tokens",
+            "input is too long",
+            "string too long",
+        ])
+
+    def _reset_session(self, session_id: str) -> None:
+        """Clear a session's message history (e.g. after a context-window overflow) so
+        the next turn starts fresh. Long-term memory and CONTEXT.md are unaffected."""
+        sessions_dir = Path(self.config.session.storage_dir).expanduser()
+        messages_dir = (
+            sessions_dir / f"session_{session_id}" / "agents" / "agent_main" / "messages"
+        )
+        if messages_dir.exists():
+            for msg_file in messages_dir.glob("message_*.json"):
+                try:
+                    msg_file.unlink()
+                except Exception:
+                    pass
+        self.agents.pop(session_id, None)
 
     async def process(self, message: InboundMessage, session_id: str) -> str:
         """Process message asynchronously.
