@@ -130,7 +130,9 @@ class SecurityHookProvider(HookProvider):
         # 4. macOS native tool — hard-block disabled action groups, then log
         #    (keychain passwords are never logged).
         if tool_name == "use_mac" and self.macos is not None:
-            action = str(tool_input.get("action", ""))
+            # Normalize so the gate matches regardless of case/whitespace, even if
+            # the tool's dispatch is ever made case-insensitive (defense in depth).
+            action = str(tool_input.get("action", "")).strip().lower()
             for prefix, flag in self.MACOS_ACTION_GATES.items():
                 if action.startswith(prefix) and not getattr(self.macos, flag, True):
                     event.cancel_tool = (

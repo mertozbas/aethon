@@ -47,14 +47,18 @@ class ApprovalHookProvider(HookProvider):
         # use_mac: when MacOSConfig is present, only its listed sensitive actions
         # (e.g. mail.send, messages.send, keychain.set) need approval.
         if tool_name == "use_mac" and self.macos is not None:
-            action = str(tool_input.get("action", ""))
-            sensitive = set(getattr(self.macos, "actions_requiring_approval", []) or [])
+            action = str(tool_input.get("action", "")).strip().lower()
+            sensitive = {
+                str(s).strip().lower()
+                for s in (getattr(self.macos, "actions_requiring_approval", []) or [])
+            }
             if action not in sensitive:
                 return
         # apple_notes: only mutating actions need approval.
         if (
             tool_name == "apple_notes"
-            and str(tool_input.get("action", "")) not in self.APPLE_NOTES_WRITE_ACTIONS
+            and str(tool_input.get("action", "")).strip().lower()
+            not in self.APPLE_NOTES_WRITE_ACTIONS
         ):
             return
 
