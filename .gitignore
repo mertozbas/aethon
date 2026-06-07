@@ -20,3 +20,6 @@ env/
 repl_state/
 workspace/
 Users/
+
+# Local development notes/plans — never pushed
+_dev/
