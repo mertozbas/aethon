@@ -71,6 +71,12 @@ def start(config: str):
 
     console.print("[bold cyan]AETHON[/] starting...\n")
 
+    # Quiet benign, repetitive provider warnings out of the chat (e.g. reasoning models
+    # like gpt-5.x emit reasoningContent that the Chat Completions API can't carry across
+    # turns — Strands logs it every turn). Real errors still surface.
+    import logging as _logging
+    _logging.getLogger("strands.models.openai").setLevel(_logging.ERROR)
+
     cfg = AethonConfig.load(config)
 
     _ensure_workspace(cfg)
