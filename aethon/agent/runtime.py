@@ -56,7 +56,7 @@ class AethonRuntime:
                 emb_api_key = getattr(config.memory, "embedding_api_key", "")
                 self.memory = VectorMemory(
                     db_path=config.memory.db_path,
-                    ollama_host=config.model.host,
+                    ollama_host=getattr(config.memory, "embedding_host", "") or config.model.host,
                     model_id=config.memory.embedding_model,
                     embedding_cache_size=config.performance.embedding_cache_size,
                     embedding_provider=emb_provider,

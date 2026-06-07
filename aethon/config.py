@@ -101,6 +101,9 @@ class MemoryConfig(BaseModel):
     enabled: bool = True
     embedding_provider: str = "ollama"  # ollama, openai
     embedding_model: str = "nomic-embed-text"
+    # Embedding endpoint for the `ollama` provider — independent of the chat model's
+    # host (so memory keeps working when the model points at a non-Ollama endpoint).
+    embedding_host: str = "http://localhost:11434"
     embedding_api_key: str = ""
     db_path: str = "~/.aethon/memory.sqlite"
 
