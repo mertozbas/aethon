@@ -74,6 +74,20 @@ async def test_security_block_over_mcp(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_tool_stdout_does_not_leak(tmp_path, capsys):
+    """Tools that print to stdout must not corrupt the (stdout) MCP protocol stream."""
+    server = build_server(_runtime(tmp_path))
+    async with connect(server) as client:
+        res = await client.call_tool(
+            "scraper", {"action": "extract_text", "content": "<h1>Leaky</h1>"}
+        )
+    captured = capsys.readouterr()
+    # scraper renders rich tables; they must be diverted off stdout.
+    assert "Extracting Text" not in captured.out
+    assert res.isError is False
+
+
+@pytest.mark.asyncio
 async def test_approval_denied_over_mcp(tmp_path):
     runtime = _runtime(
         tmp_path, approval=ApprovalConfig(enabled=True, requires_approval=["shell"])

@@ -120,8 +120,14 @@ def build_server(runtime):
 
         # Invoke through the agent — the SecurityHookProvider runs here, so a
         # blocked call returns an error result rather than executing.
+        # Some tools print rich output to stdout; over stdio that is the JSON-RPC
+        # protocol stream, so divert any stray stdout to stderr during the call.
+        import contextlib
+        import sys
+
         try:
-            result = getattr(agent.tool, name)(**args)
+            with contextlib.redirect_stdout(sys.stderr):
+                result = getattr(agent.tool, name)(**args)
         except Exception as e:
             logger.warning(f"MCP tool {name} error: {type(e).__name__}: {e}")
             return [
