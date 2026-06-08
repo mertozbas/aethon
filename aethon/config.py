@@ -258,6 +258,7 @@ class PromptConfig(BaseModel):
     include_shell_history: bool = False  # privacy — opt-in
     include_recent_logs: bool = True
     include_learnings: bool = True
+    include_self_awareness: bool = False  # embed key source files — opt-in
     shell_history_lines: int = 50
     log_lines: int = 50
     session_id_format: str = "aethon-{date}"
@@ -301,6 +302,18 @@ class NotifyCapability(BaseModel):
     method: str = "auto"  # auto | native | tui | bell | speak | sound | all
 
 
+class ComputerCapability(BaseModel):
+    """Computer automation (use_computer) — screen/mouse/keyboard control.
+
+    High-risk; OFF by default. When enabled, sensitive actions (click/type/
+    hotkey/drag/…) require interactive approval unless require_approval is set
+    False. Needs the ``[computer]`` extra (pyautogui).
+    """
+
+    enabled: bool = False
+    require_approval: bool = True
+
+
 class CapabilitiesConfig(BaseModel):
     """Toggles for the vendored capability tools.
 
@@ -313,6 +326,7 @@ class CapabilitiesConfig(BaseModel):
     github: CapabilityFlag = CapabilityFlag()
     jsonrpc: CapabilityFlag = CapabilityFlag()
     notify: NotifyCapability = NotifyCapability()
+    computer: ComputerCapability = ComputerCapability()
 
 
 class PerformanceConfig(BaseModel):

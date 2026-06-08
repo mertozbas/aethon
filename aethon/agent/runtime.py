@@ -305,6 +305,17 @@ class AethonRuntime:
                     tools.append(notify)
                 except Exception:
                     pass
+            # use_computer — high-risk; only when enabled AND pyautogui is present.
+            if getattr(caps, "computer", None) and caps.computer.enabled:
+                import importlib.util as _ilu
+
+                if _ilu.find_spec("pyautogui") is not None:
+                    try:
+                        from aethon.tools.vendor.use_computer import use_computer
+
+                        tools.append(use_computer)
+                    except Exception:
+                        pass
         # macOS native tools (Darwin-only; config-gated; import-guarded). The
         # security hook hard-blocks disabled action groups (Messages/Keychain
         # default off); apple_notes registers only when macos.enable_notes is set.
@@ -420,14 +431,28 @@ class AethonRuntime:
         # SessionRecorderHook (after telemetry, before approval)
         if self._session_recorder_hook:
             hooks.append(self._session_recorder_hook)
-        # ApprovalHook
-        if self.config.approval.enabled:
+        # ApprovalHook — active when globally enabled, or when use_computer (a
+        # high-risk capability) is enabled with require_approval.
+        caps = getattr(self.config, "capabilities", None)
+        computer_cfg = getattr(caps, "computer", None) if caps else None
+        computer_needs_approval = bool(
+            computer_cfg and computer_cfg.enabled and computer_cfg.require_approval
+        )
+        if self.config.approval.enabled or computer_needs_approval:
             from aethon.agent.hooks.approval import ApprovalHookProvider
 
+            req = (
+                set(self.config.approval.requires_approval)
+                if self.config.approval.enabled
+                else set()
+            )
+            if computer_needs_approval:
+                req.add("use_computer")
             hooks.append(
                 ApprovalHookProvider(
-                    self.config.approval.requires_approval,
+                    list(req),
                     macos=getattr(self.config, "macos", None),
+                    computer=computer_cfg,
                 )
             )
             logger.info("ApprovalHook: active")

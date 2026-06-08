@@ -21,13 +21,23 @@ class ApprovalHookProvider(HookProvider):
     APPLE_NOTES_WRITE_ACTIONS = {"create", "edit", "append", "delete", "move"}
     # manage_tools actions that load/execute code (gated); others auto-approve.
     MANAGE_TOOLS_DANGEROUS = {"create", "fetch", "add", "reload"}
+    # use_computer actions that move the mouse / type / switch apps (gated). The
+    # read-only actions (mouse_position, screenshot, screen_size, get_system_info)
+    # auto-approve.
+    COMPUTER_SENSITIVE_ACTIONS = {
+        "click", "double_click", "right_click", "middle_click", "drag", "type",
+        "key_press", "hotkey", "scroll", "move_mouse", "switch_app",
+        "minimize_all", "show_desktop", "mission_control",
+    }
 
-    def __init__(self, requires_approval: list[str] | None = None, macos=None):
+    def __init__(self, requires_approval: list[str] | None = None, macos=None, computer=None):
         self.requires_approval = set(
             requires_approval or ["shell", "file_write", "manage_tools"]
         )
         # Optional MacOSConfig — narrows use_mac approval to its sensitive actions.
         self.macos = macos
+        # Optional ComputerCapability — present when use_computer needs approval.
+        self.computer = computer
 
     def register_hooks(self, registry: HookRegistry, **kwargs: Any) -> None:
         registry.add_callback(BeforeToolCallEvent, self.check_approval)
@@ -69,6 +79,14 @@ class ApprovalHookProvider(HookProvider):
             tool_name == "manage_tools"
             and str(tool_input.get("action", "")).strip().lower()
             not in self.MANAGE_TOOLS_DANGEROUS
+        ):
+            return
+        # use_computer: only mouse/keyboard/app actions need approval; read-only
+        # introspection (screenshot, mouse_position, …) auto-approves.
+        if (
+            tool_name == "use_computer"
+            and str(tool_input.get("action", "")).strip().lower()
+            not in self.COMPUTER_SENSITIVE_ACTIONS
         ):
             return
 

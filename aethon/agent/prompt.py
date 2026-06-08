@@ -72,6 +72,30 @@ class SystemPromptComposer:
             return ""
         return f"## Recent Activity Logs\n```\n{body}\n```\n"
 
+    def _get_self_awareness(self) -> str:
+        """Embed a small, curated set of AETHON's own source files.
+
+        Lets the agent reason about / debug itself. Opt-in (default off) and
+        deliberately limited to key files (never a full source dump).
+        """
+        key_files = ["agent/prompt.py", "agent/runtime.py", "agent/specialists.py"]
+        base = Path(__file__).resolve().parent.parent  # the `aethon` package root
+        parts = []
+        for rel in key_files:
+            p = base / rel
+            if not p.exists():
+                continue
+            try:
+                text = p.read_text(encoding="utf-8")
+            except Exception:
+                continue
+            if len(text) > 8000:
+                text = text[:8000] + "\n... [truncated]"
+            parts.append(f"### {rel}\n```python\n{text}\n```")
+        if not parts:
+            return ""
+        return "## Self-Awareness (key source files)\n" + "\n\n".join(parts)
+
     def compose(self, session_id: str = "") -> str:
         """Build the complete system prompt.
 
@@ -123,6 +147,14 @@ class SystemPromptComposer:
             recent_logs = self._get_recent_logs(self._flag("log_lines", 50))
             if recent_logs:
                 layers.append(recent_logs)
+
+        # 7.5 Self-awareness (optional; default off; opt-in via flag or env)
+        if self._flag("include_self_awareness", False) or os.environ.get(
+            "AETHON_SELF_AWARE", ""
+        ).lower() == "true":
+            self_aware = self._get_self_awareness()
+            if self_aware:
+                layers.append(self_aware)
 
         # 8. SOP list (built-in + workspace)
         sop_names = []

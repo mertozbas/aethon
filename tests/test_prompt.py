@@ -119,3 +119,25 @@ def test_compose_shell_history_off_by_default(workspace_dir):
     """Shell history is omitted unless explicitly enabled (privacy)."""
     composer = SystemPromptComposer(str(workspace_dir), config=PromptConfig())
     assert "Recent Shell History" not in composer.compose()
+
+
+def test_self_awareness_off_by_default(workspace_dir, monkeypatch):
+    monkeypatch.delenv("AETHON_SELF_AWARE", raising=False)
+    composer = SystemPromptComposer(str(workspace_dir), config=PromptConfig())
+    assert "Self-Awareness" not in composer.compose()
+
+
+def test_self_awareness_via_flag(workspace_dir, monkeypatch):
+    monkeypatch.delenv("AETHON_SELF_AWARE", raising=False)
+    composer = SystemPromptComposer(
+        str(workspace_dir), config=PromptConfig(include_self_awareness=True)
+    )
+    prompt = composer.compose()
+    assert "Self-Awareness" in prompt
+    assert "agent/prompt.py" in prompt
+
+
+def test_self_awareness_via_env(workspace_dir, monkeypatch):
+    monkeypatch.setenv("AETHON_SELF_AWARE", "true")
+    composer = SystemPromptComposer(str(workspace_dir), config=PromptConfig())
+    assert "Self-Awareness" in composer.compose()

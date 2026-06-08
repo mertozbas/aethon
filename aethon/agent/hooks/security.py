@@ -185,6 +185,10 @@ class SecurityHookProvider(HookProvider):
                 logger.warning(f"BLOCKED TOOL: manage_tools {action}")
                 return
 
+        # 6. Computer automation — log every action (input-injection audit trail).
+        if tool_name == "use_computer":
+            logger.info(f"COMPUTER: use_computer {tool_input.get('action', '')}")
+
     def _is_safe_path(self, path: str) -> bool:
         """Check if a path is within allowed boundaries.
 

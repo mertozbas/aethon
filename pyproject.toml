@@ -48,6 +48,7 @@ dependencies = [
 
 [project.scripts]
 aethon = "aethon.__main__:main"
+aethon-menubar = "aethon.launcher.macos_menubar:main"  # macOS menu-bar launcher ([launcher-macos])
 
 [project.urls]
 Homepage = "https://github.com/mertozbas/aethon"
@@ -91,7 +92,13 @@ lsp = [
     # typescript-language-server / gopls / rust-analyzer / clangd on PATH yourself.
     "pyright>=1.1.0",
 ]
-all = ["aethon-ai[anthropic,ollama,whatsapp,mcp,scraper,github,jsonrpc,macos,lsp]"]
+computer = [
+    "pyautogui>=0.9.53",  # screen/mouse/keyboard automation for `use_computer`
+]
+launcher-macos = [
+    "rumps>=0.14.0",  # menu-bar launcher (aethon-menubar)
+]
+all = ["aethon-ai[anthropic,ollama,whatsapp,mcp,scraper,github,jsonrpc,macos,lsp,computer]"]
 dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
