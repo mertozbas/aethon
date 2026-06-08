@@ -97,6 +97,10 @@ def start(config: str):
     # turns — Strands logs it every turn). Real errors still surface.
     import logging as _logging
     _logging.getLogger("strands.models.openai").setLevel(_logging.ERROR)
+    # Proxies/reasoning models often report stop_reason=end_turn even when the
+    # response carries toolUse blocks; Strands self-corrects to tool_use and logs
+    # a warning every such turn. Benign and noisy — quiet it.
+    _logging.getLogger("strands.event_loop.streaming").setLevel(_logging.ERROR)
 
     cfg = AethonConfig.load(config)
 
