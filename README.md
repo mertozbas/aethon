@@ -340,7 +340,9 @@ model:
 
 This repo vendors **codex-proxy** under [`codex-proxy/`](codex-proxy/) — a reverse proxy that exposes your **ChatGPT / Codex Desktop** subscription as an **OpenAI-compatible** `/v1/chat/completions` endpoint. Point AETHON at it to drive the assistant from your **ChatGPT Pro** plan instead of spending OpenAI API credits.
 
-> **Your secrets stay local.** codex-proxy stores account tokens under `codex-proxy/data/`, which is **gitignored** and never committed. The vendored copy ships **source only** (no `node_modules/`, no `data/`); `npm install` restores the dependencies and the first login creates `data/`.
+> **Your secrets stay local.** codex-proxy stores account tokens under `codex-proxy/data/`, which is **gitignored** and never committed. The vendored copy ships **source + the built developer dashboard** (but no `node_modules/`, no `data/`); `npm install` restores the dependencies and the first login creates `data/`.
+
+> ⚠️ **Use _this_ vendored copy — don't replace it with a fresh upstream clone or the prebuilt Docker image.** The vendored tree carries a small local patch that **forces stateless mode** (`AETHON_FORCE_STATELESS`, in `codex-proxy/src/routes/shared/proxy-session-helpers.ts`). AETHON resends the full conversation each turn, so the proxy's default server-side `previous_response_id` chaining only triggers a **`400` on your 2nd message** (`previous response not found` / `No tool output found for function call`). The patch disables that chaining. A stock upstream build does **not** have it and will 400 after one message. Run it from source (`npm run dev`, below) so the patch is active — not from a stale `dist/` or the `ghcr.io/...` image.
 
 **1. Run codex-proxy** (needs Node 18+):
 

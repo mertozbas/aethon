@@ -4,7 +4,13 @@ dist-electron/
 release/
 public-desktop/
 data/
-public/
+# Ship the built developer dashboard so a fresh clone serves the UI without a
+# `npm run build:web` step (the /v1 API works without it, but the dashboard 404s).
+# Everything else generated under public/ stays ignored.
+public/*
+!public/index.html
+!public/assets/
+!public/assets/**
 docs/
 bin/*
 !bin/README.md
