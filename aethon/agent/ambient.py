@@ -20,6 +20,7 @@ from aethon.channels.base import InboundMessage
 logger = logging.getLogger("aethon.ambient")
 
 _AMBIENT_SESSION = "ambient:local"
+_MAX_RESULTS_HISTORY = 50  # cap pending results so an undrained autonomous run stays bounded
 
 _AMBIENT_PROMPTS = [
     "You have idle time. Review recent context (CONTEXT.md, recent activity) and "
@@ -96,6 +97,10 @@ class AmbientModeManager:
         logger.info(f"Ambient mode started (autonomous={autonomous})")
 
     async def stop(self) -> None:
+        # NOTE: if cancellation lands while an iteration is awaiting
+        # runtime.process() (offloaded to a thread executor), that in-flight call
+        # finishes in the background and its result is discarded — the loop does
+        # not continue.
         self.running = False
         if self._task and not self._task.done():
             self._task.cancel()
@@ -183,6 +188,10 @@ class AmbientModeManager:
                     "timestamp": time.time(),
                 }
                 self.ambient_results_history.append(entry)
+                if len(self.ambient_results_history) > _MAX_RESULTS_HISTORY:
+                    self.ambient_results_history = self.ambient_results_history[
+                        -_MAX_RESULTS_HISTORY:
+                    ]
                 if self.event_bus:
                     try:
                         self.event_bus.emit("ambient", {**entry, "status": "running"})
@@ -197,6 +206,7 @@ class AmbientModeManager:
             pass
         finally:
             self.running = False
+            self._task = None  # keep the running ⟺ _task invariant on all exit paths
             if self.event_bus:
                 try:
                     self.event_bus.emit(
