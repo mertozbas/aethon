@@ -1,0 +1,30 @@
+{
+  "version.label": {
+    "message": "Güncel",
+    "description": "The label for version current"
+  },
+  "sidebar.handbook.category.Getting Started": {
+    "message": "Başlangıç",
+    "description": "The label for category 'Getting Started' in sidebar 'handbook'"
+  },
+  "sidebar.handbook.category.Usage Guide": {
+    "message": "Kullanım Kılavuzu",
+    "description": "The label for category 'Usage Guide' in sidebar 'handbook'"
+  },
+  "sidebar.handbook.category.Core Concepts": {
+    "message": "Temel Kavramlar",
+    "description": "The label for category 'Core Concepts' in sidebar 'handbook'"
+  },
+  "sidebar.handbook.category.Reference": {
+    "message": "Referans",
+    "description": "The label for category 'Reference' in sidebar 'handbook'"
+  },
+  "sidebar.handbook.category.Operations": {
+    "message": "Operasyon",
+    "description": "The label for category 'Operations' in sidebar 'handbook'"
+  },
+  "sidebar.handbook.category.Project": {
+    "message": "Proje",
+    "description": "The label for category 'Project' in sidebar 'handbook'"
+  }
+}

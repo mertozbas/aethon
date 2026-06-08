@@ -1,0 +1,62 @@
+{
+  "link.title.Handbook": {
+    "message": "El Kitabı",
+    "description": "The title of the footer links column with title=Handbook in the footer"
+  },
+  "link.title.Reference": {
+    "message": "Referans",
+    "description": "The title of the footer links column with title=Reference in the footer"
+  },
+  "link.title.Project": {
+    "message": "Proje",
+    "description": "The title of the footer links column with title=Project in the footer"
+  },
+  "link.item.label.Introduction": {
+    "message": "Giriş",
+    "description": "The label of footer link with label=Introduction linking to /docs/intro"
+  },
+  "link.item.label.Installation": {
+    "message": "Kurulum",
+    "description": "The label of footer link with label=Installation linking to /docs/getting-started/installation"
+  },
+  "link.item.label.Configuration": {
+    "message": "Yapılandırma",
+    "description": "The label of footer link with label=Configuration linking to /docs/reference/configuration"
+  },
+  "link.item.label.Model Backends": {
+    "message": "Model Backend'leri",
+    "description": "The label of footer link with label=Model Backends linking to /docs/getting-started/model-backends"
+  },
+  "link.item.label.CLI": {
+    "message": "CLI",
+    "description": "The label of footer link with label=CLI linking to /docs/reference/cli"
+  },
+  "link.item.label.HTTP API": {
+    "message": "HTTP API",
+    "description": "The label of footer link with label=HTTP API linking to /docs/reference/api"
+  },
+  "link.item.label.Architecture": {
+    "message": "Mimari",
+    "description": "The label of footer link with label=Architecture linking to /docs/reference/architecture"
+  },
+  "link.item.label.GitHub": {
+    "message": "GitHub",
+    "description": "The label of footer link with label=GitHub linking to https://github.com/mertozbas/aethon"
+  },
+  "link.item.label.PyPI": {
+    "message": "PyPI",
+    "description": "The label of footer link with label=PyPI linking to https://pypi.org/project/aethon-ai/"
+  },
+  "link.item.label.Roadmap": {
+    "message": "Yol Haritası",
+    "description": "The label of footer link with label=Roadmap linking to /docs/project/roadmap"
+  },
+  "link.item.label.License": {
+    "message": "Lisans",
+    "description": "The label of footer link with label=License linking to /docs/project/license"
+  },
+  "copyright": {
+    "message": "Mert Özbaş tarafından geliştirildi · AETHON, PolyForm Noncommercial 1.0.0 altında kaynak-erişime açıktır.",
+    "description": "The footer copyright"
+  }
+}

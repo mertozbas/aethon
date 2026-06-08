@@ -1,0 +1,18 @@
+{
+  "title": {
+    "message": "AETHON",
+    "description": "The title in the navbar"
+  },
+  "logo.alt": {
+    "message": "AETHON",
+    "description": "The alt text of navbar logo"
+  },
+  "item.label.Handbook": {
+    "message": "El Kitabı",
+    "description": "Navbar item with label Handbook"
+  },
+  "item.label.GitHub": {
+    "message": "GitHub",
+    "description": "Navbar item with label GitHub"
+  }
+}

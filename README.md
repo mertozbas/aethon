@@ -7,6 +7,9 @@
 [![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue.svg)](https://www.python.org/)
 [![License: PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/license-PolyForm--Noncommercial--1.0.0-orange.svg)](LICENSE)
 [![Built with Strands Agents SDK](https://img.shields.io/badge/built%20with-Strands%20Agents%20SDK-7d4cdb.svg)](https://github.com/strands-agents)
+[![Documentation](https://img.shields.io/badge/docs-handbook-6d3fd6.svg)](https://mertozbas.github.io/aethon/)
+
+📖 **[Read the handbook → mertozbas.github.io/aethon](https://mertozbas.github.io/aethon/)** (English · Türkçe)
 
 > **Bring your own model provider.** AETHON is provider-agnostic: point it at the **OpenAI API** (default) or **any OpenAI-compatible endpoint** (vLLM, LM Studio, LocalAI, or any service speaking the OpenAI API), the **Anthropic API**, or a fully-local **Ollama** model — and it also supports **Bedrock, Gemini, LiteLLM, and Mistral**. You run it; you choose the backend.
 
