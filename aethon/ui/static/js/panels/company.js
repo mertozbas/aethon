@@ -31,12 +31,11 @@ export function mount(container) {
       // Fetch initial agents
       _fetchAgents();
 
-      // Subscribe to real-time events
+      // Real-time activity — the 'agents' channel now carries session identity
+      // (tool_start / tool_end / model), so each event maps to the right
+      // character. (Previously telemetry was also routed here, but it lacked a
+      // session id and spawned a phantom "unknown" character.)
       unsubAgents = ws.subscribe('agents', (data) => {
-        if (engine) engine.onAgentEvent(data);
-      });
-
-      unsubTelemetry = ws.subscribe('telemetry', (data) => {
         if (engine) engine.onAgentEvent(data);
       });
 

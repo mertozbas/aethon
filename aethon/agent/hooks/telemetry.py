@@ -34,6 +34,16 @@ class TelemetryHookProvider(HookProvider):
         registry.add_callback(BeforeModelCallEvent, self.before_model)
         registry.add_callback(AfterModelCallEvent, self.after_model)
 
+    @staticmethod
+    def _identity(event) -> dict:
+        """Agent identity for the dashboard pixel office (maps events to a character)."""
+        agent = getattr(event, "agent", None)
+        return {
+            "session_id": getattr(agent, "__aethon_session__", None),
+            "agent_id": getattr(agent, "agent_id", "main"),
+            "agent_name": getattr(agent, "name", "AETHON"),
+        }
+
     def before_tool(self, event: BeforeToolCallEvent) -> None:
         tool_id = event.tool_use.get("toolUseId", "unknown")
         self._timers[f"tool:{tool_id}"] = time.monotonic()
@@ -43,9 +53,9 @@ class TelemetryHookProvider(HookProvider):
             tool_name = event.tool_use.get("name", "unknown")
             self._event_bus.emit("agents", {
                 "event": "tool_start",
-                "agent_name": "AETHON",
                 "tool_name": tool_name,
                 "timestamp": datetime.now().isoformat(),
+                **self._identity(event),
             })
 
     def after_tool(self, event: AfterToolCallEvent) -> None:
@@ -81,11 +91,11 @@ class TelemetryHookProvider(HookProvider):
             self._event_bus.emit("telemetry", record)
             self._event_bus.emit("agents", {
                 "event": "tool_end",
-                "agent_name": "AETHON",
                 "tool_name": record["name"],
                 "status": status,
                 "duration": record["duration"],
                 "timestamp": record["timestamp"],
+                **self._identity(event),
             })
 
     def before_model(self, event: BeforeModelCallEvent) -> None:
@@ -115,6 +125,13 @@ class TelemetryHookProvider(HookProvider):
         # Emit to dashboard event bus
         if self._event_bus:
             self._event_bus.emit("telemetry", record)
+            self._event_bus.emit("agents", {
+                "event": "model",
+                "status": status,
+                "duration": record["duration"],
+                "timestamp": record["timestamp"],
+                **self._identity(event),
+            })
 
     def get_metrics(self, limit: int = 100) -> list[dict]:
         """Return recent metrics (most recent last)."""

@@ -520,8 +520,10 @@ class AethonRuntime:
             # (otherwise the CLI shows every answer twice).
             callback_handler=None,
         )
-        # Inject config so config-aware tools (e.g. manage_tools) can read their gates.
+        # Inject config so config-aware tools (e.g. manage_tools) can read their gates,
+        # and the session id so telemetry maps activity to the dashboard pixel office.
         self.agents[session_id].__aethon_config__ = self.config
+        self.agents[session_id].__aethon_session__ = session_id
 
         return self.agents[session_id]
 

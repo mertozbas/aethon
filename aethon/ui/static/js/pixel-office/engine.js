@@ -18,6 +18,10 @@ import {
 } from './characters.js';
 
 const MAX_DELTA = 0.1; // Cap delta time to prevent huge jumps
+const IDLE_TIMEOUT_MS = 12000; // revert a character to idle after this much quiet
+
+// Specialist role → palette index (matches the legend: Coder/Researcher/Analyst/Planner).
+const ROLE_PALETTE = { coder: 0, researcher: 1, analyst: 2, planner: 3 };
 const LABEL_FONT = '10px monospace';
 const LABEL_COLOR = '#00d4ff';
 const LABEL_BG = 'rgba(10, 10, 26, 0.8)';
@@ -110,10 +114,27 @@ export class PixelOfficeEngine {
     // Update activity
     char.name = agentName;
     if (isActive) {
+      char._lastActivity = performance.now();
       setActive(char, toolName);
     } else if (char.isActive) {
       setInactive(char);
     }
+  }
+
+  /**
+   * Ensure a character exists for a roster agent WITHOUT forcing it active.
+   * Roster sync should only confirm presence; real activity comes from events.
+   * @param {string} agentKey
+   * @param {string} agentName
+   */
+  ensureAgent(agentKey, agentName) {
+    let char = this.characters.get(agentKey);
+    if (!char) {
+      char = this._spawnCharacter(agentKey, agentName);
+      this.characters.set(agentKey, char);
+    }
+    char.name = agentName;
+    return char;
   }
 
   /**
@@ -165,19 +186,19 @@ export class PixelOfficeEngine {
    * @param {Object[]} agents — Array of { session_id, agent_name, agent_id }
    */
   syncAgents(agents) {
-    const activeKeys = new Set();
+    const rosterKeys = new Set();
 
     for (const a of agents) {
       const key = a.session_id || a.agent_id || 'unknown';
       const name = a.agent_name || 'Agent';
-      activeKeys.add(key);
-      this.setAgent(key, name, true, null);
+      rosterKeys.add(key);
+      this.ensureAgent(key, name);  // present, but idle until real activity arrives
     }
 
-    // Remove agents no longer active
+    // Despawn characters whose agent has left the roster.
     for (const [key, char] of this.characters) {
-      if (!activeKeys.has(key) && !char.despawning) {
-        setInactive(char);
+      if (!rosterKeys.has(key) && !char.despawning) {
+        this.removeAgent(key);
       }
     }
   }
@@ -196,9 +217,9 @@ export class PixelOfficeEngine {
       }
     }
 
-    // Palette assignment (round-robin, unique for first 6)
-    const pi = this._nextPaletteIdx;
-    this._nextPaletteIdx = (this._nextPaletteIdx + 1) % PALETTES.length;
+    // Palette: specialists get a fixed color matching the legend; main/session
+    // agents take the remaining palettes round-robin.
+    const pi = this._paletteForAgent(agentKey, agentName);
 
     // Spawn position: at a walkable tile near entrance (bottom-center)
     const spawnCol = Math.floor(this.cols / 2);
@@ -212,6 +233,20 @@ export class PixelOfficeEngine {
       row: spawnRow,
       seat,
     });
+  }
+
+  /** Pick a palette index: specialists fixed by role, others round-robin (Builder/Creative). */
+  _paletteForAgent(agentKey, agentName) {
+    let role = '';
+    if (agentKey && agentKey.startsWith('specialist:')) {
+      role = (agentKey.split(':')[1] || '').toLowerCase();
+    } else {
+      role = (agentName || '').toLowerCase();
+    }
+    if (role in ROLE_PALETTE) return ROLE_PALETTE[role];
+    const pi = 4 + (this._nextPaletteIdx % 2); // Builder / Creative
+    this._nextPaletteIdx++;
+    return pi;
   }
 
   // ─── Game Loop ─────────────────────────────────────────
@@ -229,7 +264,13 @@ export class PixelOfficeEngine {
   }
 
   _update(dt) {
+    const now = performance.now();
     for (const [key, char] of this.characters) {
+      // Revert to idle after a quiet period so the working/idle states reflect
+      // real activity instead of staying "busy" forever.
+      if (char.isActive && char._lastActivity && now - char._lastActivity > IDLE_TIMEOUT_MS) {
+        setInactive(char);
+      }
       // Process pending seat walks
       processPendingWalk(char, this.tileMap, this.blockedTiles);
       // Update character

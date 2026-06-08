@@ -81,6 +81,8 @@ class SpecialistFactory:
                 name=config["name"],
                 agent_id=specialist_name,
             )
+            # Session key for the dashboard pixel office (matches /api/agents/active).
+            self._cache[specialist_name].__aethon_session__ = f"specialist:{specialist_name}"
             logger.info(f"Specialist agent created: {config['name']}")
 
         return self._cache[specialist_name]
