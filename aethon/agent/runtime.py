@@ -35,6 +35,13 @@ class AethonRuntime:
         # runs. An explicit env var still wins if the user set one.
         if getattr(config.security, "bypass_tool_consent", True):
             os.environ.setdefault("BYPASS_TOOL_CONSENT", "true")
+        # Tools run headless inside the gateway. Stop strands-tools from taking
+        # over the TTY (PTY/termios) or drawing interactive rich panels — both
+        # corrupt the CLI and other channels (boxes drift, ANSI codes leak). The
+        # command output is still captured and returned to the agent.
+        os.environ["STRANDS_NON_INTERACTIVE"] = "true"
+        if os.environ.get("STRANDS_TOOL_CONSOLE_MODE") == "enabled":
+            os.environ["STRANDS_TOOL_CONSOLE_MODE"] = "disabled"
         self.model = create_model(config.model)
         self.prompt_composer = SystemPromptComposer(
             config.paths.workspace,
