@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "aethon-ai"
-version = "0.1.1"
+version = "0.2.0"
 description = "Personal AI assistant powered by Strands Agents SDK"
 readme = "README.md"
 license = "PolyForm-Noncommercial-1.0.0"
@@ -114,3 +114,16 @@ markers = [
 # Distribution name is "aethon-ai"; the importable package and CLI stay "aethon".
 [tool.hatch.build.targets.wheel]
 packages = ["aethon"]
+
+# Keep the PyPI source distribution lean: ship the package + project metadata only.
+# The bundled Node project (codex-proxy), local planning notes (_dev), and runtime
+# state must never end up in the published sdist.
+[tool.hatch.build.targets.sdist]
+exclude = [
+    "/_dev",
+    "/codex-proxy",
+    "/workspace",
+    "/repl_state",
+    "/dist",
+    "/.github",
+]

@@ -5,6 +5,38 @@ All notable changes to AETHON are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-06-08
+
+### Added
+- **Capability tools** — `scraper` (BeautifulSoup), `use_github` (GitHub GraphQL),
+  `jsonrpc` (HTTP/WebSocket), `notify` (native notifications), `manage_messages`
+  (turn-aware self-introspection); grouped under a new `capabilities` config block.
+- **macOS native** — `use_mac` (Calendar/Reminders/Mail/Contacts/Safari/Finder/
+  Shortcuts/Messages/Music/Keychain) and `apple_notes`, Darwin-gated; Messages and
+  Keychain off by default. New `macos` config + `[macos]` extra.
+- **Code intelligence** — `lsp` tool + `LSPDiagnosticsHookProvider`; `lsp` config +
+  `[lsp]` extra (pyright).
+- **Dynamic tool loading** — `manage_tools` with a subprocess sandbox and 3-layer
+  gating; `runtime_tools` config.
+- **Computer control** — `use_computer` (opt-in, approval-gated); `[computer]` extra.
+- **Ambient / autonomous mode** — opt-in background loop; `ambient` config.
+- **Session recording & replay** — recorder hook + `LoadedSession` + 5 dashboard API
+  endpoints + a Recordings dashboard tab; `session_recorder` config + `paths.recordings`.
+- **MCP server** — `aethon mcp` exposes the toolset to MCP clients over stdio;
+  `runtime.get_tools_schemas()`.
+- **System-prompt awareness** — environment / learnings / recent-logs / shell-history /
+  self-awareness layers + the `record_learning` tool; `prompt` config + file logging.
+- **Dashboard** — a **Features** panel (live capability status) and an identity-correct
+  **Live Company** (pixel agents reflect real tool/model activity).
+- **Bundled `codex-proxy`** (source only) for the ChatGPT-Pro-via-OpenAI-compatible
+  backend; new `launcher-macos` extra (`aethon-menubar`).
+
+### Changed
+- Oversized tool output is capped (`performance.max_tool_output_chars`, default 12000)
+  so a single huge command can't overflow the model context.
+- The runtime forces strands-tools into non-interactive mode and quiets benign provider
+  log noise, so tool output no longer corrupts the CLI.
+
 ## [Unreleased]
 
 ### Removed

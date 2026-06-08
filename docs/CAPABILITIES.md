@@ -1,6 +1,6 @@
-# AETHON Capabilities (0.1.1)
+# AETHON Capabilities (0.2.0)
 
-A reference for the capabilities added in 0.1.1. Everything here is **config-gated**;
+A reference for the capabilities added in 0.2.0. Everything here is **config-gated**;
 powerful/host-affecting features default **off** and route through the security &
 approval hooks. Browse live status in the dashboard's **Features** panel, or see the
 [README configuration reference](../README.md#capabilities--runtime-features-opt-in)

@@ -13,7 +13,7 @@
 | [PRODUCT.md](product/PRODUCT.md) | Product overview, features, architecture |
 | [GETTING-STARTED.md](product/GETTING-STARTED.md) | Installation and quick start guide |
 | [CONFIGURATION.md](product/CONFIGURATION.md) | Complete configuration reference |
-| [CAPABILITIES.md](CAPABILITIES.md) | 0.1.1 capabilities — tools, macOS, LSP, dynamic tools, ambient, recording, MCP server |
+| [CAPABILITIES.md](CAPABILITIES.md) | 0.2.0 capabilities — tools, macOS, LSP, dynamic tools, ambient, recording, MCP server |
 | [API-REFERENCE.md](product/API-REFERENCE.md) | HTTP endpoints, WebSocket, webhook, tool reference |
 | [ARCHITECTURE.md](product/ARCHITECTURE.md) | Technical architecture, data flows, component relationships |
 
@@ -72,12 +72,14 @@
 | Phase 3 — Multi-Agent + SOP | ✅ Completed | 178 tests | 38 items |
 | Phase 4 — Polish + Advanced | ✅ Completed | 294 tests | 48 items |
 | Phase 5 — Dashboard & UX | ✅ Completed | 348 tests | 76 items |
-| Phase 6 — Infrastructure | ✅ v1 slice (Docker + CI + packaging + dashboard auth) | 348 tests | 54 items |
-| Phase 7 — AI Capabilities | ⏭️ Deferred to v2 | - | 53 items |
+| Phase 6 — Infrastructure | ✅ v1 slice (Docker + CI + packaging + dashboard auth) | 421 tests | 54 items |
+| Phase 7 — AI Capabilities | ✅ Shipped in 0.2.0 (see [CAPABILITIES.md](CAPABILITIES.md)) | 421 tests | 53 items |
 
-**Completed:** 348 tests, all passing.
+**Completed:** 421 tests, all passing.
 
-**Deferred to v2:** the advanced Phase 6 features (response streaming, per-specialist
-multi-model config, Tool Builder / Agent Builder agents) and all of Phase 7. v1 ships
-a complete, provider-agnostic assistant (Web UI + CLI + messaging bots, memory, SOPs,
-scheduler, telemetry, dashboard) via pip and Docker.
+**0.2.0** added the capability tools, macOS integration, LSP, dynamic tool loading,
+ambient mode, session recording/replay, the MCP server, and system-prompt awareness —
+see [CAPABILITIES.md](CAPABILITIES.md).
+
+**Still deferred:** response streaming, team/pipeline (Swarm/Graph) orchestration wired
+into the runtime, per-specialist multi-model config, and real-time voice.

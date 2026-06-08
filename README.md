@@ -31,7 +31,7 @@ Under the hood, AETHON is built on the **Strands Agents SDK**. A main orchestrat
 
 - **Author:** Mert Özbaş
 - **Repository:** https://github.com/mertozbas/aethon
-- **Version:** 0.1.1
+- **Version:** 0.2.0
 - **License:** PolyForm Noncommercial 1.0.0 (source-available; free for noncommercial use)
 
 ---
@@ -86,7 +86,7 @@ Under the hood, AETHON is built on the **Strands Agents SDK**. A main orchestrat
 - **Workspace boundary** + **blocked-command** filtering + **approval** hooks.
 - **Dashboard auth token**, **secret masking** in API config dumps, and a **memory guard** that keeps secrets out of long-term memory.
 
-> **New in 0.1.1** — capability tools (web/GitHub/JSON-RPC/notify), macOS native tools, LSP, sandboxed dynamic tools, ambient mode, session recording/replay, and an MCP server. Full reference: [`docs/CAPABILITIES.md`](docs/CAPABILITIES.md).
+> **New in 0.2.0** — capability tools (web/GitHub/JSON-RPC/notify), macOS native tools, LSP, sandboxed dynamic tools, ambient mode, session recording/replay, and an MCP server. Full reference: [`docs/CAPABILITIES.md`](docs/CAPABILITIES.md).
 
 ---
 
@@ -856,7 +856,7 @@ aethon [--version] <command> [options]
 | `aethon doctor` | Diagnose the current configuration and provider availability (provider/model, provider check, memory). | `--config, -c <path>` (default `~/.aethon/config.yaml`). |
 | `aethon start` | Start AETHON (runs the setup wizard first if no config exists; launches the gateway and all enabled channels). | `--config, -c <path>` (default `~/.aethon/config.yaml`). |
 | `aethon mcp` | Serve AETHON's whole toolset to MCP clients (e.g. Claude Desktop) over stdio. Informational output goes to stderr. | `--config, -c <path>` (default `~/.aethon/config.yaml`). |
-| `aethon --version` | Print `aethon, version 0.1.1` and exit. | — |
+| `aethon --version` | Print `aethon, version 0.2.0` and exit. | — |
 
 Also installed with the `launcher-macos` extra: **`aethon-menubar`** — a macOS menu-bar launcher (Start/Stop server, open WebChat, settings).
 
@@ -979,7 +979,7 @@ Contributions follow the same noncommercial terms; see [CONTRIBUTING.md](CONTRIB
 
 **v1 (0.1.0) shipped:** the full provider-agnostic assistant — CLI + WebChat + dashboard, Telegram/Discord/Slack channels, SQLite vector memory, multi-agent specialists with `ask_*` delegation, built-in and custom SOPs, scheduler, webhooks, telemetry, bring-your-own model provider (OpenAI default, plus Anthropic / Ollama / Bedrock / Gemini / LiteLLM / Mistral), and Docker + CI infrastructure.
 
-**0.1.1 — capability expansion (this release):**
+**0.2.0 — capability expansion (this release):**
 - **Capability tools** — `scraper`, `use_github`, `jsonrpc`, `notify`, `manage_messages`.
 - **macOS native** — `use_mac` + `apple_notes` (Darwin-gated; Messages/Keychain off by default).
 - **Code intelligence** — `lsp` tool + auto-diagnostics hook.
