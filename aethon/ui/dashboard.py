@@ -186,6 +186,115 @@ def setup_dashboard(app, runtime, config, event_bus=None):
             "metrics": telemetry_hook.get_metrics(limit=50),
         }
 
+    # --- Session Recordings (replay) API ---
+    # Registered BEFORE /api/sessions/{session_id:path} so these specific routes win.
+
+    def _recordings_dir() -> Path:
+        return Path(
+            getattr(config.paths, "recordings", "~/.aethon/recordings")
+        ).expanduser()
+
+    def _safe_recording(zip_name: str):
+        """Resolve a recording ZIP by name, guarding against path traversal."""
+        d = _recordings_dir()
+        if not d.exists():
+            return None
+        for p in d.glob("*.zip"):  # only names matching a real file in the dir
+            if p.name == zip_name:
+                return p
+        return None
+
+    def _load_recording(zip_name: str):
+        from aethon.agent.replay import LoadedSession
+
+        p = _safe_recording(zip_name)
+        return LoadedSession(str(p)) if p is not None else None
+
+    @app.get("/api/sessions/recordings")
+    async def api_recordings_list():
+        """List exported session recordings (newest first)."""
+        d = _recordings_dir()
+        items = []
+        if d.exists():
+            for p in sorted(d.glob("*.zip"), key=lambda x: x.stat().st_mtime, reverse=True):
+                try:
+                    st = p.stat()
+                    items.append({
+                        "name": p.name,
+                        "size": st.st_size,
+                        "timestamp": st.st_mtime,
+                        "session_id": p.stem,
+                    })
+                except Exception:
+                    continue
+        return {"recordings": items}
+
+    @app.get("/api/sessions/recordings/{zip_name}")
+    async def api_recording_meta(zip_name: str):
+        """Recording metadata head."""
+        session = _load_recording(zip_name)
+        if session is None:
+            return JSONResponse({"detail": "Recording not found"}, status_code=404)
+        return {
+            "metadata": session.metadata,
+            "events_count": len(session.events),
+            "snapshots_count": len(session.snapshots),
+            "duration": session.duration,
+            "session_id": session.session_id,
+            "has_resumable_state": session.has_pkl,
+        }
+
+    @app.get("/api/sessions/recordings/{zip_name}/events")
+    async def api_recording_events(
+        zip_name: str, layer: str = Query(""), type: str = Query("")
+    ):
+        """Recording events, filterable by ?layer= and ?type=."""
+        session = _load_recording(zip_name)
+        if session is None:
+            return JSONResponse({"detail": "Recording not found"}, status_code=404)
+        events = session.events
+        if layer:
+            events = [e for e in events if e.layer == layer]
+        if type:
+            events = [e for e in events if e.event_type == type]
+        return {"events": [e.to_dict() for e in events], "count": len(events)}
+
+    @app.get("/api/sessions/recordings/{zip_name}/snapshots")
+    async def api_recording_snapshots(zip_name: str):
+        """Recording snapshots (summary fields)."""
+        session = _load_recording(zip_name)
+        if session is None:
+            return JSONResponse({"detail": "Recording not found"}, status_code=404)
+        snaps = [
+            {
+                "id": s.snapshot_id,
+                "timestamp": s.timestamp,
+                "cwd": s.cwd,
+                "tools_loaded": s.tools_loaded,
+                "messages_count": s.agent_messages_count,
+                "last_query": s.last_query,
+                "last_result": (s.last_result[:500] if s.last_result else ""),
+            }
+            for s in session.snapshots
+        ]
+        return {"snapshots": snaps}
+
+    @app.post("/api/sessions/recordings/{zip_name}/replay/{snapshot_id}")
+    async def api_recording_replay(zip_name: str, snapshot_id: int):
+        """Preview resuming from a snapshot — does not mutate the live agent or cwd."""
+        session = _load_recording(zip_name)
+        if session is None:
+            return JSONResponse({"detail": "Recording not found"}, status_code=404)
+        _cwd = os.getcwd()
+        try:
+            result = session.resume_from_snapshot(snapshot_id, agent=None)
+        finally:
+            try:
+                os.chdir(_cwd)  # undo resume_from_snapshot's chdir side effect
+            except Exception:
+                pass
+        return result
+
     # --- Session Detail API (Step 3) ---
 
     @app.get("/api/sessions/{session_id:path}")
