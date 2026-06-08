@@ -48,6 +48,10 @@ class CLIChannelConfig(BaseModel):
 class TelegramChannelConfig(BaseModel):
     enabled: bool = False
     token: str = ""
+    # Default destination for PROACTIVE/outbound sends (scheduler, send_message,
+    # notifications). For a private 1:1 chat this equals your Telegram user id.
+    # Reactive replies always answer the inbound chat and ignore this.
+    chat_id: str = ""
 
 
 class DiscordChannelConfig(BaseModel):

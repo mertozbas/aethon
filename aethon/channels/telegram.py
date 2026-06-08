@@ -222,7 +222,13 @@ class TelegramAdapter(ChannelAdapter):
             return
         from aiogram.enums import ParseMode
 
-        chat_id = message.raw.get("chat_id", int(message.recipient_id))
+        chat_id = self._resolve_chat_id(message)
+        if chat_id is None:
+            logger.warning(
+                "Telegram send skipped: no chat_id. Set channels.telegram.chat_id "
+                "or security.allowed_senders.telegram, or reply to an inbound message."
+            )
+            return
 
         # Convert standard Markdown to Telegram-compatible HTML
         formatted = _markdown_to_telegram_html(message.text)
@@ -256,6 +262,28 @@ class TelegramAdapter(ChannelAdapter):
                     chat_id=chat_id,
                     text=message.text,
                 )
+
+    def _resolve_chat_id(self, message: OutboundMessage):
+        """Resolve the destination chat id for an outbound message.
+
+        Order: inbound raw (reactive replies) → numeric recipient_id →
+        configured ``telegram.chat_id`` → first ``allowed_senders.telegram`` entry.
+        Returns a value aiogram accepts (int or str), or ``None`` if nothing resolves
+        (proactive send with no configured destination — caller skips instead of crashing).
+        """
+        raw_id = message.raw.get("chat_id")
+        if raw_id is not None:
+            return raw_id
+        rid = (message.recipient_id or "").strip()
+        if rid and rid != "default" and rid.lstrip("-").isdigit():
+            return int(rid)
+        cfg_id = (self.config.channels.telegram.chat_id or "").strip()
+        if cfg_id:
+            return cfg_id
+        allowed = self.config.security.allowed_senders.get("telegram") or []
+        if allowed:
+            return allowed[0]
+        return None
 
     @staticmethod
     def _split_html_message(text: str, max_len: int) -> list[str]:

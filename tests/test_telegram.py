@@ -45,6 +45,56 @@ def test_telegram_adapter_is_channel_adapter():
     assert issubclass(TelegramAdapter, ChannelAdapter)
 
 
+# --- _resolve_chat_id (proactive/outbound destination) tests ---
+
+
+def _adapter(*, chat_id="", allowed=None):
+    from aethon.config import AethonConfig, SecurityConfig
+    from aethon.channels.telegram import TelegramAdapter
+
+    config = AethonConfig(
+        channels=ChannelsConfig(
+            telegram=TelegramChannelConfig(enabled=True, token="123:ABC", chat_id=chat_id),
+        ),
+        security=SecurityConfig(allowed_senders={"telegram": allowed} if allowed else {}),
+    )
+    return TelegramAdapter(config, router=None)
+
+
+def _out(recipient_id="default", raw=None):
+    from aethon.channels.base import OutboundMessage
+
+    return OutboundMessage(channel="telegram", recipient_id=recipient_id, text="hi", raw=raw or {})
+
+
+def test_resolve_chat_id_prefers_inbound_raw():
+    """Reactive replies use the inbound chat id regardless of config."""
+    adapter = _adapter(chat_id="999")
+    assert adapter._resolve_chat_id(_out(recipient_id="42", raw={"chat_id": 7})) == 7
+
+
+def test_resolve_chat_id_numeric_recipient():
+    adapter = _adapter()
+    assert adapter._resolve_chat_id(_out(recipient_id="-100123")) == -100123
+
+
+def test_resolve_chat_id_default_falls_back_to_config():
+    """Proactive send with recipient 'default' must NOT crash (old int('default')) — it
+    resolves to the configured chat_id."""
+    adapter = _adapter(chat_id="555")
+    assert adapter._resolve_chat_id(_out(recipient_id="default")) == "555"
+
+
+def test_resolve_chat_id_falls_back_to_allowed_senders():
+    adapter = _adapter(allowed=["6875048694"])
+    assert adapter._resolve_chat_id(_out(recipient_id="default")) == "6875048694"
+
+
+def test_resolve_chat_id_none_when_nothing_configured():
+    adapter = _adapter()
+    assert adapter._resolve_chat_id(_out(recipient_id="default")) is None
+
+
 # --- Markdown to Telegram HTML converter tests ---
 
 

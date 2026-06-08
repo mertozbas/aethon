@@ -107,13 +107,18 @@ def test_cli_init_enables_telegram_channel(tmp_path, monkeypatch):
 
     cfg = tmp_path / "config.yaml"
     # openai, default model, blank base URL, api key, memory no,
-    # Telegram YES + token, Discord no, Slack no
+    # Telegram YES + token + chat id + lock-down yes, Discord no, Slack no.
+    # CliRunner has no TTY, so chat-id auto-detect is skipped (manual prompt only).
     result = CliRunner().invoke(
-        main, ["init", "-c", str(cfg)], input="1\n\n\nsk-test\nn\ny\nMYTOKEN\nn\nn\n"
+        main,
+        ["init", "-c", str(cfg)],
+        input="1\n\n\nsk-test\nn\ny\nMYTOKEN\n123456\ny\nn\nn\n",
     )
     assert result.exit_code == 0, result.output
 
     loaded = AethonConfig.load(str(cfg))
     assert loaded.channels.telegram.enabled is True
     assert loaded.channels.telegram.token == "MYTOKEN"
+    assert loaded.channels.telegram.chat_id == "123456"
+    assert loaded.security.allowed_senders.get("telegram") == ["123456"]
     assert loaded.channels.discord.enabled is False

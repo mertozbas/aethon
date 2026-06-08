@@ -8,6 +8,7 @@ endpoint), Anthropic, or Ollama (fully local) — then validates the choice and 
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -71,13 +72,56 @@ def build_memory_config(provider: str, enable: bool, api_key: str = "") -> dict:
     return {"enabled": True, "embedding_provider": "ollama", "embedding_model": "nomic-embed-text"}
 
 
-def _wizard_channels() -> dict:
-    """Optionally enable messaging bots and collect their tokens."""
+def _telegram_chat_id(token: str) -> str:
+    """Resolve the proactive chat id: auto-detect via getUpdates, else ask manually.
+
+    Auto-detect is attempted only on an interactive TTY (so headless `aethon init`
+    and CI/tests never make the live api.telegram.org call or block on the pause).
+    """
+    if token and sys.stdin.isatty():
+        if click.confirm("    Auto-detect your chat id? (you'll message your bot)", default=True):
+            console.print("    Open Telegram, send your bot any message, then come back.")
+            click.prompt("    Press Enter once you've sent it", default="", show_default=False)
+            try:
+                import requests
+
+                resp = requests.get(f"https://api.telegram.org/bot{token}/getUpdates", timeout=10)
+                updates = (resp.json() or {}).get("result", [])
+                for upd in reversed(updates):
+                    chat = (upd.get("message") or upd.get("edited_message") or {}).get("chat") or {}
+                    if chat.get("id") is not None:
+                        cid = str(chat["id"])
+                        console.print(f"    [green]Detected chat id: {cid}[/]")
+                        return cid
+                console.print("    [yellow]No recent message found — enter it manually.[/]")
+            except Exception as e:
+                console.print(f"    [yellow]Auto-detect failed ({e}) — enter it manually.[/]")
+    return click.prompt(
+        "    Telegram chat id (your numeric id; ask @userinfobot if unsure)", default=""
+    ).strip()
+
+
+def _wizard_channels() -> tuple[dict, dict]:
+    """Optionally enable messaging bots and collect their tokens.
+
+    Returns ``(channels, allowed_senders)`` — the latter restricts who may message
+    a bot that has shell/tool access.
+    """
     channels: dict = {}
+    allowed: dict = {}
     console.print("\n[bold]Messaging bots[/] (optional)")
     if click.confirm("  Enable Telegram?", default=False):
         token = click.prompt("    Telegram bot token (from @BotFather)", hide_input=True, default="").strip()
+        chat_id = _telegram_chat_id(token)
         channels["telegram"] = {"enabled": True, "token": token}
+        if chat_id:
+            channels["telegram"]["chat_id"] = chat_id
+            if click.confirm(
+                "    Restrict the bot to only respond to this chat id? "
+                "(recommended — it has shell/tool access)",
+                default=True,
+            ):
+                allowed.setdefault("telegram", []).append(chat_id)
     if click.confirm("  Enable Discord?", default=False):
         token = click.prompt("    Discord bot token", hide_input=True, default="").strip()
         channels["discord"] = {"enabled": True, "token": token}
@@ -85,7 +129,7 @@ def _wizard_channels() -> dict:
         bot_token = click.prompt("    Slack bot token (xoxb-...)", hide_input=True, default="").strip()
         app_token = click.prompt("    Slack app token (xapp-...)", hide_input=True, default="").strip()
         channels["slack"] = {"enabled": True, "bot_token": bot_token, "app_token": app_token}
-    return channels
+    return channels, allowed
 
 
 def _ensure_embedding_model(memory_cfg: dict) -> None:
@@ -183,11 +227,13 @@ def run_wizard(config_path: str = "~/.aethon/config.yaml", *, force: bool = Fals
     memory_cfg = build_memory_config(provider, enable_memory, api_key)
     _ensure_embedding_model(memory_cfg)
 
-    channels_cfg = _wizard_channels()
+    channels_cfg, allowed_senders = _wizard_channels()
 
     data: dict = {"model": model, "memory": memory_cfg}
     if channels_cfg:
         data["channels"] = channels_cfg
+    if allowed_senders:
+        data["security"] = {"allowed_senders": allowed_senders}
     written = AethonConfig.write(data, config_path)
 
     console.print(f"\n[green]✓ Wrote config to {written}[/]")
