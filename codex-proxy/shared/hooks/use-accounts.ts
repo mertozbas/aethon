@@ -1,0 +1,334 @@
+import { useState, useEffect, useCallback, useRef } from "preact/hooks";
+import type { Account } from "../types";
+import {
+  accountExportDownloadName,
+  buildAccountExportUrl,
+  prepareAccountImportRequest,
+  type AccountExportFormat,
+} from "../account-transfer-client";
+
+export interface PersistenceHealth {
+  ok: boolean;
+  reason?: string;
+  message?: string;
+}
+
+export function useAccounts() {
+  const [list, setList] = useState<Account[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [addVisible, setAddVisible] = useState(false);
+  const [addInfo, setAddInfo] = useState("");
+  const [addError, setAddError] = useState("");
+  const [persistenceHealth, setPersistenceHealth] = useState<PersistenceHealth>({ ok: true });
+  const addCleanupRef = useRef<(() => void) | null>(null);
+
+  const loadAccounts = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      const resp = await fetch("/auth/accounts?quota=true");
+      const data = await resp.json();
+      setList(data.accounts || []);
+      if (data.persistence_health && typeof data.persistence_health === "object") {
+        setPersistenceHealth(data.persistence_health as PersistenceHealth);
+      }
+      setLastUpdated(new Date());
+    } catch {
+      setList([]);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadAccounts();
+  }, [loadAccounts]);
+
+  // Auto-poll cached quota every 30s
+  useEffect(() => {
+    const timer = setInterval(() => loadAccounts(), 30_000);
+    return () => clearInterval(timer);
+  }, [loadAccounts]);
+
+  // Listen for OAuth callback success
+  useEffect(() => {
+    const handler = async (event: MessageEvent) => {
+      if (event.data?.type === "oauth-callback-success") {
+        setAddVisible(false);
+        setAddInfo("accountAdded");
+        await loadAccounts();
+      }
+    };
+    window.addEventListener("message", handler);
+    return () => window.removeEventListener("message", handler);
+  }, [loadAccounts]);
+
+  const startAdd = useCallback(async () => {
+    setAddInfo("");
+    setAddError("");
+    try {
+      const resp = await fetch("/auth/login-start", { method: "POST" });
+      const data = await resp.json();
+      if (!resp.ok || !data.authUrl) {
+        throw new Error(data.error || "failedStartLogin");
+      }
+      window.open(data.authUrl, "oauth_add", "width=600,height=700,scrollbars=yes");
+      setAddVisible(true);
+
+      // Poll for new account + focus/visibility detection
+      const prevResp = await fetch("/auth/accounts");
+      const prevData = await prevResp.json();
+      const prevCount = prevData.accounts?.length || 0;
+
+      let checking = false;
+      const checkForNewAccount = async () => {
+        if (checking) return;
+        checking = true;
+        try {
+          const r = await fetch("/auth/accounts");
+          const d = await r.json();
+          if ((d.accounts?.length || 0) > prevCount) {
+            cleanup();
+            setAddVisible(false);
+            setAddInfo("accountAdded");
+            await loadAccounts();
+          }
+        } catch {} finally {
+          checking = false;
+        }
+      };
+
+      // Focus event — check immediately when window regains focus
+      const onFocus = () => { checkForNewAccount(); };
+      window.addEventListener("focus", onFocus);
+
+      // Visibility change — check when tab becomes visible
+      const onVisible = () => {
+        if (document.visibilityState === "visible") checkForNewAccount();
+      };
+      document.addEventListener("visibilitychange", onVisible);
+
+      // Interval polling as fallback
+      const pollTimer = setInterval(checkForNewAccount, 2000);
+
+      const cleanup = () => {
+        clearInterval(pollTimer);
+        window.removeEventListener("focus", onFocus);
+        document.removeEventListener("visibilitychange", onVisible);
+        addCleanupRef.current = null;
+      };
+      addCleanupRef.current = cleanup;
+      setTimeout(cleanup, 5 * 60 * 1000);
+    } catch (err) {
+      setAddError(err instanceof Error ? err.message : "failedStartLogin");
+    }
+  }, [loadAccounts]);
+
+  const cancelAdd = useCallback(() => {
+    addCleanupRef.current?.();
+    setAddVisible(false);
+    setAddInfo("");
+    setAddError("");
+  }, []);
+
+  const submitRelay = useCallback(
+    async (callbackUrl: string) => {
+      setAddInfo("");
+      setAddError("");
+      if (!callbackUrl.trim()) {
+        setAddError("pleasePassCallback");
+        return;
+      }
+      try {
+        const resp = await fetch("/auth/code-relay", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ callbackUrl }),
+        });
+        const data = await resp.json();
+        if (resp.ok && data.success) {
+          setAddVisible(false);
+          setAddInfo("accountAdded");
+          await loadAccounts();
+        } else {
+          setAddError(data.error || "failedExchangeCode");
+        }
+      } catch (err) {
+        setAddError(
+          "networkError" + (err instanceof Error ? err.message : String(err))
+        );
+      }
+    },
+    [loadAccounts]
+  );
+
+  const addByRefreshToken = useCallback(async (refreshToken: string): Promise<string | null> => {
+    setAddInfo("");
+    setAddError("");
+    try {
+      const resp = await fetch("/auth/accounts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refreshToken }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) {
+        const msg = data.error || "Failed to add account";
+        setAddError(msg);
+        return msg;
+      }
+      setAddInfo("accountAdded");
+      await loadAccounts();
+      return null;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setAddError(msg);
+      return msg;
+    }
+  }, [loadAccounts]);
+
+  const deleteAccount = useCallback(
+    async (id: string) => {
+      try {
+        const resp = await fetch("/auth/accounts/" + encodeURIComponent(id), {
+          method: "DELETE",
+        });
+        if (!resp.ok) {
+          const data = await resp.json();
+          return data.error || "failedDeleteAccount";
+        }
+        await loadAccounts();
+        return null;
+      } catch (err) {
+        return "networkError" + (err instanceof Error ? err.message : "");
+      }
+    },
+    [loadAccounts]
+  );
+
+  const patchLocal = useCallback((accountId: string, patch: Partial<Account>) => {
+    setList((prev) => prev.map((a) => a.id === accountId ? { ...a, ...patch } : a));
+  }, []);
+
+  const exportAccounts = useCallback(async (selectedIds?: string[], format: AccountExportFormat = "full") => {
+    const resp = await fetch(buildAccountExportUrl(selectedIds, format));
+    const data = await resp.json() as unknown;
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = accountExportDownloadName(format);
+    a.style.display = "none";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, []);
+
+  const importAccounts = useCallback(async (file: File): Promise<{
+    success: boolean;
+    added: number;
+    updated: number;
+    failed: number;
+    errors: string[];
+  }> => {
+    const prepared = await prepareAccountImportRequest(file);
+    if (!prepared.ok) return { success: false, added: 0, updated: 0, failed: 0, errors: [prepared.error] };
+
+    const resp = await fetch("/auth/accounts/import", {
+      method: "POST",
+      headers: { "Content-Type": prepared.contentType },
+      body: prepared.body,
+    });
+    const result = await resp.json();
+    if (resp.ok) {
+      await loadAccounts();
+    }
+    return { added: 0, updated: 0, failed: 0, errors: [], ...result };
+  }, [loadAccounts]);
+
+  const batchDelete = useCallback(async (ids: string[]): Promise<string | null> => {
+    try {
+      const resp = await fetch("/auth/accounts/batch-delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      if (!resp.ok) {
+        const data = await resp.json();
+        return data.error || "Batch delete failed";
+      }
+      await loadAccounts();
+      return null;
+    } catch (err) {
+      return "networkError" + (err instanceof Error ? err.message : "");
+    }
+  }, [loadAccounts]);
+
+  const batchSetStatus = useCallback(async (ids: string[], status: "active" | "disabled"): Promise<string | null> => {
+    try {
+      const resp = await fetch("/auth/accounts/batch-status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids, status }),
+      });
+      if (!resp.ok) {
+        const data = await resp.json();
+        return data.error || "Batch status change failed";
+      }
+      await loadAccounts();
+      return null;
+    } catch (err) {
+      return "networkError" + (err instanceof Error ? err.message : "");
+    }
+  }, [loadAccounts]);
+
+  const toggleStatus = useCallback(async (id: string, currentStatus: string): Promise<string | null> => {
+    const newStatus = currentStatus === "disabled" ? "active" : "disabled";
+    return batchSetStatus([id], newStatus);
+  }, [batchSetStatus]);
+
+  const updateLabel = useCallback(async (id: string, label: string | null): Promise<string | null> => {
+    try {
+      const resp = await fetch(`/auth/accounts/${encodeURIComponent(id)}/label`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ label }),
+      });
+      if (!resp.ok) {
+        const data = await resp.json();
+        return data.error || "Failed to update label";
+      }
+      patchLocal(id, { label: label ?? undefined });
+      return null;
+    } catch (err) {
+      return "networkError" + (err instanceof Error ? err.message : "");
+    }
+  }, [patchLocal]);
+
+  return {
+    list,
+    loading,
+    refreshing,
+    lastUpdated,
+    addVisible,
+    addInfo,
+    addError,
+    persistenceHealth,
+    refresh: loadAccounts,
+    patchLocal,
+    startAdd,
+    cancelAdd,
+    submitRelay,
+    addByRefreshToken,
+    deleteAccount,
+    exportAccounts,
+    importAccounts,
+    batchDelete,
+    batchSetStatus,
+    toggleStatus,
+    updateLabel,
+  };
+}

@@ -1,0 +1,182 @@
+/**
+ * Google Gemini API route handler.
+ * POST /v1beta/models/{model}:generateContent — non-streaming
+ * POST /v1beta/models/{model}:streamGenerateContent — streaming
+ */
+
+import { Hono } from "hono";
+import type { StatusCode } from "hono/utils/http-status";
+import type { GeminiErrorResponse } from "../types/gemini.js";
+import { GEMINI_STATUS_MAP } from "../types/gemini.js";
+import { GeminiGenerateContentRequestSchema } from "../types/gemini.js";
+import type { AccountPool } from "../auth/account-pool.js";
+import type { CookieJar } from "../proxy/cookie-jar.js";
+import type { ProxyPool } from "../proxy/proxy-pool.js";
+import {
+  translateGeminiToCodexRequest,
+} from "../translation/gemini-to-codex.js";
+import {
+  streamCodexToGemini,
+  collectCodexToGeminiResponse,
+} from "../translation/codex-to-gemini.js";
+import { getConfig } from "../config.js";
+import { apiKeyAuth } from "../middleware/api-key-auth.js";
+import { getModelCatalog } from "../models/model-store.js";
+import {
+  handleProxyRequest,
+} from "./shared/proxy-handler.js";
+import { handleDirectRequest } from "./shared/direct-request-handler.js";
+import type { FormatAdapter, ProxyRequest } from "./shared/proxy-handler-types.js";
+import type { UpstreamRouter } from "../proxy/upstream-router.js";
+
+function makeError(
+  code: number,
+  message: string,
+  status?: string,
+): GeminiErrorResponse {
+  return {
+    error: {
+      code,
+      message,
+      status: status ?? GEMINI_STATUS_MAP[code] ?? "INTERNAL",
+    },
+  };
+}
+
+/**
+ * Parse model name and action from the URL param.
+ * e.g. "gemini-2.5-pro:generateContent" → { model: "gemini-2.5-pro", action: "generateContent" }
+ */
+function parseModelAction(param: string): {
+  model: string;
+  action: string;
+} | null {
+  const lastColon = param.lastIndexOf(":");
+  if (lastColon <= 0) return null;
+  return {
+    model: param.slice(0, lastColon),
+    action: param.slice(lastColon + 1),
+  };
+}
+
+const GEMINI_FORMAT: FormatAdapter = {
+  tag: "Gemini",
+  noAccountStatus: 503,
+  formatNoAccount: () =>
+    makeError(
+      503,
+      "No available accounts. All accounts are expired or rate-limited.",
+      "UNAVAILABLE",
+    ),
+  format429: (msg) => makeError(429, msg, "RESOURCE_EXHAUSTED"),
+  formatError: (status, msg) => makeError(status, msg),
+  streamTranslator: ({ api, response, model, onUsage, onResponseId, onResponseCompleted, tupleSchema }) =>
+    streamCodexToGemini(api, response, model, onUsage, onResponseId, tupleSchema, onResponseCompleted),
+  collectTranslator: ({ api, response, model, tupleSchema }) =>
+    collectCodexToGeminiResponse(api, response, model, tupleSchema),
+};
+
+export function createGeminiRoutes(
+  accountPool: AccountPool,
+  cookieJar?: CookieJar,
+  proxyPool?: ProxyPool,
+  upstreamRouter?: UpstreamRouter,
+): Hono {
+  const app = new Hono();
+
+  // Handle both generateContent and streamGenerateContent
+  app.post("/v1beta/models/:modelAction", apiKeyAuth(accountPool), async (c) => {
+    const modelActionParam = c.req.param("modelAction");
+    const parsed = parseModelAction(modelActionParam);
+
+    if (
+      !parsed ||
+      (parsed.action !== "generateContent" &&
+        parsed.action !== "streamGenerateContent")
+    ) {
+      c.status(400);
+      return c.json(
+        makeError(
+          400,
+          `Invalid action. Expected :generateContent or :streamGenerateContent, got: ${modelActionParam}`,
+        ),
+      );
+    }
+
+    const { model: geminiModel, action } = parsed;
+    const isStreaming =
+      action === "streamGenerateContent" ||
+      c.req.query("alt") === "sse";
+
+    // Parse request
+    const body = await c.req.json();
+    const validationResult = GeminiGenerateContentRequestSchema.safeParse(body);
+    if (!validationResult.success) {
+      c.status(400);
+      return c.json(
+        makeError(400, `Invalid request: ${validationResult.error.message}`),
+      );
+    }
+    const req = validationResult.data;
+
+    const routeMatch = upstreamRouter?.resolveMatch(geminiModel);
+    const allowUnauthenticated = routeMatch?.kind === "api-key" || routeMatch?.kind === "adapter";
+
+    // Auth check
+    if (!allowUnauthenticated && !accountPool.isAuthenticated()) {
+      c.status(401);
+      return c.json(
+        makeError(401, "Not authenticated. Please login first at /"),
+      );
+    }
+
+
+
+    const { codexRequest, tupleSchema } = translateGeminiToCodexRequest(
+      req,
+      geminiModel,
+    );
+
+    console.log(
+      `[Gemini] Model: ${geminiModel} → ${codexRequest.model}`,
+    );
+
+    const proxyReq: ProxyRequest = {
+      codexRequest,
+      model: geminiModel,
+      isStreaming,
+      clientConversationId: c.req.header("x-conversation-id") || c.req.header("x-session-id"),
+      tupleSchema,
+    };
+
+    if (routeMatch?.kind === "api-key" || routeMatch?.kind === "adapter") {
+      const directModel = routeMatch.resolvedModel ?? geminiModel;
+      const directReq = {
+        ...proxyReq,
+        model: directModel,
+        codexRequest: { ...codexRequest, model: directModel },
+      };
+      return handleDirectRequest({ c, upstream: routeMatch.adapter, req: directReq, fmt: GEMINI_FORMAT });
+    }
+
+    return handleProxyRequest({ c, accountPool, cookieJar, req: proxyReq, fmt: GEMINI_FORMAT, proxyPool });
+  });
+
+  // List available models (Gemini format)
+  app.get("/v1beta/models", apiKeyAuth(accountPool), (c) => {
+    const catalog = getModelCatalog();
+    const models = catalog.map((m) => ({
+      name: `models/${m.id}`,
+      displayName: m.displayName,
+      description: m.description,
+      supportedGenerationMethods: [
+        "generateContent",
+        "streamGenerateContent",
+      ],
+    }));
+
+    return c.json({ models });
+  });
+
+  return app;
+}

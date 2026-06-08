@@ -1,0 +1,53 @@
+{
+  "name": "codex-proxy",
+  "version": "2.0.77",
+  "description": "Reverse proxy that exposes Codex Desktop Responses API as OpenAI-compatible /v1/chat/completions",
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:unit": "vitest run --include 'tests/unit/**/*.test.ts'",
+    "test:e2e": "vitest run --include 'tests/e2e/**/*.test.ts'",
+    "test:integration": "vitest run --include 'tests/integration/**/*.test.ts'",
+    "test:stress": "vitest run --config tests/vitest.config.ts",
+    "test:real": "vitest run --config tests/real/vitest.config.ts",
+    "test:web": "cd web && npx vitest run",
+    "dev": "tsx watch src/index.ts",
+    "dev:web": "cd web && npx vite",
+    "build:web": "cd web && npx vite build",
+    "build": "npm run build:web && tsc",
+    "typecheck:scripts": "tsc -p tsconfig.scripts.json",
+    "start": "node dist/index.js",
+    "check-update": "tsx scripts/build/check-update.ts",
+    "check-update:watch": "tsx scripts/build/check-update.ts --watch",
+    "extract": "tsx scripts/build/extract-fingerprint.ts",
+    "apply-update": "tsx scripts/build/apply-update.ts",
+    "apply-update:dry": "tsx scripts/build/apply-update.ts --dry-run",
+    "update": "tsx scripts/build/full-update.ts"
+  },
+  "dependencies": {
+    "@electron/asar": "^3.2.0",
+    "@hono/node-server": "^1.0.0",
+    "hono": "^4.0.0",
+    "https-proxy-agent": "^8.0.0",
+    "js-yaml": "^4.1.0",
+    "undici": "^7.0.0",
+    "ws": "^8.19.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.0",
+    "@types/node": "^22.0.0",
+    "@types/ws": "^8.18.1",
+    "@vitest/coverage-v8": "^3.2.4",
+    "electron-to-chromium": "^1.5.302",
+    "js-beautify": "^1.15.0",
+    "preact": "^10.29.1",
+    "tsx": "^4.0.0",
+    "typescript": "^5.5.0",
+    "vitest": "^3.2.4"
+  }
+}

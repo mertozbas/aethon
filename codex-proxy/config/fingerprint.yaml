@@ -1,0 +1,32 @@
+user_agent_template: "Codex Desktop/{version} ({platform}; {arch})"
+auth_domains: ["chatgpt.com", "*.chatgpt.com", "openai.com", "*.openai.com"]
+auth_domain_exclusions: ["ab.chatgpt.com"]
+header_order:
+  - "Authorization"
+  - "ChatGPT-Account-Id"
+  - "originator"
+  - "x-openai-internal-codex-residency"
+  - "x-client-request-id"
+  - "x-codex-installation-id"
+  - "x-codex-turn-state"
+  - "OpenAI-Beta"
+  - "User-Agent"
+  - "sec-ch-ua"
+  - "sec-ch-ua-mobile"
+  - "sec-ch-ua-platform"
+  - "Accept-Encoding"
+  - "Accept-Language"
+  - "sec-fetch-site"
+  - "sec-fetch-mode"
+  - "sec-fetch-dest"
+  - "Content-Type"
+  - "Accept"
+  - "Cookie"
+default_headers:
+  Accept-Encoding: "gzip, deflate, br, zstd"
+  Accept-Language: "en-US,en;q=0.9"
+  sec-ch-ua-mobile: "?0"
+  sec-ch-ua-platform: '"macOS"'
+  sec-fetch-site: "same-origin"
+  sec-fetch-mode: "cors"
+  sec-fetch-dest: "empty"

@@ -1,0 +1,162 @@
+/**
+ * Data models for multi-account management.
+ */
+
+export type AccountStatus =
+  | "active"
+  | "expired"
+  | "quota_exhausted"
+  | "refreshing"
+  | "disabled"
+  | "banned";
+
+export interface AccountUsage {
+  request_count: number;
+  input_tokens: number;
+  output_tokens: number;
+  /** Cached prompt tokens billed at the discounted rate (subset of input_tokens). */
+  cached_tokens?: number;
+  /** image_generation tool tokens (gpt-image-2). Tracked separately from host-model tokens. */
+  image_input_tokens?: number;
+  image_output_tokens?: number;
+  /** image_generation request counts. Success = upstream returned non-zero output_tokens.
+   *  Failure = silent strip (Free plan), upstream error, or EmptyResponseError on a request
+   *  that declared the image_generation tool. */
+  image_request_count?: number;
+  image_request_failed_count?: number;
+  empty_response_count: number;
+  last_used: string | null;
+  /**
+   * Legacy local-lock field, retired. Reads survive on disk to support
+   * in-place migration; new code MUST consult cachedQuota.*.limit_reached
+   * instead. Removed from runtime mutation by `migrateLegacyRateLimit`.
+   */
+  rate_limit_until?: string | null;
+  /** Tracks the current rate limit window end (Unix seconds). When window rolls over, counters reset. */
+  window_reset_at?: number | null;
+  /** Per-window request count (resets when window expires). */
+  window_request_count?: number;
+  /** Per-window input tokens (resets when window expires). */
+  window_input_tokens?: number;
+  /** Per-window output tokens (resets when window expires). */
+  window_output_tokens?: number;
+  /** Per-window cached prompt tokens (resets when window expires). */
+  window_cached_tokens?: number;
+  /** Per-window image_generation input/output tokens. */
+  window_image_input_tokens?: number;
+  window_image_output_tokens?: number;
+  /** Per-window image_generation request counts. */
+  window_image_request_count?: number;
+  window_image_request_failed_count?: number;
+  /** ISO timestamp of when window counters were last reset. */
+  window_counters_reset_at?: string | null;
+  /** Window duration in seconds, synced from backend, used for local window estimation. */
+  limit_window_seconds?: number | null;
+}
+
+export interface AccountEntry {
+  id: string;
+  token: string;
+  refreshToken: string | null;
+  email: string | null;
+  accountId: string | null;
+  /** Per-user unique ID (chatgpt_user_id). Team members share accountId but have distinct userId. */
+  userId: string | null;
+  /** User-editable label for disambiguation (e.g. "Team Alpha", "Personal"). */
+  label: string | null;
+  planType: string | null;
+  proxyApiKey: string;
+  status: AccountStatus;
+  usage: AccountUsage;
+  addedAt: string;
+  /** Cached official quota from background refresh. Null until first fetch. */
+  cachedQuota: CodexQuota | null;
+  /** ISO timestamp of when cachedQuota was last updated. */
+  quotaFetchedAt: string | null;
+  quotaVerifyRequired?: boolean;
+}
+
+/** Public info (no token) */
+export interface AccountInfo {
+  id: string;
+  email: string | null;
+  accountId: string | null;
+  userId: string | null;
+  label: string | null;
+  planType: string | null;
+  status: AccountStatus;
+  usage: AccountUsage;
+  addedAt: string;
+  expiresAt: string | null;
+  quota?: CodexQuota;
+  quotaFetchedAt?: string | null;
+  quotaVerifyRequired?: boolean;
+}
+
+/** A single rate limit window (primary or secondary). */
+export interface CodexQuotaWindow {
+  used_percent: number | null;
+  remaining_percent?: number | null;
+  reset_at: number | null;
+  limit_window_seconds: number | null;
+}
+
+/** Normalized credit accounting for an account. */
+export interface CodexQuotaCredits {
+  has_credits: boolean;
+  unlimited: boolean;
+  overage_limit_reached: boolean;
+  /** Numeric balance parsed from the upstream decimal-string field. */
+  balance: number;
+}
+
+/** Official Codex quota from /backend-api/wham/usage or /backend-api/codex/usage. */
+export interface CodexQuota {
+  plan_type: string;
+  rate_limit: CodexQuotaWindow & {
+    allowed: boolean;
+    limit_reached: boolean;
+  };
+  /** Secondary rate limit window (e.g. weekly cap). Null when backend doesn't report one. */
+  secondary_rate_limit: CodexQuotaWindow & {
+    limit_reached: boolean;
+  } | null;
+  code_review_rate_limit: {
+    allowed: boolean;
+    limit_reached: boolean;
+    used_percent: number | null;
+    remaining_percent?: number | null;
+    reset_at: number | null;
+    limit_window_seconds: number | null;
+  } | null;
+  /** Credit accounting (Pro / PAYG only — null for Plus). */
+  credits?: CodexQuotaCredits | null;
+  /** All metered quota buckets returned by Codex app's /wham/usage additional_rate_limits. */
+  rate_limits_by_limit_id?: Record<string, {
+    limit_id: string;
+    limit_name: string | null;
+    allowed: boolean;
+    limit_reached: boolean;
+    used_percent: number | null;
+    remaining_percent?: number | null;
+    reset_at: number | null;
+    limit_window_seconds: number | null;
+    secondary_rate_limit?: CodexQuotaWindow & {
+      limit_reached: boolean;
+    } | null;
+  }> | null;
+}
+
+/** Returned by acquire() */
+export interface AcquiredAccount {
+  entryId: string;
+  token: string;
+  accountId: string | null;
+  /** Timestamp of the previous slot on this account (null = first request). */
+  prevSlotMs: number | null;
+}
+
+/** Persistence format */
+export interface AccountsFile {
+  accounts: AccountEntry[];
+}

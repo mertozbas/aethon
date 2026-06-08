@@ -23,3 +23,11 @@ Users/
 
 # Local development notes/plans — never pushed
 _dev/
+
+# Vendored codex-proxy — never commit its secrets / runtime state / deps
+codex-proxy/node_modules/
+codex-proxy/**/node_modules/
+codex-proxy/data/
+codex-proxy/logs/
+codex-proxy/.env
+codex-proxy/**/dist/

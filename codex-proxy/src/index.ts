@@ -1,0 +1,363 @@
+import "./utils/install-dev-logger.js";
+
+import { Hono } from "hono";
+import { serve } from "@hono/node-server";
+import { loadConfig, loadFingerprint, getConfig, hasLocalOverride } from "./config.js";
+import { initContext } from "./context.js";
+import { AccountPool } from "./auth/account-pool.js";
+import { RefreshScheduler } from "./auth/refresh-scheduler.js";
+
+import { requestId } from "./middleware/request-id.js";
+import { logger } from "./middleware/logger.js";
+import { errorHandler } from "./middleware/error-handler.js";
+import { dashboardAuth } from "./middleware/dashboard-auth.js";
+import { logCapture } from "./middleware/log-capture.js";
+import { cors } from "./middleware/cors.js";
+
+import type { UpstreamAdapter } from "./proxy/upstream-adapter.js";
+import { createAuthRoutes } from "./routes/auth.js";
+import { createAccountRoutes } from "./routes/accounts.js";
+import { createChatRoutes } from "./routes/chat.js";
+import { createMessagesRoutes } from "./routes/messages.js";
+import { createGeminiRoutes } from "./routes/gemini.js";
+import { createModelRoutes } from "./routes/models.js";
+import { createWebRoutes } from "./routes/web.js";
+import { CookieJar } from "./proxy/cookie-jar.js";
+import { ProxyPool } from "./proxy/proxy-pool.js";
+import { setWsPoolConfig, getWsPool } from "./proxy/ws-pool.js";
+import { createProxyRoutes } from "./routes/proxies.js";
+import { createResponsesRoutes } from "./routes/responses.js";
+import { startUpdateChecker, stopUpdateChecker } from "./update-checker.js";
+import { startProxyUpdateChecker, stopProxyUpdateChecker, setCloseHandler, getDeployMode } from "./self-update.js";
+import { initProxy } from "./tls/proxy.js";
+import { cleanupStaleLocks } from "./auth/refresh-lock.js";
+import { initTransport, getTransport } from "./tls/transport.js";
+import { loadStaticModels } from "./models/model-store.js";
+import { startModelRefresh, stopModelRefresh } from "./models/model-fetcher.js";
+import { startQuotaRefresh, stopQuotaRefresh } from "./auth/usage-refresher.js";
+import { ActiveQuotaRefresher } from "./auth/active-quota-refresher.js";
+import { UsageStatsStore } from "./auth/usage-stats.js";
+import { startSessionCleanup, stopSessionCleanup } from "./auth/dashboard-session.js";
+import { createDashboardAuthRoutes } from "./routes/dashboard-login.js";
+import { OpenAIUpstream } from "./proxy/openai-upstream.js";
+import { AnthropicUpstream } from "./proxy/anthropic-upstream.js";
+import { GeminiUpstream } from "./proxy/gemini-upstream.js";
+import { ApiKeyPool } from "./auth/api-key-pool.js";
+import { createApiKeyRoutes } from "./routes/api-keys.js";
+import { ApiKeyModelCache } from "./auth/api-key-model-cache.js";
+import { createEmbeddingsRoutes } from "./routes/embeddings.js";
+import { createRuntimeUpstreamRouter } from "./proxy/upstream-router-bootstrap.js";
+import { startOllamaBridge, stopOllamaBridge } from "./ollama/server.js";
+import { createOfficialAgentRoutes } from "./routes/official-agent.js";
+import { installUncaughtErrorHandlers } from "./logs/error-log.js";
+import { awaitServerListening } from "./utils/await-listening.js";
+
+export interface ServerHandle {
+  close: () => Promise<void>;
+  port: number;
+}
+
+export interface StartOptions {
+  host?: string;
+  port?: number;
+}
+
+function urlHostForLocalRequest(host: string): string {
+  if (host === "0.0.0.0" || host === "::") return "127.0.0.1";
+  if (host.includes(":") && !host.startsWith("[")) return `[${host}]`;
+  return host;
+}
+
+/**
+ * Core startup logic shared by CLI and Electron entry points.
+ * Throws on config errors instead of calling process.exit().
+ */
+export async function startServer(options?: StartOptions): Promise<ServerHandle> {
+  // Funnel uncaught errors / unhandled rejections into the local
+  // error log before anything else can throw. Idempotent — Electron
+  // main may have already called this earlier.
+  installUncaughtErrorHandlers("server");
+
+  // Load configuration
+  console.log("[Init] Loading configuration...");
+  const config = loadConfig();
+  const fingerprint = loadFingerprint();
+
+  // Load static model catalog (before transport/auth init)
+  loadStaticModels();
+
+  // Detect proxy (config > env > auto-detect local ports)
+  await initProxy();
+
+  // Initialize TLS transport (auto-selects curl CLI or libcurl FFI)
+  const transport = await initTransport();
+  initContext(config, fingerprint, transport);
+
+  // Clean up stale refresh locks from previous crashes
+  cleanupStaleLocks();
+
+  // Initialize managers
+  const accountPool = new AccountPool();
+  const refreshScheduler = new RefreshScheduler(accountPool);
+  const cookieJar = new CookieJar();
+  const proxyPool = new ProxyPool();
+  refreshScheduler.setProxyPool(proxyPool);
+
+  // Reactive refresh: when upstream 401 marks an account expired, trigger immediate RT→AT refresh.
+  // Skip if the scheduler itself just marked it expired (permanent failure) — isRefreshing() is
+  // still true at that point because the callback fires synchronously inside doRefresh's try block.
+  accountPool.onExpired((id) => {
+    if (!refreshScheduler.isRefreshing(id)) {
+      refreshScheduler.triggerRefreshNow(id);
+    }
+  });
+
+  // Create Hono app
+  const app = new Hono();
+
+  // Global middleware
+  app.use("*", cors);
+  app.use("*", requestId);
+  app.use("*", logger);
+  app.onError(errorHandler);
+  app.use("*", dashboardAuth);
+  app.use("*", logCapture);
+
+  // Build upstream router from config
+  const cfg = getConfig();
+
+  // Wire WS connection pool to user config (defaults to enabled). Without
+  // this call `getWsPool()` would always use DEFAULT_WS_POOL_CONFIG and
+  // ignore `ws_pool.enabled: false` overrides — breaking the rollback path.
+  setWsPoolConfig({
+    enabled: cfg.ws_pool.enabled,
+    maxAgeMs: cfg.ws_pool.max_age_ms,
+    maxPerAccount: cfg.ws_pool.max_per_account,
+  });
+  const adapters = new Map<string, UpstreamAdapter>();
+  if (cfg.providers.openai) {
+    adapters.set(
+      "openai",
+      new OpenAIUpstream("openai", cfg.providers.openai.api_key, cfg.providers.openai.base_url),
+    );
+    console.log("[Init] OpenAI upstream configured");
+  }
+  if (cfg.providers.anthropic) {
+    adapters.set("anthropic", new AnthropicUpstream(cfg.providers.anthropic.api_key, cfg.providers.anthropic.base_url));
+    console.log("[Init] Anthropic upstream configured");
+  }
+  if (cfg.providers.gemini) {
+    adapters.set("gemini", new GeminiUpstream(cfg.providers.gemini.api_key, cfg.providers.gemini.base_url));
+    console.log("[Init] Gemini upstream configured");
+  }
+  for (const [name, provider] of Object.entries(cfg.providers.custom)) {
+    adapters.set(name, new OpenAIUpstream(name, provider.api_key, provider.base_url));
+    console.log(`[Init] Custom upstream "${name}" configured (${provider.base_url})`);
+    for (const model of provider.models) {
+      if (!cfg.model_routing[model]) {
+        cfg.model_routing[model] = name;
+      }
+    }
+  }
+  // Initialize API key pool for runtime-managed third-party keys
+  const apiKeyPool = new ApiKeyPool();
+  const hasApiKeys = apiKeyPool.getAll().length > 0;
+  const upstreamRouter = createRuntimeUpstreamRouter(adapters, cfg.model_routing, apiKeyPool);
+  if (hasApiKeys) console.log(`[Init] API key pool: ${apiKeyPool.getAll().length} key(s) loaded`);
+
+  // Create a single model cache instance shared across all routes.
+  const apiKeyModelCache = new ApiKeyModelCache();
+
+  // Mount routes
+  const authRoutes = createAuthRoutes(accountPool, refreshScheduler);
+  const accountRoutes = createAccountRoutes(accountPool, refreshScheduler, cookieJar, proxyPool);
+  const chatRoutes = createChatRoutes(accountPool, cookieJar, proxyPool, upstreamRouter);
+  const messagesRoutes = createMessagesRoutes(accountPool, cookieJar, proxyPool, upstreamRouter);
+  const geminiRoutes = createGeminiRoutes(accountPool, cookieJar, proxyPool, upstreamRouter);
+  const responsesRoutes = createResponsesRoutes(accountPool, cookieJar, proxyPool, upstreamRouter);
+  const apiKeyRoutes = createApiKeyRoutes(apiKeyPool, apiKeyModelCache);
+  const embeddingsRoutes = createEmbeddingsRoutes(accountPool, apiKeyPool);
+  const proxyRoutes = createProxyRoutes(proxyPool, accountPool);
+  const usageStats = new UsageStatsStore();
+  usageStats.recoverBaseline(accountPool);
+  const webRoutes = createWebRoutes(accountPool, usageStats);
+
+  app.route("/", createDashboardAuthRoutes());
+  app.route("/", authRoutes);
+  app.route("/", accountRoutes);
+  app.route("/", apiKeyRoutes);
+  app.route("/", embeddingsRoutes);
+  app.route("/", chatRoutes);
+  app.route("/", messagesRoutes);
+  app.route("/", geminiRoutes);
+  app.route("/", responsesRoutes);
+  app.route("/", createOfficialAgentRoutes());
+  app.route("/", proxyRoutes);
+  app.route("/", createModelRoutes(apiKeyPool));
+  app.route("/", webRoutes);
+
+  // Start server
+  // User's explicit local.yaml host wins over programmatic options (e.g. Electron's 127.0.0.1 default)
+  const port = options?.port ?? config.server.port;
+  const host = hasLocalOverride("server", "host")
+    ? config.server.host
+    : (options?.host ?? config.server.host);
+
+  const poolSummary = accountPool.getPoolSummary();
+  const displayHost = (host === "0.0.0.0" || host === "::") ? "localhost" : host;
+
+  console.log(`
+╔══════════════════════════════════════════╗
+║           Codex Proxy Server             ║
+╠══════════════════════════════════════════╣
+║  Status: ${accountPool.isAuthenticated() ? "Authenticated ✓" : "Not logged in  "}             ║
+║  Listen: http://${displayHost}:${port}              ║
+║  API:    http://${displayHost}:${port}/v1            ║
+╚══════════════════════════════════════════╝
+`);
+
+  if (accountPool.isAuthenticated()) {
+    const user = accountPool.getUserInfo();
+    console.log(`  User: ${user?.email ?? "unknown"}`);
+    console.log(`  Plan: ${user?.planType ?? "unknown"}`);
+    console.log(`  Key:  ${config.server.proxy_api_key ?? accountPool.getProxyApiKey()}`);
+    console.log(`  Pool: ${poolSummary.active} active / ${poolSummary.total} total accounts`);
+  } else {
+    console.log(`  Open http://${displayHost}:${port} to login`);
+  }
+  console.log();
+
+  // Start dashboard session cleanup
+  startSessionCleanup();
+
+  // Start background update checkers
+  // (Electron has its own native auto-updater — skip proxy update checker)
+  startUpdateChecker();
+  if (getDeployMode() !== "electron") {
+    startProxyUpdateChecker();
+  }
+
+  // Start background model refresh (requires auth to be ready)
+  startModelRefresh(accountPool, cookieJar, proxyPool);
+
+  // Start usage stats snapshot timer (no upstream requests — quota is collected passively)
+  startQuotaRefresh(accountPool, usageStats);
+
+  // Start active quota refresher — proactively syncs limit_reached / dirty accounts
+  const activeQuotaRefresher = new ActiveQuotaRefresher(accountPool, { cookieJar, proxyPool });
+  activeQuotaRefresher.start();
+
+  // Start proxy health check timer (if proxies exist)
+  proxyPool.startHealthCheckTimer();
+
+  const server = serve({
+    fetch: app.fetch,
+    hostname: host,
+    port,
+  });
+
+  // `serve()` returns synchronously before `listen()` actually binds.
+  // Wait for the listening event (or surface bind errors as a real
+  // rejection of startServer) so callers' try/catch can react —
+  // notably main.ts's port-fallback path, which was getting bypassed
+  // because EADDRINUSE fired after `await startServer(...)` resolved.
+  await awaitServerListening(server);
+
+  // Resolve actual port (may differ from requested when port=0)
+  const addr = server.address();
+  const actualPort = (addr && typeof addr === "object") ? addr.port : port;
+  const upstreamBaseUrl = `http://${urlHostForLocalRequest(host)}:${actualPort}`;
+  await startOllamaBridge(getConfig(), { upstreamBaseUrl });
+
+  const close = async (): Promise<void> => {
+    await stopOllamaBridge();
+    return new Promise((resolve) => {
+      server.close(() => {
+        stopUpdateChecker();
+        stopProxyUpdateChecker();
+        stopModelRefresh();
+        stopQuotaRefresh();
+        activeQuotaRefresher.stop();
+        stopSessionCleanup();
+        refreshScheduler.destroy();
+        proxyPool.destroy();
+        cookieJar.destroy();
+        accountPool.destroy();
+        resolve();
+      });
+    });
+  };
+
+  // Register close handler so self-update can attempt graceful shutdown before restart
+  setCloseHandler(close);
+
+  return { close, port: actualPort };
+}
+
+// ── CLI entry point ──────────────────────────────────────────────────
+
+async function main() {
+  let handle: ServerHandle;
+
+  // Retry on EADDRINUSE — the previous process may still be releasing the port after a self-update restart
+  const MAX_RETRIES = 10;
+  const RETRY_DELAY_MS = 1000;
+  for (let attempt = 1; ; attempt++) {
+    try {
+      handle = await startServer();
+      break;
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === "EADDRINUSE" && attempt < MAX_RETRIES) {
+        console.warn(`[Init] Port in use, retrying in ${RETRY_DELAY_MS}ms (attempt ${attempt}/${MAX_RETRIES})...`);
+        await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
+        continue;
+      }
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[Init] Failed to start server: ${msg}`);
+      console.error("[Init] Make sure config/default.yaml and config/fingerprint.yaml exist and are valid YAML.");
+      process.exit(1);
+    }
+  }
+
+  // P1-7: Graceful shutdown — stop accepting, drain, then cleanup
+  let shutdownCalled = false;
+  const shutdown = () => {
+    if (shutdownCalled) return;
+    shutdownCalled = true;
+    console.log("\n[Shutdown] Stopping new connections...");
+
+    const forceExit = setTimeout(() => {
+      console.error("[Shutdown] Timeout after 10s — forcing exit");
+      process.exit(1);
+    }, 10_000);
+    if (forceExit.unref) forceExit.unref();
+
+    handle.close().then(async () => {
+      getTransport().destroy?.();
+      try {
+        await getWsPool().shutdown();
+      } catch { /* never throws today, but defend against future regressions */ }
+      console.log("[Shutdown] Server closed, cleanup complete.");
+      clearTimeout(forceExit);
+      process.exit(0);
+    }).catch((err) => {
+      console.error("[Shutdown] Error during cleanup:", err instanceof Error ? err.message : err);
+      clearTimeout(forceExit);
+      process.exit(1);
+    });
+  };
+
+  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
+}
+
+// Only run CLI entry when executed directly (not imported by Electron)
+const isDirectRun = process.argv[1]?.includes("index");
+if (isDirectRun) {
+  main().catch((err) => {
+    console.error("Fatal error:", err);
+    process.kill(process.pid, "SIGTERM");
+    setTimeout(() => process.exit(1), 2000).unref();
+  });
+}

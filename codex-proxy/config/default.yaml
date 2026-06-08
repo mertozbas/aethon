@@ -1,0 +1,75 @@
+api:
+  base_url: https://chatgpt.com/backend-api
+  timeout_seconds: 600
+client:
+  originator: Codex Desktop
+  app_version: 26.602.40724
+  build_number: "3593"
+  platform: darwin
+  arch: arm64
+  chromium_version: "146"
+model:
+  default: gpt-5.4
+  default_reasoning_effort: null
+  default_service_tier: null
+  aliases: {}
+  custom_models: []
+  inject_desktop_context: false
+  suppress_desktop_directives: false
+auth:
+  jwt_token: null
+  chatgpt_oauth: true
+  refresh_enabled: true
+  refresh_margin_seconds: 300
+  rotation_strategy: least_used
+  rate_limit_backoff_seconds: 60
+  oauth_client_id: app_EMoamEEZ73f0CkXaXp7hrann
+  oauth_auth_endpoint: https://auth.openai.com/oauth/authorize
+  oauth_token_endpoint: https://auth.openai.com/oauth/token
+server:
+  host: 127.0.0.1
+  port: 8080
+  proxy_api_key: null
+  trust_proxy: false
+logs:
+  enabled: false
+  capacity: 2000
+  capture_body: false
+  llm_only: true
+usage_stats:
+  snapshot_interval_minutes: 5
+  history_retention_days: null
+session:
+  ttl_minutes: 60
+  cleanup_interval_minutes: 5
+tls:
+  transport: native
+  proxy_url: null
+  force_http11: false
+quota:
+  refresh_interval_minutes: 0
+  concurrency: 10
+  warning_thresholds:
+    primary:
+      - 80
+      - 90
+    secondary:
+      - 80
+      - 90
+  skip_exhausted: true
+update:
+  auto_update: true
+  show_update_dialog: false
+ollama:
+  enabled: false
+  host: 127.0.0.1
+  port: 11434
+  version: 0.18.3
+  disable_vision: false
+official_agent:
+  enabled: false
+  api_key: null
+  app_server_url: ws://127.0.0.1:4500
+  request_timeout_ms: 30000
+  auth:
+    type: none

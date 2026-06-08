@@ -1,0 +1,142 @@
+name: Bump version + release
+
+on:
+  schedule:
+    - cron: "0 16 * * *"   # UTC 16:00 = 北京时间 00:00，每天最多一个版本
+  workflow_dispatch:
+
+concurrency:
+  group: bump-version
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: master
+
+      - name: Check for new commits since last tag
+        id: check
+        run: |
+          # Read major.minor from package.json (source of truth for version series)
+          PKG_VERSION=$(node -e "console.log(require('./package.json').version)")
+          IFS='.' read -r PKG_MAJOR PKG_MINOR _PKG_PATCH <<< "$PKG_VERSION"
+          SERIES="${PKG_MAJOR}.${PKG_MINOR}"
+
+          # Find latest stable tag in this series (e.g. v2.0.x). Excludes
+          # prerelease tags like v2.0.67-beta.SHA produced by bump-electron-beta.yml.
+          LAST_TAG=$(git tag --sort=-v:refname | grep -E "^v${SERIES}\.[0-9]+$" | head -1 || echo "")
+          if [ -z "$LAST_TAG" ]; then
+            # First release in this series — use any previous stable tag for commit check
+            LAST_TAG=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || echo "")
+            if [ -z "$LAST_TAG" ]; then
+              echo "No previous tag, skipping"
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "New series ${SERIES}.x — will start at ${SERIES}.0"
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "new_series=true" >> "$GITHUB_OUTPUT"
+            echo "series=$SERIES" >> "$GITHUB_OUTPUT"
+            echo "last_tag=$LAST_TAG" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Count commits that affect runtime behavior.
+          SKIP_RELEASE_PATTERN="^(chore|docs|ci|test|refactor|style)(\\(.*\\))?:|^fix: generate stable notes from dev promotion history"
+          NEW_COMMITS=$(git log "${LAST_TAG}..HEAD" --no-merges \
+            --pretty=format:"%s" | grep -cvE "$SKIP_RELEASE_PATTERN" || true)
+          if [ "$NEW_COMMITS" -eq 0 ]; then
+            echo "No meaningful commits since $LAST_TAG, skipping"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          RUNTIME_CHANGED_FILES=$(git diff --name-only "${LAST_TAG}..HEAD" -- . \
+            ':(exclude).github/**' \
+            ':(exclude)tests/**' \
+            ':(exclude)README.md' \
+            ':(exclude)README_EN.md' \
+            ':(exclude)CHANGELOG.md' \
+            ':(exclude)DESIGN.md')
+          if [ -z "$RUNTIME_CHANGED_FILES" ]; then
+            echo "No runtime files changed since $LAST_TAG, skipping"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Found $NEW_COMMITS new commit(s) since $LAST_TAG"
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+          echo "last_tag=$LAST_TAG" >> "$GITHUB_OUTPUT"
+          echo "series=$SERIES" >> "$GITHUB_OUTPUT"
+
+      - name: Tag stable release (tag-only)
+        id: bump
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          SERIES="${{ steps.check.outputs.series }}"
+          if [ "${{ steps.check.outputs.new_series }}" = "true" ]; then
+            NEW_VERSION="${SERIES}.0"
+          else
+            LAST_TAG="${{ steps.check.outputs.last_tag }}"
+            CURRENT="${LAST_TAG#v}"
+            IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
+            NEW_VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))"
+          fi
+          NEW_TAG="v${NEW_VERSION}"
+
+          # Check tag doesn't already exist
+          if git rev-parse "$NEW_TAG" >/dev/null 2>&1; then
+            echo "Tag $NEW_TAG already exists, skipping"
+            exit 0
+          fi
+
+          # Tag-only: do NOT commit package.json onto master. The release
+          # version is read from the tag (release.yml extraMetadata.version),
+          # and a version-bump commit on master cannot FF back to an
+          # always-ahead dev — that drift is what kept breaking promote and
+          # made package.json regress on the next dev→master reconcile.
+          # major.minor (series) is maintained by developers on dev and flows
+          # in via promote; patch is owned entirely by the tag. This mirrors
+          # bump-electron-beta.yml, which has always been tag-only.
+          git tag -a "$NEW_TAG" -m "Release ${NEW_TAG}"
+          for i in 1 2 3; do
+            if git push origin "$NEW_TAG"; then
+              echo "Tagged $NEW_TAG (tag-only, no version commit)"
+              echo "new_tag=$NEW_TAG" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "Tag push failed (attempt $i/3), retrying..."
+            sleep 2
+          done
+          echo "::error::Tag push failed after 3 attempts"
+          exit 1
+
+      - name: Trigger release workflow
+        if: steps.bump.outputs.new_tag
+        run: |
+          echo "Dispatching release for $NEW_TAG"
+          gh workflow run release.yml -f tag="$NEW_TAG"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NEW_TAG: ${{ steps.bump.outputs.new_tag }}
+
+      - name: Trigger docker publish
+        # GITHUB_TOKEN-driven pushes do not fire downstream workflows, so the bump
+        # commit + tag won't trip docker-publish.yml's push trigger on its own.
+        # Dispatching workflow_run here ensures ghcr.io/.../codex-proxy:vX.Y.Z
+        # exists for the version we just tagged.
+        if: steps.bump.outputs.new_tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run docker-publish.yml --ref master

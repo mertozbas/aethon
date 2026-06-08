@@ -1,0 +1,97 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --primary: 21 128 61;
+  --primary-hover: 22 101 52;
+  --primary-action: 21 128 61;
+  --primary-action-hover: 22 101 52;
+  --primary-container: 220 252 231;
+  --success: 21 128 61;
+  --success-container: 220 252 231;
+  --warning: 180 83 9;
+  --warning-container: 254 243 199;
+  --danger: 185 28 28;
+  --danger-container: 254 226 226;
+  --info: 29 78 216;
+  --info-container: 219 234 254;
+  --avatar-purple-text: 126 34 206;
+  --avatar-purple-bg: 243 232 255;
+  --avatar-amber-text: 146 64 14;
+  --avatar-amber-bg: 254 243 199;
+  --avatar-blue-text: 29 78 216;
+  --avatar-blue-bg: 219 234 254;
+  --avatar-emerald-text: 21 128 61;
+  --avatar-emerald-bg: 220 252 231;
+  --avatar-red-text: 185 28 28;
+  --avatar-red-bg: 254 226 226;
+  --chart-blue: #3b82f6;
+  --chart-green: #10b981;
+  --chart-amber: #f59e0b;
+  --chart-violet: #8b5cf6;
+  color-scheme: light;
+}
+
+.dark {
+  --primary: 74 222 128;
+  --primary-hover: 34 197 94;
+  --primary-action: 21 128 61;
+  --primary-action-hover: 22 101 52;
+  --primary-container: 20 83 45;
+  --success: 74 222 128;
+  --success-container: 20 83 45;
+  --warning: 251 191 36;
+  --warning-container: 61 44 22;
+  --danger: 248 113 113;
+  --danger-container: 63 26 26;
+  --info: 96 165 250;
+  --info-container: 26 42 63;
+  --avatar-purple-text: 167 139 250;
+  --avatar-purple-bg: 42 26 63;
+  --avatar-amber-text: 245 158 11;
+  --avatar-amber-bg: 61 44 22;
+  --avatar-blue-text: 96 165 250;
+  --avatar-blue-bg: 26 42 63;
+  --avatar-emerald-text: 74 222 128;
+  --avatar-emerald-bg: 20 83 45;
+  --avatar-red-text: 248 113 113;
+  --avatar-red-bg: 63 26 26;
+  --chart-blue: #60a5fa;
+  --chart-green: #34d399;
+  --chart-amber: #fbbf24;
+  --chart-violet: #a78bfa;
+  color-scheme: dark;
+}
+
+/* Dark scrollbar for code blocks */
+pre::-webkit-scrollbar { height: 8px; }
+pre::-webkit-scrollbar-track { background: #0d1117; }
+pre::-webkit-scrollbar-thumb { background: #30363d; border-radius: 4px; }
+pre::-webkit-scrollbar-thumb:hover { background: #8b949e; }
+
+/* ── Electron macOS: native titlebar integration ────────────────── */
+/* .electron-mac is added to <html> by electron/main.ts at runtime  */
+
+/* Header becomes a draggable titlebar region */
+.electron-mac header {
+  -webkit-app-region: drag;
+}
+
+/* Interactive elements inside header must remain clickable */
+.electron-mac header button,
+.electron-mac header a,
+.electron-mac header input,
+.electron-mac header select {
+  -webkit-app-region: no-drag;
+}
+
+/* Extra top padding so header content clears the traffic lights vertically */
+.electron-mac header > div {
+  padding-top: 6px;
+}
+
+/* Left padding so logo/title doesn't overlap the traffic lights (≈ 72px) */
+.electron-mac header > div > div {
+  padding-left: 72px;
+}

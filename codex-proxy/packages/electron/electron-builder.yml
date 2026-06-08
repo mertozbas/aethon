@@ -1,0 +1,72 @@
+appId: com.codex-proxy.app
+productName: Codex Proxy
+electronVersion: "35.7.5"
+
+publish:
+  provider: github
+  owner: icebear0828
+  repo: codex-proxy
+
+artifactName: "Codex-Proxy-${version}-${os}-${arch}.${ext}"
+
+directories:
+  output: release
+
+# Pre-pack script copies config/, public/, bin/ from monorepo root into
+# this directory. Paths here are relative to projectDir.
+files:
+  - dist-electron/**/*
+  - config/**/*
+  - public/**/*
+  - electron/assets/**/*
+  - package.json
+  - "!node_modules"
+  - "!dist"
+
+# Static assets unpacked from asar (filesystem access at runtime)
+asarUnpack:
+  - "config/**/*"
+  - "public/**/*"
+  - "**/*.node"
+
+# Extra resources (outside asar): cacert.pem, native addon
+extraResources:
+  - from: bin/
+    to: bin/
+    filter:
+      - "**/*"
+  - from: native/
+    to: native/
+    filter:
+      - "**/*"
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  icon: electron/assets/icon.png
+  signAndEditExecutable: false
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  perMachine: false
+
+mac:
+  target:
+    - target: dmg
+      arch: [arm64, x64]
+    - target: zip
+      arch: [arm64, x64]
+  icon: electron/assets/icon.png
+  category: public.app-category.developer-tools
+  # No Apple Developer certificate — electron-builder auto-falls back to
+  # ad-hoc signing (codesign -s -). Users see "unidentified developer"
+  # warning and can right-click → Open to bypass.
+
+linux:
+  target:
+    - target: AppImage
+      arch: [x64]
+  icon: electron/assets/icon.png
+  category: Development

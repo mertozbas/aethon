@@ -1,0 +1,179 @@
+name: Promote dev → master
+
+on:
+  schedule:
+    - cron: "0 14 * * *"   # UTC 14:00 = PRC 22:00 (2h before bump-electron stable run)
+  workflow_dispatch:
+    inputs:
+      force_skip_soak:
+        description: "Skip the 24h soak check. Only set true when promoting a sync-back / merge commit that is timestamp-fresh but content-stable."
+        type: boolean
+        default: false
+
+concurrency:
+  group: promote-dev
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  # `actions: write` is required by the final step's `gh workflow run docker-publish.yml`
+  # dispatch; the earlier CI status read needs only `actions: read`, but the
+  # broader scope subsumes it.
+  actions: write
+  checks: read
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Guard — dev branch must exist
+        id: dev_exists
+        run: |
+          if git ls-remote --exit-code --heads origin dev >/dev/null 2>&1; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::dev branch does not exist yet, nothing to promote"
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Fetch master and dev
+        if: steps.dev_exists.outputs.ok == 'true'
+        run: |
+          git fetch origin master:refs/remotes/origin/master --tags
+          git fetch origin dev:refs/remotes/origin/dev
+
+      - name: Check ahead-count
+        id: ahead
+        if: steps.dev_exists.outputs.ok == 'true'
+        run: |
+          AHEAD=$(git rev-list --count origin/master..origin/dev)
+          echo "ahead=$AHEAD" >> "$GITHUB_OUTPUT"
+          if [ "$AHEAD" -eq 0 ]; then
+            echo "::notice::dev is not ahead of master, nothing to promote"
+          else
+            echo "dev is $AHEAD commit(s) ahead of master"
+          fi
+
+      - name: Check fast-forward possible
+        id: ff
+        if: steps.ahead.outputs.ahead != '0'
+        run: |
+          if git merge-base --is-ancestor origin/master origin/dev; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::master has commits not in dev — manual rebase needed (likely a hotfix landed directly on master)"
+            exit 1
+          fi
+
+      - name: Check soak (>= 24h since latest dev commit)
+        id: soak
+        if: steps.ff.outputs.ok == 'true'
+        run: |
+          DEV_TS=$(git log -1 origin/dev --format=%ct)
+          NOW=$(date +%s)
+          AGE=$(( NOW - DEV_TS ))
+          MIN_AGE=86400
+          echo "dev HEAD age: ${AGE}s (need >= ${MIN_AGE}s)"
+          if [ "${{ inputs.force_skip_soak }}" = "true" ]; then
+            echo "::notice::Soak skipped via workflow_dispatch input (age=${AGE}s)"
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          elif [ "$AGE" -lt "$MIN_AGE" ]; then
+            REMAIN=$(( MIN_AGE - AGE ))
+            echo "::notice::Soak: ${REMAIN}s remaining before dev is eligible for promotion"
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check CI status on dev HEAD
+        id: ci
+        if: steps.soak.outputs.ok == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          DEV_SHA=$(git rev-parse origin/dev)
+          echo "Checking check-runs for $DEV_SHA"
+
+          # Exclude this workflow's own checks (promote-dev) and bump workflows from the gate.
+          # (?i) makes the regex case-insensitive so we catch "promote"/"Promote", "bump-beta"/etc.
+          STATUS=$(gh api "repos/${{ github.repository }}/commits/${DEV_SHA}/check-runs" \
+            --jq '
+              [.check_runs[]
+               | select(.name | test("(?i)promote|bump") | not)
+              ] as $relevant
+              | if ($relevant | length) == 0
+                then "missing-checks"
+                else
+                  if all($relevant[]; .conclusion == "success" or .conclusion == "skipped")
+                  then "green"
+                  else "not-green"
+                  end
+                end
+            ')
+
+          echo "status=$STATUS"
+          if [ "$STATUS" = "green" ]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+            echo "dev_sha=$DEV_SHA" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::CI on dev is not green (status=$STATUS), skipping promotion"
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Fast-forward push dev → master
+        if: steps.ci.outputs.ok == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          DEV_SHA="${{ steps.ci.outputs.dev_sha }}"
+          echo "Promoting $DEV_SHA to master"
+          git push origin "${DEV_SHA}:refs/heads/master"
+          echo "::notice::Promoted dev ($DEV_SHA) to master. bump-electron.yml will pick it up on the next 16:00 UTC tick."
+
+      - name: Trigger docker publish
+        # GITHUB_TOKEN-driven pushes do not fire downstream workflows (anti-recursion
+        # guard), so docker-publish.yml's `on: push: branches: [master]` would
+        # otherwise stay silent after every promotion. workflow_dispatch is one of
+        # the few events GITHUB_TOKEN is allowed to trigger.
+        if: steps.ci.outputs.ok == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run docker-publish.yml --ref master
+
+  # If the promote job fails (most commonly the ff-precondition check exiting 1
+  # because master drifted ahead of dev), open a tracking issue so the breakage
+  # is visible instead of silently piling up for weeks. Soak/CI-not-green are
+  # normal skips that keep the job green, so they do not trigger this.
+  notify-ff-failure:
+    needs: promote
+    if: failure()
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Open tracking issue on promote failure
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          TITLE="⚠️ promote-dev→master 卡住：fast-forward 前提被破坏"
+          EXISTING=$(gh issue list --repo "$REPO" --state open \
+            --search "$TITLE in:title" --json number --jq '.[0].number // empty')
+          if [ -n "$EXISTING" ]; then
+            echo "Already tracked in #$EXISTING, not duplicating"
+            exit 0
+          fi
+          gh issue create --repo "$REPO" --title "$TITLE" --body \
+          "\`promote-dev-to-master.yml\` 失败：master 有 dev 没有的提交，ff-promote 链路中断，dev 无法晋升到 master。
+
+          常见近因：master 侧自动产物（changelog→README sync、version bump、promote merge commit）未回流 dev，逐周漂移。
+
+          恢复方法：\`git merge -s ours origin/master\` 把 master 记为已合并（树取 dev），走 PR 进 dev，即可恢复 ff 前提。
+
+          失败 run：$RUN_URL"

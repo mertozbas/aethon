@@ -1,0 +1,29 @@
+node_modules/
+dist/
+dist-electron/
+release/
+public-desktop/
+data/
+public/
+docs/
+bin/*
+!bin/README.md
+.env
+*.log
+.asar-out/
+tmp/
+.claude/*
+!.claude/skills/
+native/target/
+native/codex-tls.linux-*.node
+
+# Maintenance scripts (private)
+scripts/manual-test/
+scripts/cron-update.sh
+
+# Design / internal files
+stitch-designs/
+stitch-screens/
+CLAUDE.md
+*.tar.gz
+stitch-output/

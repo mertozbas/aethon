@@ -1,0 +1,216 @@
+/**
+ * Shared Codex SSE event data extraction layer.
+ *
+ * The three translation files (OpenAI, Anthropic, Gemini) all extract
+ * the same data from Codex events — this module centralizes that logic.
+ */
+
+import type { UpstreamAdapter } from "../proxy/upstream-adapter.js";
+import type { CodexSSEEvent } from "../proxy/codex-api.js";
+import {
+  parseCodexEvent,
+  type TypedCodexEvent,
+} from "../types/codex-events.js";
+
+export interface UsageInfo {
+  input_tokens: number;
+  output_tokens: number;
+  cached_tokens?: number;
+  reasoning_tokens?: number;
+  /** Tokens billed by the image_generation tool (gpt-image-2). Separate from host-model usage. */
+  image_input_tokens?: number;
+  image_output_tokens?: number;
+  /** Set by the route handler when the request declared the image_generation tool.
+   *  Drives the success/failure split in `recordUsage`. */
+  image_request_attempted?: boolean;
+  image_request_succeeded?: boolean;
+}
+
+export interface FunctionCallStart {
+  callId: string;
+  name: string;
+  outputIndex: number;
+}
+
+export interface FunctionCallDelta {
+  callId: string;
+  delta: string;
+}
+
+export interface FunctionCallDone {
+  callId: string;
+  name: string;
+  arguments: string;
+}
+
+export class EmptyResponseError extends Error {
+  constructor(
+    public readonly responseId: string | null,
+    public readonly usage: UsageInfo | undefined,
+  ) {
+    super("Codex returned an empty response");
+    this.name = "EmptyResponseError";
+  }
+}
+
+/**
+ * Upstream closed the SSE stream without sending `response.completed`,
+ * `response.failed`, or an `error` event. Observed when gpt-5.5 with
+ * `effort=xhigh` spends > 120 s in reasoning_summary before producing any
+ * output_text — the Codex backend caps total response duration and silently
+ * FINs the connection.
+ *
+ * Treated separately from EmptyResponseError because cross-account retry is
+ * useless (same workload re-hits the same cap on the next account) and just
+ * burns the pool. The proxy surfaces 504 to the client instead.
+ */
+export class UpstreamPrematureCloseError extends Error {
+  constructor(
+    public readonly responseId: string | null,
+    public readonly hadReasoning: boolean,
+    public readonly eventCount: number,
+  ) {
+    super(
+      hadReasoning
+        ? "Upstream closed stream after reasoning without producing output (likely hit response-duration cap)"
+        : "Upstream closed stream without a terminal event",
+    );
+    this.name = "UpstreamPrematureCloseError";
+  }
+}
+
+export interface ExtractedEvent {
+  typed: TypedCodexEvent;
+  responseId?: string;
+  textDelta?: string;
+  reasoningDelta?: string;
+  usage?: UsageInfo;
+  error?: { code: string; message: string };
+  functionCallStart?: FunctionCallStart;
+  functionCallDelta?: FunctionCallDelta;
+  functionCallDone?: FunctionCallDone;
+  imageGenerationDone?: {
+    id: string;
+    result: string;
+    revised_prompt?: string;
+  };
+}
+
+/**
+ * Iterate over a Codex SSE stream, parsing + extracting common fields.
+ * Yields ExtractedEvent with pre-extracted responseId, textDelta, and usage.
+ */
+export async function* iterateCodexEvents(
+  api: UpstreamAdapter,
+  rawResponse: Response,
+): AsyncGenerator<ExtractedEvent> {
+  // Map item_id → { call_id, name } for resolving delta/done events
+  const itemIdToCallInfo = new Map<string, { callId: string; name: string }>();
+
+  for await (const raw of api.parseStream(rawResponse)) {
+    const typed = parseCodexEvent(raw);
+    const extracted: ExtractedEvent = { typed };
+
+    // Log unrecognized events to discover new Codex event types
+    if (typed.type === "unknown") {
+      console.debug(`[CodexEvents] Unknown event: ${raw.event}`, JSON.stringify(raw.data).slice(0, 300));
+    }
+
+    switch (typed.type) {
+      case "response.created":
+      case "response.in_progress":
+        if (typed.response.id) extracted.responseId = typed.response.id;
+        break;
+
+      case "response.output_text.delta":
+        extracted.textDelta = typed.delta;
+        break;
+
+      case "response.reasoning_summary_text.delta":
+        extracted.reasoningDelta = typed.delta;
+        break;
+
+      case "response.output_item.added":
+        if (typed.item.type === "function_call" && typed.item.call_id && typed.item.name) {
+          // Register item_id → call_id mapping
+          itemIdToCallInfo.set(typed.item.id, {
+            callId: typed.item.call_id,
+            name: typed.item.name,
+          });
+          extracted.functionCallStart = {
+            callId: typed.item.call_id,
+            name: typed.item.name,
+            outputIndex: typed.outputIndex,
+          };
+        }
+        break;
+
+      case "response.function_call_arguments.delta": {
+        // Resolve item_id to call_id if needed
+        const deltaInfo = itemIdToCallInfo.get(typed.call_id);
+        extracted.functionCallDelta = {
+          callId: deltaInfo?.callId ?? typed.call_id,
+          delta: typed.delta,
+        };
+        break;
+      }
+
+      case "response.function_call_arguments.done": {
+        // Resolve item_id to call_id + name if needed
+        const doneInfo = itemIdToCallInfo.get(typed.call_id);
+        extracted.functionCallDone = {
+          callId: doneInfo?.callId ?? typed.call_id,
+          name: typed.name || doneInfo?.name || "",
+          arguments: typed.arguments,
+        };
+        break;
+      }
+
+      case "response.output_item.done":
+        if (typed.item.type === "image_generation_call") {
+          extracted.imageGenerationDone = {
+            id: typed.item.id || "",
+            result: typed.item.result || "",
+            revised_prompt: typed.item.revised_prompt,
+          };
+        }
+        break;
+
+      case "response.content_part.added":
+      case "response.content_part.done":
+      case "response.output_text.annotation.added":
+      case "response.web_search_call.in_progress":
+      case "response.web_search_call.searching":
+      case "response.web_search_call.completed":
+        // Lifecycle markers — no data extraction needed
+        break;
+
+      case "response.incomplete":
+        // Response was truncated/incomplete
+        if (typed.response.id) extracted.responseId = typed.response.id;
+        if (typed.response.usage) extracted.usage = typed.response.usage;
+        break;
+
+      case "response.queued":
+        // Response is queued for processing
+        if (typed.response.id) extracted.responseId = typed.response.id;
+        break;
+
+      case "response.completed":
+        if (typed.response.id) extracted.responseId = typed.response.id;
+        if (typed.response.usage) extracted.usage = typed.response.usage;
+        break;
+
+      case "error":
+        extracted.error = { code: typed.error.code, message: typed.error.message };
+        break;
+
+      case "response.failed":
+        extracted.error = { code: typed.error.code, message: typed.error.message };
+        if (typed.response.id) extracted.responseId = typed.response.id;
+        break;
+    }
+
+    yield extracted;
+  }
+}

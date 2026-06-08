@@ -1,0 +1,585 @@
+/**
+ * Tests that collectPassthrough handles stream interruption (premature close).
+ * When the upstream stream breaks before response.completed, the collect path
+ * should throw EmptyResponseError, which triggers retry in handleNonStreaming.
+ */
+
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { EmptyResponseError } from "@src/translation/codex-event-extractor.js";
+
+vi.mock("@src/config.js", () => ({
+  getConfig: vi.fn(() => ({
+    server: { proxy_api_key: null },
+    model: {
+      default: "gpt-5.3-codex",
+      default_reasoning_effort: null,
+      default_service_tier: null,
+      suppress_desktop_directives: false,
+    },
+    auth: {
+      jwt_token: undefined,
+      rotation_strategy: "least_used",
+      rate_limit_backoff_seconds: 60,
+    },
+  })),
+}));
+
+vi.mock("@src/paths.js", () => ({
+  CONFIG_DIR: "/tmp/codex-proxy-test",
+  STATE_DIR: "/tmp/codex-proxy-test",
+  getDataDir: () => "/tmp/codex-proxy-test",
+}));
+
+// Capture recordStreamCloseEvent invocations so we can assert the context
+// propagation without touching real disk.
+const recordedCloseEvents: Array<Record<string, unknown>> = [];
+vi.mock("@src/logs/stream-close-event.js", () => ({
+  recordStreamCloseEvent: vi.fn((evt: Record<string, unknown>) => {
+    recordedCloseEvents.push(evt);
+  }),
+}));
+
+import { collectPassthrough, streamPassthrough } from "@src/routes/responses.js";
+
+interface CodexSSEEvent {
+  event: string;
+  data: unknown;
+}
+
+function createMockApi(events: CodexSSEEvent[], throwAfter?: Error) {
+  return {
+    async *parseStream(_response: Response): AsyncGenerator<CodexSSEEvent> {
+      for (const evt of events) {
+        yield evt;
+      }
+      if (throwAfter) throw throwAfter;
+    },
+  };
+}
+
+function parseSSEEvents(text: string): Array<{ event: string; data: Record<string, unknown> }> {
+  return text
+    .trim()
+    .split("\n\n")
+    .filter(Boolean)
+    .map((block) => {
+      const lines = block.split("\n");
+      const eventLine = lines.find((line) => line.startsWith("event: "));
+      const dataLine = lines.find((line) => line.startsWith("data: "));
+      const data = dataLine ? JSON.parse(dataLine.slice("data: ".length)) as Record<string, unknown> : {};
+      return {
+        event: eventLine?.slice("event: ".length) ?? "",
+        data,
+      };
+    });
+}
+
+async function collectStreamEvents(
+  events: CodexSSEEvent[],
+  throwAfter?: Error,
+  streamContext?: Parameters<typeof streamPassthrough>[6],
+) {
+  const api = createMockApi(events, throwAfter);
+  const chunks: string[] = [];
+  for await (const chunk of streamPassthrough(
+    api as never,
+    new Response("ok"),
+    "test-model",
+    () => {},
+    () => {},
+    undefined,
+    streamContext,
+  )) {
+    chunks.push(chunk);
+  }
+  return parseSSEEvents(chunks.join(""));
+}
+
+describe("streamPassthrough premature close handling", () => {
+  beforeEach(() => {
+    recordedCloseEvents.length = 0;
+  });
+
+  it("forwards streamContext (rid/account/variantHash) on natural EOF before terminal", async () => {
+    await collectStreamEvents(
+      [{ event: "response.created", data: { response: { id: "resp_ctx_1" } } }],
+      undefined,
+      {
+        requestId: "rid-full-deadbeef",
+        tag: "Responses",
+        model: "gpt-5.5",
+        accountEntryId: "e-42",
+        variantHash: "vh-cafef00d",
+      },
+    );
+
+    expect(recordedCloseEvents).toHaveLength(1);
+    const evt = recordedCloseEvents[0];
+    expect(evt).toMatchObject({
+      kind: "upstream-premature",
+      requestId: "rid-full-deadbeef",
+      tag: "Responses",
+      model: "gpt-5.5",
+      accountEntryId: "e-42",
+      variantHash: "vh-cafef00d",
+      responseId: "resp_ctx_1",
+    });
+  });
+
+  it("forwards streamContext when parseStream throws mid-stream", async () => {
+    await collectStreamEvents(
+      [{ event: "response.created", data: { response: { id: "resp_ctx_2" } } }],
+      new Error("WebSocket closed before terminal event: code=1006"),
+      {
+        requestId: "rid-throw-1",
+        tag: "Responses",
+        model: "gpt-5.4",
+        accountEntryId: "e-7",
+        variantHash: "vh-abc123",
+      },
+    );
+
+    expect(recordedCloseEvents).toHaveLength(1);
+    const evt = recordedCloseEvents[0];
+    expect(evt).toMatchObject({
+      kind: "upstream-premature",
+      requestId: "rid-throw-1",
+      tag: "Responses",
+      model: "gpt-5.4",
+      accountEntryId: "e-7",
+      variantHash: "vh-abc123",
+      responseId: "resp_ctx_2",
+    });
+    expect(evt.detail).toMatch(/code=1006/);
+  });
+
+  it("does not record upstream-premature when client abort caused the stream error", async () => {
+    const abortController = new AbortController();
+    abortController.abort();
+
+    const events = await collectStreamEvents(
+      [{ event: "response.created", data: { response: { id: "resp_abort_1" } } }],
+      new Error("Aborted during WebSocket stream"),
+      {
+        requestId: "rid-client-abort",
+        tag: "Responses",
+        model: "gpt-5.5",
+        accountEntryId: "entry-client-abort",
+        variantHash: "vh-client-abort",
+        abortSignal: abortController.signal,
+      },
+    );
+
+    expect(events.map((event) => event.event)).toEqual(["response.created"]);
+    expect(recordedCloseEvents).toEqual([]);
+  });
+
+  it("falls back gracefully when no streamContext is provided", async () => {
+    await collectStreamEvents([
+      { event: "response.created", data: { response: { id: "resp_ctx_none" } } },
+    ]);
+
+    expect(recordedCloseEvents).toHaveLength(1);
+    const evt = recordedCloseEvents[0];
+    expect(evt).toMatchObject({
+      kind: "upstream-premature",
+      tag: "Responses",
+      responseId: "resp_ctx_none",
+    });
+    expect(evt.requestId).toBeUndefined();
+    expect(evt.accountEntryId).toBeUndefined();
+  });
+
+  it("emits response.failed when the stream ends before response.completed", async () => {
+    const events = await collectStreamEvents([
+      { event: "response.created", data: { response: { id: "resp_stream_1" } } },
+      { event: "response.output_text.delta", data: { delta: "partial text" } },
+    ]);
+
+    expect(events.map((event) => event.event)).toEqual([
+      "response.created",
+      "response.output_text.delta",
+      "response.failed",
+    ]);
+    const failed = events.at(-1);
+    expect(failed?.data).toMatchObject({
+      type: "response.failed",
+      response: {
+        id: "resp_stream_1",
+        status: "failed",
+        error: {
+          code: "stream_disconnected",
+          message: "Upstream stream closed before response.completed",
+        },
+      },
+      error: {
+        code: "stream_disconnected",
+        message: "Upstream stream closed before response.completed",
+      },
+    });
+  });
+
+  it("emits response.failed when parseStream throws before a terminal event", async () => {
+    const events = await collectStreamEvents(
+      [
+        { event: "response.created", data: { response: { id: "resp_stream_2" } } },
+      ],
+      new Error("WebSocket closed unexpectedly"),
+    );
+
+    const failed = events.at(-1);
+    expect(failed?.event).toBe("response.failed");
+    expect(failed?.data).toMatchObject({
+      response: {
+        id: "resp_stream_2",
+        status: "failed",
+      },
+      error: {
+        code: "stream_disconnected",
+        message: "Upstream stream closed before response.completed: WebSocket closed unexpectedly",
+      },
+    });
+  });
+
+  it("does not synthesize response.failed after response.completed", async () => {
+    const events = await collectStreamEvents([
+      { event: "response.created", data: { response: { id: "resp_stream_3" } } },
+      {
+        event: "response.completed",
+        data: {
+          response: {
+            id: "resp_stream_3",
+            output: [],
+            usage: { input_tokens: 10, output_tokens: 20 },
+          },
+        },
+      },
+    ]);
+
+    expect(events.map((event) => event.event)).toEqual([
+      "response.created",
+      "response.completed",
+    ]);
+  });
+
+  it("signals response completion only on response.completed", async () => {
+    const onCompleted = vi.fn();
+    const api = createMockApi([
+      { event: "response.created", data: { response: { id: "resp_complete_signal" } } },
+      {
+        event: "response.completed",
+        data: {
+          response: {
+            id: "resp_complete_signal",
+            output: [],
+            usage: { input_tokens: 10, output_tokens: 20 },
+          },
+        },
+      },
+    ]);
+
+    for await (const _chunk of streamPassthrough(
+      api as never,
+      new Response("ok"),
+      "test-model",
+      () => {},
+      () => {},
+      undefined,
+      undefined,
+      onCompleted,
+    )) {
+      // Drain the generator.
+    }
+
+    expect(onCompleted).toHaveBeenCalledTimes(1);
+    expect(onCompleted).toHaveBeenCalledWith("resp_complete_signal");
+  });
+
+  it("does not synthesize response.failed after upstream response.failed", async () => {
+    const events = await collectStreamEvents([
+      { event: "response.created", data: { response: { id: "resp_stream_4" } } },
+      {
+        event: "response.failed",
+        data: {
+          type: "response.failed",
+          response: {
+            id: "resp_stream_4",
+            status: "failed",
+            error: { code: "upstream_error", message: "failed upstream" },
+          },
+        },
+      },
+    ]);
+
+    expect(events.map((event) => event.event)).toEqual([
+      "response.created",
+      "response.failed",
+    ]);
+  });
+
+  it("propagates local callback errors instead of synthesizing response.failed", async () => {
+    const api = createMockApi([
+      { event: "response.created", data: { response: { id: "resp_callback" } } },
+    ]);
+
+    await expect((async () => {
+      for await (const _chunk of streamPassthrough(
+        api as never,
+        new Response("ok"),
+        "test-model",
+        () => {},
+        () => {
+          throw new Error("callback broke");
+        },
+      )) {
+        // Drain the generator.
+      }
+    })()).rejects.toThrow("callback broke");
+  });
+});
+
+describe("collectPassthrough premature close handling", () => {
+  it("throws EmptyResponseError when stream ends normally without response.completed", async () => {
+    const api = createMockApi([
+      { event: "response.created", data: { response: { id: "resp_1" } } },
+      { event: "response.in_progress", data: { response: { id: "resp_1" } } },
+    ]);
+
+    await expect(collectPassthrough(api as never, new Response("ok"), "test-model")).rejects.toThrow(EmptyResponseError);
+  });
+
+  it("throws EmptyResponseError when stream throws before completion", async () => {
+    const api = createMockApi(
+      [
+        { event: "response.created", data: { response: { id: "resp_2" } } },
+        { event: "response.output_text.delta", data: { delta: "partial text" } },
+      ],
+      new Error("WebSocket closed unexpectedly"),
+    );
+
+    const err = await collectPassthrough(api as never, new Response("ok"), "test-model").catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(EmptyResponseError);
+    expect((err as EmptyResponseError).responseId).toBe("resp_2");
+  });
+
+  it("returns normally when response.completed is received", async () => {
+    const api = createMockApi([
+      { event: "response.created", data: { response: { id: "resp_3" } } },
+      {
+        event: "response.completed",
+        data: {
+          response: {
+            id: "resp_3",
+            output: [],
+            usage: { input_tokens: 10, output_tokens: 20 },
+          },
+        },
+      },
+    ]);
+
+    const result = await collectPassthrough(api as never, new Response("ok"), "test-model");
+    expect(result.responseId).toBe("resp_3");
+    expect(result.usage).toEqual({ input_tokens: 10, output_tokens: 20 });
+  });
+
+  it("backfills completed response output from streamed web_search and message items", async () => {
+    const api = createMockApi([
+      { event: "response.created", data: { response: { id: "resp_search" } } },
+      {
+        event: "response.output_item.done",
+        data: {
+          output_index: 0,
+          item: {
+            id: "ws_1",
+            type: "web_search_call",
+            status: "completed",
+            actions: [{ type: "search", query: "codex proxy" }],
+          },
+        },
+      },
+      {
+        event: "response.output_item.done",
+        data: {
+          output_index: 1,
+          item: {
+            id: "msg_1",
+            type: "message",
+            role: "assistant",
+            status: "completed",
+            content: [{ type: "output_text", text: "搜索完成" }],
+          },
+        },
+      },
+      {
+        event: "response.completed",
+        data: {
+          response: {
+            id: "resp_search",
+            output: [],
+            usage: { input_tokens: 11, output_tokens: 22 },
+          },
+        },
+      },
+    ]);
+
+    const result = await collectPassthrough(api as never, new Response("ok"), "test-model");
+    const response = result.response as { output: unknown[]; output_text?: string };
+    expect(response.output).toHaveLength(2);
+    expect(response.output[0]).toMatchObject({ type: "web_search_call" });
+    expect(response.output_text).toBe("搜索完成");
+  });
+
+  it("synthesizes completed response output from text deltas when output items are absent", async () => {
+    const api = createMockApi([
+      { event: "response.created", data: { response: { id: "resp_delta" } } },
+      { event: "response.output_text.delta", data: { delta: "搜索" } },
+      { event: "response.output_text.delta", data: { delta: "完成" } },
+      {
+        event: "response.completed",
+        data: {
+          response: {
+            id: "resp_delta",
+            output: [],
+            usage: { input_tokens: 3, output_tokens: 4 },
+          },
+        },
+      },
+    ]);
+
+    const result = await collectPassthrough(api as never, new Response("ok"), "test-model");
+    const response = result.response as { output: Array<{ content: Array<{ text: string }> }>; output_text?: string };
+    expect(response.output[0].content[0].text).toBe("搜索完成");
+    expect(response.output_text).toBe("搜索完成");
+  });
+
+  it("keeps output_text synchronized after tuple reconversion", async () => {
+    const api = createMockApi([
+      { event: "response.created", data: { response: { id: "resp_tuple" } } },
+      {
+        event: "response.output_item.done",
+        data: {
+          output_index: 0,
+          item: {
+            id: "msg_tuple",
+            type: "message",
+            role: "assistant",
+            status: "completed",
+            content: [
+              {
+                type: "output_text",
+                text: "{\"point\":{\"0\":42,\"1\":\"hello\"}}",
+              },
+            ],
+          },
+        },
+      },
+      {
+        event: "response.completed",
+        data: {
+          response: {
+            id: "resp_tuple",
+            output: [],
+            usage: { input_tokens: 6, output_tokens: 7 },
+          },
+        },
+      },
+    ]);
+
+    const tupleSchema = {
+      type: "object",
+      properties: {
+        point: {
+          type: "array",
+          prefixItems: [{ type: "number" }, { type: "string" }],
+          items: false,
+        },
+      },
+    };
+
+    const result = await collectPassthrough(
+      api as never,
+      new Response("ok"),
+      "test-model",
+      tupleSchema,
+    );
+    const response = result.response as {
+      output: Array<{ content: Array<{ text: string }> }>;
+      output_text?: string;
+    };
+
+    expect(response.output[0].content[0].text).toBe("{\"point\":[42,\"hello\"]}");
+    expect(response.output_text).toBe("{\"point\":[42,\"hello\"]}");
+  });
+
+  it("backfills from output_item.done when response.output is missing entirely", async () => {
+    const api = createMockApi([
+      { event: "response.created", data: { response: { id: "resp_no_output" } } },
+      {
+        event: "response.output_item.done",
+        data: {
+          output_index: 0,
+          item: { id: "msg_1", type: "message", role: "assistant", status: "completed", content: [{ type: "output_text", text: "hello" }] },
+        },
+      },
+      {
+        event: "response.completed",
+        data: {
+          response: {
+            id: "resp_no_output",
+            usage: { input_tokens: 5, output_tokens: 10 },
+          },
+        },
+      },
+    ]);
+
+    const result = await collectPassthrough(api as never, new Response("ok"), "test-model");
+    const response = result.response as { output: unknown[]; output_text?: string };
+    expect(response.output).toHaveLength(1);
+    expect(response.output[0]).toMatchObject({ type: "message" });
+    expect(response.output_text).toBe("hello");
+  });
+
+  it("backfills from text deltas when response.output is missing entirely and no output items", async () => {
+    const api = createMockApi([
+      { event: "response.created", data: { response: { id: "resp_delta_no_output" } } },
+      { event: "response.output_text.delta", data: { delta: "こんに" } },
+      { event: "response.output_text.delta", data: { delta: "ちは" } },
+      {
+        event: "response.completed",
+        data: {
+          response: {
+            id: "resp_delta_no_output",
+            usage: { input_tokens: 2, output_tokens: 3 },
+          },
+        },
+      },
+    ]);
+
+    const result = await collectPassthrough(api as never, new Response("ok"), "test-model");
+    const response = result.response as { output: Array<{ content: Array<{ text: string }> }>; output_text?: string };
+    expect(response.output[0].content[0].text).toBe("こんにちは");
+    expect(response.output_text).toBe("こんにちは");
+  });
+
+  it("rethrows original error if response.completed was already received", async () => {
+    const api = createMockApi(
+      [
+        {
+          event: "response.completed",
+          data: {
+            response: {
+              id: "resp_4",
+              output: [],
+              usage: { input_tokens: 5, output_tokens: 10 },
+            },
+          },
+        },
+      ],
+      new Error("late stream error"),
+    );
+
+    await expect(
+      collectPassthrough(api as never, new Response("ok"), "test-model"),
+    ).rejects.toThrow("late stream error");
+  });
+});

@@ -1,0 +1,68 @@
+export interface AccountQuotaWindow {
+    used_percent?: number | null;
+    limit_reached?: boolean;
+    reset_at?: number | null;
+    limit_window_seconds?: number | null;
+}
+export interface AccountQuota {
+    rate_limit?: AccountQuotaWindow;
+    /** Secondary rate limit window (e.g. weekly cap). */
+    secondary_rate_limit?: AccountQuotaWindow | null;
+    code_review_rate_limit?: (AccountQuotaWindow & {
+        allowed?: boolean;
+    }) | null;
+    rate_limits_by_limit_id?: Record<string, AccountQuotaWindow & {
+        limit_id?: string;
+        limit_name?: string | null;
+        allowed?: boolean;
+        secondary_rate_limit?: AccountQuotaWindow | null;
+    }> | null;
+}
+export interface Account {
+    id: string;
+    email: string;
+    status: string;
+    planType?: string;
+    usage?: {
+        request_count?: number;
+        input_tokens?: number;
+        output_tokens?: number;
+        window_request_count?: number;
+        window_input_tokens?: number;
+        window_output_tokens?: number;
+    };
+    quota?: AccountQuota;
+    proxyId?: string;
+    proxyName?: string;
+}
+export interface ProxyHealthInfo {
+    exitIp: string | null;
+    latencyMs: number;
+    lastChecked: string;
+    error: string | null;
+}
+export interface ProxyEntry {
+    id: string;
+    name: string;
+    url: string;
+    status: "active" | "unreachable" | "disabled";
+    health: ProxyHealthInfo | null;
+    addedAt: string;
+}
+export interface ProxyAssignment {
+    accountId: string;
+    proxyId: string;
+}
+export type DiagnosticStatus = "pass" | "fail" | "skip";
+export interface DiagnosticCheck {
+    name: string;
+    status: DiagnosticStatus;
+    latencyMs: number;
+    detail: string | null;
+    error: string | null;
+}
+export interface TestConnectionResult {
+    checks: DiagnosticCheck[];
+    overall: DiagnosticStatus;
+    timestamp: string;
+}

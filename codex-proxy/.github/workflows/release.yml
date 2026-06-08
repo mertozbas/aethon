@@ -1,0 +1,391 @@
+name: Release Electron App
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release (e.g. v1.0.57)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: win
+            artifact: windows
+          - os: macos-latest
+            platform: mac
+            arch: arm64
+            artifact: macos-arm64
+          - os: ubuntu-latest
+            platform: linux
+            artifact: linux
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            web/package-lock.json
+            native/package-lock.json
+
+      - name: Install all workspace dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Install web frontend dependencies
+        run: cd web && npm ci
+
+      - name: Build core (web + tsc)
+        run: npm run build
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: actions/cache@v4
+        with:
+          path: native/target
+          key: native-${{ runner.os }}-${{ matrix.arch || 'x64' }}-${{ hashFiles('native/Cargo.lock') }}
+          restore-keys: native-${{ runner.os }}-${{ matrix.arch || 'x64' }}-
+
+      - name: Install native addon dependencies
+        working-directory: native
+        run: npm ci
+
+      - name: Build native addon
+        working-directory: native
+        run: npm run build
+
+      - name: Bundle Electron (esbuild)
+        working-directory: packages/electron
+        run: node electron/build.mjs
+
+      - name: Prepare pack (copy root resources)
+        working-directory: packages/electron
+        run: node electron/prepare-pack.mjs
+
+      - name: Clean stale release assets
+        continue-on-error: true
+        shell: bash
+        run: |
+          TAG="${{ inputs.tag || github.ref_name }}"
+          ASSETS=$(gh release view "$TAG" --json assets -q '.assets[].name' 2>/dev/null || echo "")
+          [ -z "$ASSETS" ] && exit 0
+
+          case "${{ matrix.platform }}" in
+            mac) PATTERN="mac-${{ matrix.arch }}" ;;
+            win) PATTERN="win-" ;;
+            linux) PATTERN="linux-" ;;
+          esac
+
+          echo "$ASSETS" | grep -iE "$PATTERN" | while read -r name; do
+            echo "Removing stale asset: $name"
+            gh release delete-asset "$TAG" "$name" -y 2>/dev/null || true
+          done
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pack (${{ matrix.platform }}${{ matrix.arch && format('-{0}', matrix.arch) || '' }})
+        working-directory: packages/electron
+        # shell: bash needed so the Windows runner uses Git Bash instead of pwsh
+        # (pwsh doesn't handle backslash line continuations the same way).
+        shell: bash
+        run: |
+          # Drive electron-builder version from the tag, not package.json. Required
+          # so beta tags (vX.Y.Z-beta.SHA, where bump-electron-beta.yml deliberately
+          # does NOT touch package.json) publish to the correct GitHub release and
+          # are detected as prerelease by electron-builder's semver suffix check.
+          TAG="${{ inputs.tag || github.ref_name }}"
+          VERSION="${TAG#v}"
+          # --publish never: build artifacts to release/ but don't upload yet.
+          # The Smoke step below gates the upload — better to ship nothing than
+          # ship a binary that crashes on startup (cf. v2.0.71/72 events bug).
+          npx electron-builder --config electron-builder.yml \
+            --${{ matrix.platform }} ${{ matrix.arch && format('--{0}', matrix.arch) || '' }} \
+            --config.extraMetadata.version="$VERSION" \
+            --publish never
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install AppImage runtime (Linux only)
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update -qq
+          # libfuse2 = AppImage runtime; xvfb = virtual display so the
+          # Electron renderer can spawn a window in a headless runner.
+          sudo apt-get install -y libfuse2 xvfb
+
+      - name: Smoke test packaged binary (win)
+        if: matrix.platform == 'win'
+        shell: pwsh
+        env:
+          RELEASE_DIR: packages/electron/release
+          SMOKE_LOG: ${{ runner.temp }}/electron-smoke.log
+        run: ./.github/scripts/electron-smoke.ps1
+
+      - name: Smoke test packaged binary (${{ matrix.platform }}${{ matrix.arch && format('-{0}', matrix.arch) || '' }})
+        if: matrix.platform != 'win'
+        shell: bash
+        env:
+          RELEASE_DIR: packages/electron/release
+          MAC_ARCH: ${{ matrix.arch }}
+          SMOKE_LOG: ${{ runner.temp }}/electron-smoke.log
+        run: bash .github/scripts/electron-smoke.sh
+
+      - name: Upload smoke log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: electron-smoke-${{ matrix.platform }}${{ matrix.arch && format('-{0}', matrix.arch) || '' }}-log
+          path: ${{ runner.temp }}/electron-smoke.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload artifacts to release (${{ matrix.platform }}${{ matrix.arch && format('-{0}', matrix.arch) || '' }})
+        # Only runs when smoke succeeded. Mirrors the build-mac-x64
+        # job's manual-upload pattern; replaces what `--publish always`
+        # used to do, but conditional on artifact actually working.
+        shell: bash
+        run: |
+          TAG="${{ inputs.tag || github.ref_name }}"
+          # Ensure the GitHub Release exists. With --publish never above,
+          # electron-builder no longer creates it, so the first uploader
+          # to arrive needs to. `|| true` swallows the 422 that the
+          # concurrent matrix jobs hit when a peer wins the race.
+          IS_PRERELEASE=""
+          if [[ "$TAG" == *-* ]]; then IS_PRERELEASE="--prerelease"; fi
+          gh release create "$TAG" --title "$TAG" --notes "" --draft=false $IS_PRERELEASE 2>/dev/null || true
+          cd packages/electron/release
+          case "${{ matrix.platform }}" in
+            mac)
+              # arm64 only — x64 handled by build-mac-x64 job.
+              for f in *arm64* latest-mac.yml; do
+                [ -f "$f" ] || continue
+                echo "Uploading: $f"
+                gh release upload "$TAG" "$f" --clobber
+              done
+              ;;
+            linux)
+              for f in Codex-Proxy-*-linux* latest-linux.yml; do
+                [ -f "$f" ] || continue
+                echo "Uploading: $f"
+                gh release upload "$TAG" "$f" --clobber
+              done
+              ;;
+            win)
+              for f in Codex-Proxy-*-win* latest.yml; do
+                [ -f "$f" ] || continue
+                echo "Uploading: $f"
+                gh release upload "$TAG" "$f" --clobber
+              done
+              ;;
+          esac
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # macOS x64 runs AFTER arm64 to avoid release asset upload collisions
+  # (shared files like latest-mac.yml don't include arch in the name)
+  build-mac-x64:
+    needs: build
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            web/package-lock.json
+            native/package-lock.json
+
+      - name: Install all workspace dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Install web frontend dependencies
+        run: cd web && npm ci
+
+      - name: Build core (web + tsc)
+        run: npm run build
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin
+
+      - name: Cache Rust build
+        uses: actions/cache@v4
+        with:
+          path: native/target
+          key: native-macos-x64-${{ hashFiles('native/Cargo.lock') }}
+          restore-keys: native-macos-x64-
+
+      - name: Install native addon dependencies
+        working-directory: native
+        run: npm ci
+
+      - name: Build native addon (x64)
+        working-directory: native
+        run: npx napi build --platform --release --target x86_64-apple-darwin
+
+      - name: Bundle Electron (esbuild)
+        working-directory: packages/electron
+        run: node electron/build.mjs
+
+      - name: Prepare pack (copy root resources)
+        working-directory: packages/electron
+        run: node electron/prepare-pack.mjs
+
+      - name: Clean stale x64 release assets
+        continue-on-error: true
+        run: |
+          TAG="${{ inputs.tag || github.ref_name }}"
+          ASSETS=$(gh release view "$TAG" --json assets -q '.assets[].name' 2>/dev/null || echo "")
+          [ -z "$ASSETS" ] && exit 0
+          echo "$ASSETS" | grep -iE "mac-x64" | while read -r name; do
+            echo "Removing stale asset: $name"
+            gh release delete-asset "$TAG" "$name" -y 2>/dev/null || true
+          done
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pack (mac-x64)
+        working-directory: packages/electron
+        shell: bash
+        run: |
+          TAG="${{ inputs.tag || github.ref_name }}"
+          VERSION="${TAG#v}"
+          npx electron-builder --config electron-builder.yml \
+            --mac --x64 \
+            --config.extraMetadata.version="$VERSION" \
+            --publish never
+
+      - name: Smoke test packaged binary (mac-x64)
+        shell: bash
+        env:
+          RELEASE_DIR: packages/electron/release
+          MAC_ARCH: x64
+          # x64 app startup runs through Rosetta on macOS runners and can
+          # legitimately take just over the default 90s smoke timeout.
+          SMOKE_TIMEOUT: 180
+          SMOKE_LOG: ${{ runner.temp }}/electron-smoke.log
+        run: bash .github/scripts/electron-smoke.sh
+
+      - name: Upload smoke log on failure (mac-x64)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: electron-smoke-mac-x64-log
+          path: ${{ runner.temp }}/electron-smoke.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload x64 artifacts to release
+        run: |
+          TAG="${{ inputs.tag || github.ref_name }}"
+          # Same release-create safety net as the main build job —
+          # this job runs after `build` but if all 3 main matrix
+          # platforms failed smoke, the release wouldn't exist yet.
+          IS_PRERELEASE=""
+          if [[ "$TAG" == *-* ]]; then IS_PRERELEASE="--prerelease"; fi
+          gh release create "$TAG" --title "$TAG" --notes "" --draft=false $IS_PRERELEASE 2>/dev/null || true
+          cd packages/electron/release
+          for f in *; do
+            [ -f "$f" ] || continue
+            # Only upload x64 files; skip arm64 and yml manifests
+            echo "$f" | grep -qi "arm64" && continue
+            echo "$f" | grep -qiE "\.yml$" && continue
+            echo "Uploading: $f"
+            gh release upload "$TAG" "$f" --clobber 2>/dev/null || true
+          done
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Merge x64 entries into latest-mac.yml
+        run: |
+          TAG="${{ inputs.tag || github.ref_name }}"
+          gh release download "$TAG" --pattern "latest-mac.yml" --output /tmp/arm64-mac.yml --clobber 2>/dev/null || exit 0
+          LOCAL_YML="packages/electron/release/latest-mac.yml"
+          [ -f "$LOCAL_YML" ] || exit 0
+          node -e "
+          const fs = require('fs');
+          const yaml = require('js-yaml');
+          const arm64Yml = yaml.load(fs.readFileSync('/tmp/arm64-mac.yml', 'utf8'));
+          const x64Yml = yaml.load(fs.readFileSync('$LOCAL_YML', 'utf8'));
+          const arm64Files = (arm64Yml.files || []).filter(f => f.url.includes('arm64'));
+          const x64Files = (x64Yml.files || []).filter(f => !f.url.includes('arm64'));
+          arm64Yml.files = [...arm64Files, ...x64Files];
+          fs.writeFileSync('/tmp/merged-mac.yml', yaml.dump(arm64Yml, { lineWidth: -1, quotingType: '\"' }));
+          "
+          mv /tmp/merged-mac.yml /tmp/latest-mac.yml
+          gh release upload "$TAG" /tmp/latest-mac.yml --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  release:
+    needs: [build, build-mac-x64]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.tag
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Fetch dev for stable release notes
+        run: git fetch origin dev:refs/remotes/origin/dev || true
+
+      - name: Resolve tag
+        id: tag
+        run: |
+          TAG="${{ inputs.tag || github.ref_name }}"
+          echo "name=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Generate release notes and publish
+        run: |
+          TAG="${{ steps.tag.outputs.name }}"
+          bash .github/scripts/generate-release-notes.sh "$TAG" > /tmp/release-notes.md
+
+          # Tag like v1.2.3-beta.SHA → mark as prerelease (semver convention).
+          # Defensive: electron-builder normally does this, but the create fallback
+          # below would miss it when electron-builder's draft creation didn't fire.
+          PRERELEASE_FLAG=""
+          case "$TAG" in *-*) PRERELEASE_FLAG="--prerelease" ;; esac
+
+          gh release edit "$TAG" --draft=false $PRERELEASE_FLAG --notes-file /tmp/release-notes.md 2>/dev/null || \
+            gh release create "$TAG" --title "$TAG" $PRERELEASE_FLAG --notes-file /tmp/release-notes.md
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,226 @@
+/**
+ * Tests for usage stats API routes.
+ */
+
+import { describe, it, expect, vi } from "vitest";
+
+vi.mock("@src/paths.js", () => ({
+  getDataDir: vi.fn(() => "/tmp/test-data"),
+}));
+
+import { Hono } from "hono";
+import { UsageStatsStore, type UsageStatsPersistence, type UsageSnapshot } from "@src/auth/usage-stats.js";
+import { createUsageStatsRoutes } from "@src/routes/admin/usage-stats.js";
+import type { AccountPool } from "@src/auth/account-pool.js";
+
+function createMockPool(totals: { input_tokens: number; output_tokens: number; request_count: number; cached_tokens?: number }): AccountPool {
+  return {
+    getAllEntries: () => [
+      {
+        id: "e1",
+        status: "active",
+        usage: { ...totals, cached_tokens: totals.cached_tokens ?? 0 },
+      },
+    ],
+  } as unknown as AccountPool;
+}
+
+function createStore(snapshots: UsageSnapshot[] = []): UsageStatsStore {
+  const persistence: UsageStatsPersistence = {
+    load: () => ({ version: 1, snapshots: [...snapshots] }),
+    save: vi.fn(),
+  };
+  return new UsageStatsStore(persistence);
+}
+
+describe("usage stats routes", () => {
+  describe("GET /admin/usage-stats/summary", () => {
+    it("returns cumulative totals", async () => {
+      const pool = createMockPool({ input_tokens: 5000, output_tokens: 1000, request_count: 20 });
+      const store = createStore();
+      const app = new Hono();
+      app.route("/", createUsageStatsRoutes(pool, store));
+
+      const res = await app.request("/admin/usage-stats/summary");
+      expect(res.status).toBe(200);
+
+      const body = await res.json();
+      expect(body.total_input_tokens).toBe(5000);
+      expect(body.total_output_tokens).toBe(1000);
+      expect(body.total_request_count).toBe(20);
+      expect(body.total_accounts).toBe(1);
+      expect(body.active_accounts).toBe(1);
+    });
+
+    it("exposes total_cached_tokens for cache-hit-rate computation", async () => {
+      const pool = createMockPool({ input_tokens: 5000, output_tokens: 1000, request_count: 20, cached_tokens: 3500 });
+      const store = createStore();
+      const app = new Hono();
+      app.route("/", createUsageStatsRoutes(pool, store));
+
+      const res = await app.request("/admin/usage-stats/summary");
+      const body = await res.json();
+      expect(body.total_cached_tokens).toBe(3500);
+      expect(body.total_input_tokens).toBe(5000);
+    });
+  });
+
+  describe("GET /admin/usage-stats/history", () => {
+    it("returns empty data_points when no history", async () => {
+      const pool = createMockPool({ input_tokens: 0, output_tokens: 0, request_count: 0 });
+      const store = createStore();
+      const app = new Hono();
+      app.route("/", createUsageStatsRoutes(pool, store));
+
+      const res = await app.request("/admin/usage-stats/history");
+      expect(res.status).toBe(200);
+
+      const body = await res.json();
+      expect(body.granularity).toBe("hourly");
+      expect(body.data_points).toEqual([]);
+    });
+
+    it("returns delta data points with raw granularity", async () => {
+      const now = Date.now();
+      const snapshots: UsageSnapshot[] = [
+        {
+          timestamp: new Date(now - 3600_000).toISOString(),
+          totals: { input_tokens: 100, output_tokens: 10, request_count: 1, active_accounts: 1 },
+        },
+        {
+          timestamp: new Date(now).toISOString(),
+          totals: { input_tokens: 500, output_tokens: 50, request_count: 5, active_accounts: 1 },
+        },
+      ];
+
+      const pool = createMockPool({ input_tokens: 500, output_tokens: 50, request_count: 5 });
+      const store = createStore(snapshots);
+      const app = new Hono();
+      app.route("/", createUsageStatsRoutes(pool, store));
+
+      const res = await app.request("/admin/usage-stats/history?granularity=raw&hours=2");
+      expect(res.status).toBe(200);
+
+      const body = await res.json();
+      expect(body.granularity).toBe("raw");
+      expect(body.data_points).toHaveLength(1);
+      expect(body.data_points[0].input_tokens).toBe(400);
+    });
+
+    it("accepts all aggregated history without clamping to seven days", async () => {
+      const now = Date.now();
+      const snapshots: UsageSnapshot[] = [
+        {
+          timestamp: new Date(now - 30 * 24 * 3600_000).toISOString(),
+          totals: { input_tokens: 100, output_tokens: 10, request_count: 1, active_accounts: 1 },
+        },
+        {
+          timestamp: new Date(now - 15 * 24 * 3600_000).toISOString(),
+          totals: { input_tokens: 500, output_tokens: 50, request_count: 5, active_accounts: 1 },
+        },
+        {
+          timestamp: new Date(now).toISOString(),
+          totals: { input_tokens: 1000, output_tokens: 100, request_count: 10, active_accounts: 1 },
+        },
+      ];
+
+      const pool = createMockPool({ input_tokens: 1000, output_tokens: 100, request_count: 10 });
+      const store = createStore(snapshots);
+      const app = new Hono();
+      app.route("/", createUsageStatsRoutes(pool, store));
+
+      const res = await app.request("/admin/usage-stats/history?granularity=hourly&hours=all");
+      expect(res.status).toBe(200);
+
+      const body = await res.json();
+      expect(body.hours).toBe("all");
+      expect(body.data_points).toHaveLength(2);
+      expect(body.data_points[0].input_tokens).toBe(400);
+      expect(body.data_points[1].input_tokens).toBe(500);
+    });
+
+    it("rejects unbounded raw all history", async () => {
+      const pool = createMockPool({ input_tokens: 0, output_tokens: 0, request_count: 0 });
+      const store = createStore();
+      const app = new Hono();
+      app.route("/", createUsageStatsRoutes(pool, store));
+
+      const res = await app.request("/admin/usage-stats/history?granularity=raw&hours=all");
+
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toContain("raw");
+    });
+
+    it("accepts numeric ranges above seven days", async () => {
+      const now = Date.now();
+      const snapshots: UsageSnapshot[] = [
+        {
+          timestamp: new Date(now - 29 * 24 * 3600_000).toISOString(),
+          totals: { input_tokens: 100, output_tokens: 10, request_count: 1, active_accounts: 1 },
+        },
+        {
+          timestamp: new Date(now - 15 * 24 * 3600_000).toISOString(),
+          totals: { input_tokens: 500, output_tokens: 50, request_count: 5, active_accounts: 1 },
+        },
+        {
+          timestamp: new Date(now).toISOString(),
+          totals: { input_tokens: 1000, output_tokens: 100, request_count: 10, active_accounts: 1 },
+        },
+      ];
+
+      const pool = createMockPool({ input_tokens: 1000, output_tokens: 100, request_count: 10 });
+      const store = createStore(snapshots);
+      const app = new Hono();
+      app.route("/", createUsageStatsRoutes(pool, store));
+
+      const res = await app.request("/admin/usage-stats/history?granularity=raw&hours=720");
+      expect(res.status).toBe(200);
+
+      const body = await res.json();
+      expect(body.hours).toBe(720);
+      expect(body.data_points).toHaveLength(2);
+    });
+
+    it("accepts five_min granularity", async () => {
+      const now = Date.now();
+      const snapshots: UsageSnapshot[] = [
+        {
+          timestamp: new Date(now - 600_000).toISOString(),
+          totals: { input_tokens: 100, output_tokens: 10, request_count: 1, active_accounts: 1 },
+        },
+        {
+          timestamp: new Date(now - 300_000).toISOString(),
+          totals: { input_tokens: 300, output_tokens: 30, request_count: 3, active_accounts: 1 },
+        },
+        {
+          timestamp: new Date(now).toISOString(),
+          totals: { input_tokens: 500, output_tokens: 50, request_count: 5, active_accounts: 1 },
+        },
+      ];
+
+      const pool = createMockPool({ input_tokens: 500, output_tokens: 50, request_count: 5 });
+      const store = createStore(snapshots);
+      const app = new Hono();
+      app.route("/", createUsageStatsRoutes(pool, store));
+
+      const res = await app.request("/admin/usage-stats/history?granularity=five_min&hours=1");
+      expect(res.status).toBe(200);
+
+      const body = await res.json();
+      expect(body.granularity).toBe("five_min");
+      // Two deltas (100→300=200, 300→500=200) at 5min apart land in two buckets.
+      expect(body.data_points).toHaveLength(2);
+    });
+
+    it("rejects invalid granularity", async () => {
+      const pool = createMockPool({ input_tokens: 0, output_tokens: 0, request_count: 0 });
+      const store = createStore();
+      const app = new Hono();
+      app.route("/", createUsageStatsRoutes(pool, store));
+
+      const res = await app.request("/admin/usage-stats/history?granularity=yearly");
+      expect(res.status).toBe(400);
+    });
+  });
+});

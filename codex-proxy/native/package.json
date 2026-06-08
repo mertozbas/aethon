@@ -1,0 +1,16 @@
+{
+  "name": "codex-tls",
+  "version": "0.1.0",
+  "private": true,
+  "napi": {
+    "name": "codex-tls",
+    "triples": {}
+  },
+  "scripts": {
+    "build": "napi build --platform --release",
+    "build-debug": "napi build --platform"
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "^2"
+  }
+}

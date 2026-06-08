@@ -1,0 +1,26 @@
+{
+  "name": "@codex-proxy/electron",
+  "version": "2.0.77",
+  "description": "Codex Proxy desktop app (Electron shell)",
+  "private": true,
+  "main": "dist-electron/main.cjs",
+  "author": "codex-proxy",
+  "scripts": {
+    "build": "node electron/build.mjs",
+    "dev": "cd ../.. && npm run build && cd packages/electron && npm run build && electron .",
+    "prepack": "node electron/prepare-pack.mjs",
+    "pack": "npx electron-builder --config electron-builder.yml",
+    "postpack": "node electron/prepare-pack.mjs --clean",
+    "pack:win": "npm run prepack && npx electron-builder --config electron-builder.yml --win && npm run postpack",
+    "pack:mac": "npm run prepack && npx electron-builder --config electron-builder.yml --mac && npm run postpack",
+    "pack:linux": "npm run prepack && npx electron-builder --config electron-builder.yml --linux && npm run postpack"
+  },
+  "dependencies": {
+    "electron-updater": "^6.3.0"
+  },
+  "devDependencies": {
+    "electron": "^35.7.5",
+    "electron-builder": "^26.0.0",
+    "esbuild": "^0.25.12"
+  }
+}
