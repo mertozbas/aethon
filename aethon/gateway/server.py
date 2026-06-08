@@ -31,6 +31,8 @@ class AethonGateway:
         # Wire event bus into telemetry hook for real-time dashboard events
         if self.runtime._telemetry_hook:
             self.runtime._telemetry_hook._event_bus = self.event_bus
+        # Session recorder (single instance shared across agents; may be None)
+        self._recorder = self.runtime._session_recorder_hook
         self.adapters: dict[str, object] = {}
         self._tasks: list[asyncio.Task] = []
         self._shutdown_event = asyncio.Event()
@@ -47,6 +49,14 @@ class AethonGateway:
         Waits until a signal arrives or any adapter exits (e.g. CLI 'exit').
         """
         coroutines = []
+
+        # Start session recording (if enabled) before any channels accept messages.
+        if self._recorder:
+            try:
+                self._recorder.start_recording()
+                logger.info("Session recording started")
+            except Exception as e:
+                logger.warning(f"Session recording start error: {e}")
 
         if self.config.channels.webchat.enabled:
             self.adapters["webchat"] = WebChatAdapter(self.config, self.router)
@@ -219,6 +229,19 @@ class AethonGateway:
     async def shutdown(self):
         """Gracefully stop all adapters, scheduler, and MCP clients."""
         logger.info("Shutting down AETHON...")
+
+        # Export the session recording (if active)
+        if self._recorder:
+            try:
+                export_path = self._recorder.stop_and_export()
+                if export_path:
+                    logger.info(f"Session recording exported: {export_path}")
+                    self.event_bus.emit(
+                        "sessions",
+                        {"event": "recording_exported", "path": export_path},
+                    )
+            except Exception as e:
+                logger.warning(f"Session export error: {e}")
 
         # Stop scheduler
         if self._scheduler:

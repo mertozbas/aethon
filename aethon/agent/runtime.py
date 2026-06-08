@@ -48,6 +48,7 @@ class AethonRuntime:
         self.sop_runner = None
         self.team_orchestrator = None
         self._telemetry_hook = None
+        self._session_recorder_hook = None
         self._context_updater = None
         self._mcp_loader = None
         self._event_bus = None
@@ -116,6 +117,21 @@ class AethonRuntime:
                 logger.info("Telemetry: active")
             except Exception as e:
                 logger.warning(f"Telemetry startup error: {e}")
+
+        # SessionRecorderHookProvider (single instance shared across agents)
+        if getattr(config, "session_recorder", None) and config.session_recorder.enabled:
+            try:
+                from aethon.agent.hooks.session_recorder import (
+                    SessionRecorderHookProvider,
+                )
+
+                self._session_recorder_hook = SessionRecorderHookProvider(
+                    config=config.session_recorder,
+                    recordings_dir=getattr(config.paths, "recordings", None),
+                )
+                logger.info("SessionRecorder: active")
+            except Exception as e:
+                logger.warning(f"SessionRecorder startup error: {e}")
 
         # ContextUpdater
         try:
@@ -388,6 +404,9 @@ class AethonRuntime:
         # TelemetryHook
         if self._telemetry_hook:
             hooks.append(self._telemetry_hook)
+        # SessionRecorderHook (after telemetry, before approval)
+        if self._session_recorder_hook:
+            hooks.append(self._session_recorder_hook)
         # ApprovalHook
         if self.config.approval.enabled:
             from aethon.agent.hooks.approval import ApprovalHookProvider

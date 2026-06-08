@@ -198,6 +198,25 @@ class RuntimeToolsConfig(BaseModel):
     cache_dir: str = "~/.aethon/runtime_tools_cache"
 
 
+class SessionRecorderConfig(BaseModel):
+    """Session recording (timeline + snapshots, exported to a ZIP for replay).
+
+    Off by default. Recordings are written to ``paths.recordings`` on shutdown.
+    """
+
+    enabled: bool = False
+    max_events: int = 10000
+    # OS-level monkeypatching of open/requests — left off; AETHON records via the
+    # hook provider instead.
+    install_hooks: bool = False
+    redact_patterns: list[str] = Field(
+        default_factory=lambda: [
+            "KEY", "SECRET", "TOKEN", "PASSWORD", "CREDENTIAL", "AUTH"
+        ]
+    )
+    max_sessions_kept: int = 20
+
+
 class LSPConfig(BaseModel):
     """Language Server Protocol integration.
 
@@ -301,6 +320,7 @@ class PathsConfig(BaseModel):
     memory_db: str = "~/.aethon/memory.sqlite"
     logs: str = "~/.aethon/logs"
     credentials: str = "~/.aethon/credentials"
+    recordings: str = "~/.aethon/recordings"
 
 
 class AethonConfig(BaseModel):
@@ -322,6 +342,7 @@ class AethonConfig(BaseModel):
     mcp: MCPConfig = MCPConfig()
     macos: MacOSConfig = MacOSConfig()
     runtime_tools: RuntimeToolsConfig = RuntimeToolsConfig()
+    session_recorder: SessionRecorderConfig = SessionRecorderConfig()
     lsp: LSPConfig = LSPConfig()
     prompt: PromptConfig = PromptConfig()
     capabilities: CapabilitiesConfig = CapabilitiesConfig()
