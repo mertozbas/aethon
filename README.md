@@ -31,7 +31,7 @@ Under the hood, AETHON is built on the **Strands Agents SDK**. A main orchestrat
 
 - **Author:** Mert Özbaş
 - **Repository:** https://github.com/mertozbas/aethon
-- **Version:** 0.1.0
+- **Version:** 0.1.1
 - **License:** PolyForm Noncommercial 1.0.0 (source-available; free for noncommercial use)
 
 ---
@@ -55,14 +55,26 @@ Under the hood, AETHON is built on the **Strands Agents SDK**. A main orchestrat
 - **Multi-agent specialists** — Coder, Researcher, Analyst, Planner, reachable from the main agent via `ask_*` delegation tools. (Swarm/Graph team & pipeline orchestration exists internally but isn't yet wired into the runtime — see [Roadmap](#roadmap).)
 - **SOPs** — built-in `/code-assist`, `/pdd`, `/codebase-summary`, plus your own custom `*.sop.md` workflows.
 - **Workspace persona files** — `SOUL.md`, `TOOLS.md`, `CONTEXT.md` define identity, preferences, and live state.
-- **Tools** — file read/write/edit, shell, scheduling, context updates, messaging, and MCP tools.
+- **Core tools** — file read/write/edit, shell, scheduling, context updates, messaging, and MCP tools.
+- **Self-improvement** — `record_learning` persists discoveries to `LEARNINGS.md`; the system prompt is **environment-aware** (OS/cwd/shell), with optional recent-logs and shell-history layers.
+
+**Capabilities (opt-in tools)**
+- **Web & APIs** — `scraper` (BeautifulSoup), `use_github` (GitHub GraphQL), `jsonrpc` (HTTP/WebSocket), `notify` (native notifications).
+- **macOS native** — `use_mac` (Calendar, Reminders, Mail, Contacts, Safari, Finder, Shortcuts, Messages, Music, Keychain) and `apple_notes`, Darwin-gated with Messages/Keychain off by default.
+- **Code intelligence** — `lsp` (diagnostics, go-to-def, references, hover via pyright/gopls/…) + an auto-diagnostics hook.
+- **Dynamic tools** — `manage_tools` loads/creates tools at runtime in a subprocess sandbox (gated).
+- **Computer control** — `use_computer` (screen/mouse/keyboard, high-risk, off by default, approval-gated).
+- **Ambient / autonomous mode** — proactive idle-time work, fully opt-in.
+- **Introspection** — `manage_messages` inspects the agent's own conversation, turn-aware.
 
 **Operations & visibility**
-- **Live dashboard** — overview, live company (pixel-agents), live monitor, sessions, memory, config, logs, agents, SOPs.
+- **Live dashboard** — overview, **Features** (capability status), live company (pixel-agents reflecting real activity), live monitor, sessions, **recordings** (session replay), memory, config, logs, agents, SOPs.
+- **Session recording & replay** — record the timeline + state snapshots to a ZIP; browse and resume from the dashboard.
+- **MCP server** — `aethon mcp` exposes AETHON's whole toolset to MCP clients (e.g. Claude Desktop) over stdio.
 - **Scheduler** — cron jobs that run SOPs and deliver results to a channel.
 - **Webhooks** — `POST /webhook/trigger` and `POST /webhook/{channel}` with optional HMAC-SHA256 verification.
 - **Telemetry** — event history with summaries surfaced in the dashboard.
-- **MCP** — optional Model Context Protocol server integration.
+- **Context safety** — oversized tool output is auto-capped so a single huge command can't overflow the model context.
 
 **Deployment**
 - **pip** install (core covers CLI + WebChat + dashboard + Telegram/Discord/Slack + memory + SOPs + scheduler).
@@ -73,6 +85,8 @@ Under the hood, AETHON is built on the **Strands Agents SDK**. A main orchestrat
 - **Local-first**: services bind to `127.0.0.1` by default; your data lives in `~/.aethon`.
 - **Workspace boundary** + **blocked-command** filtering + **approval** hooks.
 - **Dashboard auth token**, **secret masking** in API config dumps, and a **memory guard** that keeps secrets out of long-term memory.
+
+> **New in 0.1.1** — capability tools (web/GitHub/JSON-RPC/notify), macOS native tools, LSP, sandboxed dynamic tools, ambient mode, session recording/replay, and an MCP server. Full reference: [`docs/CAPABILITIES.md`](docs/CAPABILITIES.md).
 
 ---
 
@@ -156,8 +170,15 @@ Request an extra with `pip install "aethon-ai[ollama]"`. From a local clone, the
 | `anthropic` | `pip install "aethon-ai[anthropic]"` | `anthropic>=0.40.0` | The `anthropic` provider (Claude via an Anthropic API key). |
 | `ollama` | `pip install "aethon-ai[ollama]"` | `ollama>=0.3.0` | Local-inference provider (run models fully offline). |
 | `whatsapp` | `pip install "aethon-ai[whatsapp]"` | `neonize>=0.3.0` | WhatsApp channel (**experimental**). |
-| `mcp` | `pip install "aethon-ai[mcp]"` | `mcp>=1.0.0` | MCP (Model Context Protocol) server support. |
-| `all` | `pip install "aethon-ai[all]"` | `aethon-ai[anthropic,ollama,whatsapp,mcp]` | Bundles the feature extras above. |
+| `mcp` | `pip install "aethon-ai[mcp]"` | `mcp>=1.0.0` | MCP server support (`aethon mcp` + external MCP tools). |
+| `scraper` | `pip install "aethon-ai[scraper]"` | `beautifulsoup4>=4.9.0` | `scraper` tool (HTML/XML parsing). |
+| `github` | `pip install "aethon-ai[github]"` | `colorama>=0.4.0` | colored output for `use_github`. |
+| `jsonrpc` | `pip install "aethon-ai[jsonrpc]"` | `websockets>=12.0` | WebSocket transport for `jsonrpc`. |
+| `macos` | `pip install "aethon-ai[macos]"` | `html2text`, `mistune` | richer Markdown for `apple_notes` (use_mac needs nothing extra). |
+| `lsp` | `pip install "aethon-ai[lsp]"` | `pyright>=1.1.0` | Python LSP for the `lsp` tool (other languages: install their servers). |
+| `computer` | `pip install "aethon-ai[computer]"` | `pyautogui>=0.9.53` | `use_computer` (screen/mouse/keyboard). |
+| `launcher-macos` | `pip install "aethon-ai[launcher-macos]"` | `rumps>=0.4.0` | macOS menu-bar launcher (`aethon-menubar`). |
+| `all` | `pip install "aethon-ai[all]"` | `aethon-ai[anthropic,ollama,whatsapp,mcp,scraper,github,jsonrpc,macos,lsp,computer]` | Bundles the feature extras above. |
 | `dev` | `pip install "aethon-ai[dev]"` | `pytest>=8.0.0`, `pytest-asyncio>=0.23.0`, `httpx>=0.27.0` | Test/dev tooling. |
 
 ### Install with Docker
@@ -246,6 +267,36 @@ model:
 ```
 
 > The `aethon init` wizard asks for your OpenAI API key and, optionally, an OpenAI-compatible base URL — so you usually don't hand-edit this.
+
+### ChatGPT Pro via the bundled `codex-proxy`
+
+This repo vendors **codex-proxy** under [`codex-proxy/`](codex-proxy/) — a reverse proxy that exposes your **ChatGPT / Codex Desktop** subscription as an **OpenAI-compatible** `/v1/chat/completions` endpoint. Point AETHON at it to drive the assistant from your **ChatGPT Pro** plan instead of spending OpenAI API credits.
+
+> **Your secrets stay local.** codex-proxy stores account tokens under `codex-proxy/data/`, which is **gitignored** and never committed. The vendored copy ships **source only** (no `node_modules/`, no `data/`); `npm install` restores the dependencies and the first login creates `data/`.
+
+**1. Run codex-proxy** (needs Node 18+):
+
+```bash
+cd codex-proxy
+npm install
+cp .env.example .env          # optional: paste a CODEX_JWT_TOKEN to skip the OAuth login
+npm run dev                   # serves an OpenAI-compatible API on http://127.0.0.1:8080
+```
+
+On first run, log in through the proxy (OAuth, or set `CODEX_JWT_TOKEN` in `.env`). The port is `PORT` in `.env` (default `8080`).
+
+**2. Point AETHON at it** (`~/.aethon/config.yaml`):
+
+```yaml
+model:
+  provider: openai
+  model_id: gpt-5.5                 # a model your ChatGPT plan serves (e.g. gpt-5.5 / gpt-5.4)
+  host: http://127.0.0.1:8080/v1    # the codex-proxy endpoint
+  api_key: ${CODEX_PROXY_KEY}       # the proxy's API key (set it in codex-proxy/.env)
+  max_tokens: 8192
+```
+
+Keep codex-proxy running while you use AETHON — if it's down, chat requests fail with a connection error. codex-proxy is a third-party tool vendored here for convenience; see [`codex-proxy/README.md`](codex-proxy/README.md) for its full configuration, account management, and Docker setup.
 
 ### Anthropic API
 
@@ -496,6 +547,62 @@ channels:
 
 > **Notes:** `~` in path-valued fields is stored literally; it is expanded only for the config-file path itself in `load()`/`write()`. Some values overlap intentionally (e.g. `memory.db_path` and `paths.memory_db` both default to `~/.aethon/memory.sqlite`; `session.storage_dir` and `paths.sessions` both `~/.aethon/sessions`).
 
+#### Capabilities & runtime features (opt-in)
+
+These newer blocks are all **off by default** unless noted. Powerful/host-affecting features stay disabled until you opt in, and the security & approval hooks gate the rest. (Browse live status in the dashboard's **Features** panel.)
+
+```yaml
+# Vendored utility tools (scraper/github/jsonrpc/notify default ON; computer OFF).
+capabilities:
+  scraper:  { enabled: true }
+  github:   { enabled: true }      # use_github (reads $GITHUB_TOKEN)
+  jsonrpc:  { enabled: true }
+  notify:   { enabled: true, method: auto }
+  computer: { enabled: false, require_approval: true }   # ⚠ screen/mouse/keyboard; needs [computer] + macOS perms
+
+# macOS native tools (Darwin-only). Messages & Keychain are explicit opt-in.
+macos:
+  enabled: true
+  enable_calendar: true
+  enable_reminders: true
+  enable_mail: true
+  enable_notes: true
+  enable_shortcuts: true
+  enable_messages: false           # ⚠ can send iMessage/SMS as you
+  enable_keychain: false           # ⚠ can read/write the Keychain
+  actions_requiring_approval: ["mail.send", "messages.send", "keychain.set"]
+
+lsp:                               # needs [lsp] (pyright) / language servers on PATH
+  enabled: false
+  auto_diagnostics: false          # append diagnostics after file-modifying tools
+
+runtime_tools:                     # manage_tools (sandboxed dynamic tool loading)
+  enabled: false
+  allow_create: false              # create/fetch (subprocess sandbox validates first)
+  allow_install: false             # add/reload (auto-install missing packages)
+
+session_recorder:                  # timeline + snapshots → ZIP, replay in the dashboard
+  enabled: false
+  max_events: 10000
+
+ambient:                           # proactive / autonomous idle-time work
+  enabled: false
+  auto_start: false
+
+prompt:                            # system-prompt awareness layers
+  include_environment: true
+  include_learnings: true
+  include_recent_logs: true
+  include_shell_history: false     # privacy
+  include_self_awareness: false    # embeds key source files — heavy
+
+performance:
+  max_tool_output_chars: 12000     # cap a single tool result so it can't overflow the context (0 = off)
+
+paths:
+  recordings: "~/.aethon/recordings"
+```
+
 ---
 
 ## Usage
@@ -717,11 +824,18 @@ You can also create/edit/delete custom SOPs from the dashboard's SOPs panel (bui
 
 ### Agent tools
 
-The main agent always has: `file_read, file_write, editor, shell, think, current_time`, plus `update_context(action, key, value)` (maintains `CONTEXT.md`; actions `update`, `get`, `list`) and `send_message(channel, text, recipient)` (pushes a message out to any enabled channel — e.g. `telegram`, `discord`, `slack`, `webchat`). Conditionally added:
+The main agent always has: `file_read, file_write, editor, shell, think, current_time`, plus `update_context` (maintains `CONTEXT.md`), `send_message` (pushes to any enabled channel), and `manage_messages` (turn-aware introspection of its own conversation). Conditionally added:
 
 - **memory** — `manage_memory(action, content, query, category, memory_id)` when vector memory is active.
 - **delegate** — `ask_coder / ask_researcher / ask_analyst / ask_planner` when the multi-agent system is on.
-- **scheduler** — `schedule_task(cron_expression, sop_name, job_id, channel, recipient)`, `list_scheduled_jobs()`, `remove_scheduled_job(job_id)` when the scheduler is running.
+- **scheduler** — `schedule_task`, `list_scheduled_jobs`, `remove_scheduled_job` when the scheduler is running.
+- **capabilities** — `scraper`, `use_github`, `jsonrpc`, `notify` (config-gated under `capabilities`, default on).
+- **learning** — `record_learning(category, content)` when `prompt.include_learnings` (persists to `LEARNINGS.md`).
+- **macOS** (Darwin) — `use_mac`, `apple_notes` when `macos.enabled`.
+- **code intelligence** — `lsp` when `lsp.enabled`.
+- **dynamic tools** — `manage_tools` when `runtime_tools.enabled` (sandboxed; gated by approval/security).
+- **computer control** — `use_computer` when `capabilities.computer.enabled` (needs the `computer` extra).
+- **ambient** — `start_ambient_mode / stop_ambient_mode / get_ambient_status` when `ambient.enabled`.
 - **MCP tools** — appended when MCP is enabled.
 
 ### Telemetry
@@ -741,7 +855,10 @@ aethon [--version] <command> [options]
 | `aethon init` | Set up AETHON (provider menu openai/anthropic/ollama, model, memory, messaging bots) and write the config file. | `--config, -c <path>` (default `~/.aethon/config.yaml`); `--force` (overwrite an existing config without asking). |
 | `aethon doctor` | Diagnose the current configuration and provider availability (provider/model, provider check, memory). | `--config, -c <path>` (default `~/.aethon/config.yaml`). |
 | `aethon start` | Start AETHON (runs the setup wizard first if no config exists; launches the gateway and all enabled channels). | `--config, -c <path>` (default `~/.aethon/config.yaml`). |
-| `aethon --version` | Print `aethon, version 0.1.0` and exit. | — |
+| `aethon mcp` | Serve AETHON's whole toolset to MCP clients (e.g. Claude Desktop) over stdio. Informational output goes to stderr. | `--config, -c <path>` (default `~/.aethon/config.yaml`). |
+| `aethon --version` | Print `aethon, version 0.1.1` and exit. | — |
+
+Also installed with the `launcher-macos` extra: **`aethon-menubar`** — a macOS menu-bar launcher (Start/Stop server, open WebChat, settings).
 
 ---
 
@@ -860,14 +977,25 @@ Contributions follow the same noncommercial terms; see [CONTRIBUTING.md](CONTRIB
 
 ## Roadmap
 
-**v1 (0.1.0) ships:** the full provider-agnostic assistant — CLI + WebChat + dashboard, Telegram/Discord/Slack channels, SQLite vector memory, multi-agent specialists with `ask_*` delegation, built-in and custom SOPs, scheduler, webhooks, telemetry, bring-your-own model provider (OpenAI default, plus Anthropic / Ollama / Bedrock / Gemini / LiteLLM / Mistral), and Docker + CI infrastructure.
+**v1 (0.1.0) shipped:** the full provider-agnostic assistant — CLI + WebChat + dashboard, Telegram/Discord/Slack channels, SQLite vector memory, multi-agent specialists with `ask_*` delegation, built-in and custom SOPs, scheduler, webhooks, telemetry, bring-your-own model provider (OpenAI default, plus Anthropic / Ollama / Bedrock / Gemini / LiteLLM / Mistral), and Docker + CI infrastructure.
 
-**Deferred to v2:**
+**0.1.1 — capability expansion (this release):**
+- **Capability tools** — `scraper`, `use_github`, `jsonrpc`, `notify`, `manage_messages`.
+- **macOS native** — `use_mac` + `apple_notes` (Darwin-gated; Messages/Keychain off by default).
+- **Code intelligence** — `lsp` tool + auto-diagnostics hook.
+- **Dynamic tool loading** — `manage_tools` with a subprocess sandbox + 3-layer gating.
+- **Computer control** — `use_computer` (opt-in, approval-gated).
+- **Ambient / autonomous mode** — proactive idle-time work (opt-in).
+- **Session recording & replay** — recorder hook + replay API + dashboard tab.
+- **MCP server** — `aethon mcp` exposes the toolset to MCP clients.
+- **System-prompt awareness** — environment / learnings / recent-logs / shell-history layers + `record_learning`.
+- **Dashboard** — Features panel + identity-correct Live Company + context-overflow protection.
+
+**Still deferred:**
 - Response **streaming**.
-- **Team / pipeline orchestration** (Swarm/Graph) wired into the runtime and exposed as a command/tool (the orchestration code exists but isn't connected yet).
+- **Team / pipeline orchestration** (Swarm/Graph) wired into the runtime and exposed as a command/tool.
 - **Per-specialist multi-model** configuration.
-- **Tool Builder** and **Agent Builder** agents.
-- **Phase 7** AI Capabilities Expansion.
+- Real-time **voice** (STT/TTS).
 
 See [`docs/development/ROADMAP.md`](https://github.com/mertozbas/aethon/blob/main/docs/development/ROADMAP.md) for details.
 

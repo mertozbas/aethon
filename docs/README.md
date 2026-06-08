@@ -13,6 +13,7 @@
 | [PRODUCT.md](product/PRODUCT.md) | Product overview, features, architecture |
 | [GETTING-STARTED.md](product/GETTING-STARTED.md) | Installation and quick start guide |
 | [CONFIGURATION.md](product/CONFIGURATION.md) | Complete configuration reference |
+| [CAPABILITIES.md](CAPABILITIES.md) | 0.1.1 capabilities — tools, macOS, LSP, dynamic tools, ambient, recording, MCP server |
 | [API-REFERENCE.md](product/API-REFERENCE.md) | HTTP endpoints, WebSocket, webhook, tool reference |
 | [ARCHITECTURE.md](product/ARCHITECTURE.md) | Technical architecture, data flows, component relationships |
 
