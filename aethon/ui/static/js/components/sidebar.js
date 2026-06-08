@@ -12,6 +12,7 @@ const NAV_ITEMS = [
   { path: '/company',  icon: '\u{1F3E2}', label: 'Live Company' },
   { path: '/monitor',  icon: '\u25C9', label: 'Live Monitor' },
   { path: '/sessions', icon: '\u2630', label: 'Sessions' },
+  { path: '/recordings', icon: '\u{1F3AC}', label: 'Recordings' },
   { path: '/memory',   icon: '\u29BF', label: 'Memory' },
   { path: '/config',   icon: '\u2699', label: 'Config' },
   { path: '/logs',     icon: '\u2261', label: 'Logs' },
