@@ -96,7 +96,7 @@ computer = [
     "pyautogui>=0.9.53",  # screen/mouse/keyboard automation for `use_computer`
 ]
 launcher-macos = [
-    "rumps>=0.14.0",  # menu-bar launcher (aethon-menubar)
+    "rumps>=0.4.0",  # menu-bar launcher (aethon-menubar)
 ]
 all = ["aethon-ai[anthropic,ollama,whatsapp,mcp,scraper,github,jsonrpc,macos,lsp,computer]"]
 dev = [
