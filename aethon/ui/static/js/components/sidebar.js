@@ -14,6 +14,7 @@ const NAV_ITEMS = [
   { path: '/sessions', icon: '\u2630', label: 'Sessions' },
   { path: '/recordings', icon: '\u{1F3AC}', label: 'Recordings' },
   { path: '/memory',   icon: '\u29BF', label: 'Memory' },
+  { path: '/features', icon: '\u26a1', label: 'Features' },
   { path: '/config',   icon: '\u2699', label: 'Config' },
   { path: '/logs',     icon: '\u2261', label: 'Logs' },
   { path: '/agents',   icon: '\u2726', label: 'Agents' },

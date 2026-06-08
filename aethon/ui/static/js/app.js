@@ -20,6 +20,7 @@ import * as sessions from './panels/sessions.js';
 import * as recordings from './panels/recordings.js';
 import * as memory from './panels/memory.js';
 import * as configPanel from './panels/config.js';
+import * as features from './panels/features.js';
 import * as sops from './panels/sops.js';
 import * as agents from './panels/agents.js';
 import * as company from './panels/company.js';
@@ -47,6 +48,7 @@ async function boot() {
   router.register('/recordings', recordings);
   router.register('/memory', memory);
   router.register('/config', configPanel);
+  router.register('/features', features);
   router.register('/logs', logs);
   router.register('/agents', agents);
   router.register('/sops', sops);

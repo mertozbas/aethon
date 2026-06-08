@@ -22,7 +22,24 @@ let data = {
   memory: { enabled: false, count: 0, entries: [] },
   telemetry: { enabled: false, summary: {}, metrics: [] },
   scheduler: { jobs: [] },
+  config: {},
 };
+
+// Count enabled capability/runtime features for the overview card.
+function _capsCount() {
+  const c = data.config || {};
+  const cap = c.capabilities || {};
+  const flags = [
+    cap.scraper && cap.scraper.enabled, cap.github && cap.github.enabled,
+    cap.jsonrpc && cap.jsonrpc.enabled, cap.notify && cap.notify.enabled,
+    cap.computer && cap.computer.enabled,
+    c.macos && c.macos.enabled, c.lsp && c.lsp.enabled,
+    c.runtime_tools && c.runtime_tools.enabled,
+    c.session_recorder && c.session_recorder.enabled,
+    c.ambient && c.ambient.enabled, c.mcp && c.mcp.enabled,
+  ];
+  return { on: flags.filter(Boolean).length, total: flags.length };
+}
 
 // Sparkline history — rolling window of last 20 snapshots
 const SPARK_MAX = 20;
@@ -123,6 +140,13 @@ function _render() {
         <div class="card-sub">${_jobsSub()}</div>
         <div class="card-sparkline"><canvas id="spark-jobs"></canvas></div>
       </div>
+      <a class="summary-card" href="#/features" style="text-decoration:none;color:inherit">
+        <div class="card-icon">\u26A1</div>
+        <div class="card-value text-mono" id="card-caps">${_capsCount().on}<span style="color:var(--text-muted);font-size:0.6em">/${_capsCount().total}</span></div>
+        <div class="card-label">Capabilities</div>
+        <div class="card-sub">Enabled features \u2192 open Features</div>
+        <div class="card-sparkline"></div>
+      </a>
     </div>
 
     <!-- Recent Activity -->
@@ -180,9 +204,18 @@ async function _fetchAll() {
     _fetchMemory(),
     _fetchTelemetry(),
     _fetchJobs(),
+    _fetchConfig(),
   ]);
   _pushSparkData();
   _render();
+}
+
+async function _fetchConfig() {
+  try {
+    data.config = await fetchJSON('/api/config');
+  } catch (e) {
+    console.error('[Overview] Failed to fetch config:', e);
+  }
 }
 
 async function _fetchSessions() {
