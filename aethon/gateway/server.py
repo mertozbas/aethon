@@ -33,6 +33,19 @@ class AethonGateway:
             self.runtime._telemetry_hook._event_bus = self.event_bus
         # Session recorder (single instance shared across agents; may be None)
         self._recorder = self.runtime._session_recorder_hook
+        # Ambient mode manager (opt-in; wired before any agent is created so its
+        # tools register). Fully dormant unless config.ambient.enabled.
+        self._ambient_manager = None
+        if getattr(config, "ambient", None) and config.ambient.enabled:
+            try:
+                from aethon.agent.ambient import AmbientModeManager
+
+                self._ambient_manager = AmbientModeManager(
+                    self.runtime, config, self.event_bus
+                )
+                self.runtime._ambient_manager = self._ambient_manager
+            except Exception as e:
+                logger.warning(f"Ambient manager init error: {e}")
         self.adapters: dict[str, object] = {}
         self._tasks: list[asyncio.Task] = []
         self._shutdown_event = asyncio.Event()
@@ -57,6 +70,16 @@ class AethonGateway:
                 logger.info("Session recording started")
             except Exception as e:
                 logger.warning(f"Session recording start error: {e}")
+
+        # Bind the ambient manager to the running loop; auto-start only if configured.
+        if self._ambient_manager:
+            try:
+                self._ambient_manager.set_loop(asyncio.get_running_loop())
+                if getattr(self.config.ambient, "auto_start", False):
+                    await self._ambient_manager.start()
+                    logger.info("Ambient mode auto-started")
+            except Exception as e:
+                logger.warning(f"Ambient start error: {e}")
 
         if self.config.channels.webchat.enabled:
             self.adapters["webchat"] = WebChatAdapter(self.config, self.router)
@@ -229,6 +252,13 @@ class AethonGateway:
     async def shutdown(self):
         """Gracefully stop all adapters, scheduler, and MCP clients."""
         logger.info("Shutting down AETHON...")
+
+        # Stop ambient mode (if running)
+        if self._ambient_manager:
+            try:
+                await self._ambient_manager.stop()
+            except Exception as e:
+                logger.warning(f"Ambient stop error: {e}")
 
         # Export the session recording (if active)
         if self._recorder:

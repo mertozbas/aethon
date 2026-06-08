@@ -1,0 +1,207 @@
+"""Ambient / autonomous mode.
+
+A background asyncio task that, when enabled and started, periodically prompts the
+agent to do proactive (ambient) or self-directed (autonomous) work during idle
+time. Fully opt-in and runtime-toggleable; dormant by default.
+
+Concurrency: ambient iterations run on a dedicated session, so they never share
+an agent instance with live user sessions. ``runtime.process()`` offloads the
+blocking agent call to a thread executor, so the loop never starves real message
+handling. Completion signals are checked server-side (immune to prompt injection).
+"""
+
+import asyncio
+import logging
+import time
+from typing import Optional
+
+from aethon.channels.base import InboundMessage
+
+logger = logging.getLogger("aethon.ambient")
+
+_AMBIENT_SESSION = "ambient:local"
+
+_AMBIENT_PROMPTS = [
+    "You have idle time. Review recent context (CONTEXT.md, recent activity) and "
+    "proactively surface anything useful: follow-ups, risks, or small improvements. "
+    "If there is nothing useful to do, reply with exactly {signal} and stop.",
+    "Idle cycle: check whether any recent task left loose ends worth finishing or "
+    "noting. Be concise. If nothing is pending, reply with exactly {signal}.",
+    "Reflect on the last interaction and prepare anything that would help the user "
+    "next. If there is nothing to prepare, reply with exactly {signal}.",
+]
+
+
+class AmbientModeManager:
+    """Manage an opt-in background loop for proactive/autonomous work."""
+
+    def __init__(self, runtime, config, event_bus=None):
+        self.runtime = runtime
+        self.config = getattr(config, "ambient", config)
+        self.event_bus = event_bus
+        self.running = False
+        self.autonomous = False
+        self.ambient_iterations = 0
+        self.ambient_results_history: list = []
+        self.last_query: Optional[str] = None
+        self.last_response: Optional[str] = None
+        self.last_interaction: float = time.time()
+        self._task: Optional[asyncio.Task] = None
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
+        self._interrupted = False
+
+    def set_loop(self, loop) -> None:
+        self._loop = loop
+
+    # ---- thread-safe request methods (called from @tool in the executor) ----
+
+    def request_start(self, autonomous: bool = False) -> str:
+        if self.running:
+            return "Ambient mode is already running."
+        if self._loop is None:
+            return "Ambient mode is unavailable (no event loop bound)."
+        asyncio.run_coroutine_threadsafe(self.start(autonomous), self._loop)
+        return f"Ambient mode starting ({'autonomous' if autonomous else 'ambient'})."
+
+    def request_stop(self) -> str:
+        if not self.running:
+            return "Ambient mode is not running."
+        if self._loop is not None:
+            asyncio.run_coroutine_threadsafe(self.stop(), self._loop)
+        else:
+            self.running = False
+        return "Ambient mode stopping."
+
+    def status(self) -> dict:
+        return {
+            "running": self.running,
+            "autonomous": self.autonomous,
+            "iterations": self.ambient_iterations,
+            "pending_results": len(self.ambient_results_history),
+            "last_interaction_age_s": round(time.time() - self.last_interaction, 1),
+        }
+
+    # ---- lifecycle ----
+
+    async def start(self, autonomous: bool = False) -> None:
+        if self.running:
+            return
+        self.running = True
+        self.autonomous = autonomous
+        self.ambient_iterations = 0
+        self._interrupted = False
+        if self._loop is None:
+            self._loop = asyncio.get_running_loop()
+        self._task = asyncio.create_task(self._ambient_loop())
+        logger.info(f"Ambient mode started (autonomous={autonomous})")
+
+    async def stop(self) -> None:
+        self.running = False
+        if self._task and not self._task.done():
+            self._task.cancel()
+            try:
+                await self._task
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                pass
+        self._task = None
+        logger.info("Ambient mode stopped")
+
+    def interrupt(self) -> None:
+        self._interrupted = True
+
+    def record_interaction(self, query: str, result: str) -> None:
+        """Called after each real user message — resets the idle clock."""
+        self.last_query = query
+        self.last_response = result
+        self.last_interaction = time.time()
+        if not self.autonomous:
+            self.ambient_iterations = 0
+
+    def get_and_clear_result(self) -> list:
+        results = list(self.ambient_results_history)
+        self.ambient_results_history.clear()
+        return results
+
+    # ---- internals ----
+
+    def _max_iterations(self) -> int:
+        return (
+            self.config.autonomous_max_iterations
+            if self.autonomous
+            else self.config.max_iterations
+        )
+
+    def _cooldown(self) -> float:
+        return (
+            self.config.autonomous_cooldown_seconds
+            if self.autonomous
+            else self.config.cooldown_seconds
+        )
+
+    def _build_ambient_prompt(self) -> str:
+        idx = self.ambient_iterations % len(_AMBIENT_PROMPTS)
+        return _AMBIENT_PROMPTS[idx].format(signal=self.config.completion_signal)
+
+    def _check_completion_signal(self, text: str) -> bool:
+        return bool(text) and self.config.completion_signal in text
+
+    async def _ambient_loop(self) -> None:
+        try:
+            while self.running:
+                await asyncio.sleep(self._cooldown())
+                if not self.running:
+                    break
+                if self._interrupted:
+                    self._interrupted = False
+                    continue
+                # Idle gate (non-autonomous): only act when genuinely idle.
+                if not self.autonomous:
+                    if time.time() - self.last_interaction < self.config.idle_threshold_seconds:
+                        continue
+                if self.ambient_iterations >= self._max_iterations():
+                    logger.info("Ambient mode reached its iteration cap; stopping")
+                    self.running = False
+                    break
+                self.ambient_iterations += 1
+                try:
+                    msg = InboundMessage(
+                        channel="ambient",
+                        sender_id="system",
+                        sender_name="ambient",
+                        text=self._build_ambient_prompt(),
+                    )
+                    result = await self.runtime.process(msg, _AMBIENT_SESSION)
+                except asyncio.CancelledError:
+                    raise
+                except Exception as e:
+                    result = f"(ambient iteration error: {e})"
+                entry = {
+                    "iteration": self.ambient_iterations,
+                    "result": (result or "")[:1000],
+                    "timestamp": time.time(),
+                }
+                self.ambient_results_history.append(entry)
+                if self.event_bus:
+                    try:
+                        self.event_bus.emit("ambient", {**entry, "status": "running"})
+                    except Exception:
+                        pass
+                if self._check_completion_signal(result or ""):
+                    logger.info("Ambient completion signal received; stopping")
+                    self.autonomous = False
+                    self.running = False
+                    break
+        except asyncio.CancelledError:
+            pass
+        finally:
+            self.running = False
+            if self.event_bus:
+                try:
+                    self.event_bus.emit(
+                        "ambient",
+                        {"status": "stopped", "iterations": self.ambient_iterations},
+                    )
+                except Exception:
+                    pass

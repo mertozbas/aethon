@@ -198,6 +198,24 @@ class RuntimeToolsConfig(BaseModel):
     cache_dir: str = "~/.aethon/runtime_tools_cache"
 
 
+class AmbientConfig(BaseModel):
+    """Ambient / autonomous mode.
+
+    Opt-in and runtime-toggleable. Defaults keep it fully dormant: with
+    ``enabled=False`` no ambient tools are registered and no background task ever
+    runs. ``start_ambient_mode`` / ``stop_ambient_mode`` are the runtime switch.
+    """
+
+    enabled: bool = False
+    auto_start: bool = False
+    idle_threshold_seconds: int = 30
+    max_iterations: int = 15
+    cooldown_seconds: int = 60
+    autonomous_cooldown_seconds: int = 10
+    autonomous_max_iterations: int = 100
+    completion_signal: str = "[AMBIENT_DONE]"
+
+
 class SessionRecorderConfig(BaseModel):
     """Session recording (timeline + snapshots, exported to a ZIP for replay).
 
@@ -343,6 +361,7 @@ class AethonConfig(BaseModel):
     macos: MacOSConfig = MacOSConfig()
     runtime_tools: RuntimeToolsConfig = RuntimeToolsConfig()
     session_recorder: SessionRecorderConfig = SessionRecorderConfig()
+    ambient: AmbientConfig = AmbientConfig()
     lsp: LSPConfig = LSPConfig()
     prompt: PromptConfig = PromptConfig()
     capabilities: CapabilitiesConfig = CapabilitiesConfig()

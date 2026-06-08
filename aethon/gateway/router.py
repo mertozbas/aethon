@@ -69,6 +69,23 @@ class MessageRouter:
                 "timestamp": time.time(),
             })
 
+        # 3b. Ambient mode: record this (real) interaction and surface any pending
+        # ambient results. No-op unless an ambient manager is wired.
+        ambient = getattr(self.runtime, "_ambient_manager", None)
+        if ambient is not None:
+            try:
+                ambient.record_interaction(message.text, response_text or "")
+                pending = ambient.get_and_clear_result()
+                extra = "\n\n".join(
+                    f"[ambient #{p['iteration']}] {p['result']}"
+                    for p in pending
+                    if p.get("result")
+                )
+                if extra:
+                    response_text = (response_text or "") + "\n\n---\n" + extra
+            except Exception:
+                pass
+
         # 4. Build response (raw alanini kopyala — kanal-spesifik veri icin)
         return OutboundMessage(
             channel=message.channel,

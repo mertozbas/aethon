@@ -49,6 +49,7 @@ class AethonRuntime:
         self.team_orchestrator = None
         self._telemetry_hook = None
         self._session_recorder_hook = None
+        self._ambient_manager = None  # wired by the gateway when ambient is enabled
         self._context_updater = None
         self._mcp_loader = None
         self._event_bus = None
@@ -349,6 +350,18 @@ class AethonRuntime:
             tools.append(manage_messages)
         except Exception:
             pass
+        # Ambient mode tools — only when enabled AND the gateway wired a manager.
+        if (
+            getattr(self.config, "ambient", None)
+            and self.config.ambient.enabled
+            and self._ambient_manager is not None
+        ):
+            try:
+                from aethon.tools.ambient import create_ambient_tools
+
+                tools.extend(create_ambient_tools(self._ambient_manager))
+            except Exception:
+                pass
         # manage_tools — dynamic tool loading. Opt-in; the security/approval hooks
         # and the tool's own config check gate the dangerous actions.
         rt_cfg = getattr(self.config, "runtime_tools", None)
