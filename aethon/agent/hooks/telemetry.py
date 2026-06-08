@@ -69,6 +69,12 @@ class TelemetryHookProvider(HookProvider):
         }
         self.metrics.append(record)
         logger.info(f"TOOL: {record['name']} | {duration:.2f}s | {status}")
+        # Surface the actual error so failures are diagnosable (not just "exception").
+        if event.exception is not None:
+            logger.warning(
+                f"TOOL EXCEPTION: {record['name']} -> "
+                f"{type(event.exception).__name__}: {event.exception}"
+            )
 
         # Emit to dashboard event bus
         if self._event_bus:
