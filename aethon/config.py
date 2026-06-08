@@ -337,6 +337,10 @@ class PerformanceConfig(BaseModel):
     model_warmup: bool = False
     session_cache_size: int = 10
     embedding_cache_size: int = 100
+    # Cap how much text a single tool result feeds back to the model. A command
+    # that dumps thousands of lines (ruff, mypy, big greps) would otherwise blow
+    # the model's context window. 0 disables the cap. ~12000 chars ≈ 3k tokens.
+    max_tool_output_chars: int = 12000
 
 
 class SessionConfig(BaseModel):

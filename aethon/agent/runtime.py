@@ -406,6 +406,16 @@ class AethonRuntime:
                 runtime_tools=getattr(self.config, "runtime_tools", None),
             ),
         ]
+        # Tool-output guard — cap oversized tool results before they reach the
+        # model (prevents a single huge command from overflowing the context).
+        max_out = getattr(self.config.performance, "max_tool_output_chars", 0)
+        if max_out and max_out > 0:
+            try:
+                from aethon.agent.hooks.output_guard import ToolOutputGuardHookProvider
+
+                hooks.append(ToolOutputGuardHookProvider(max_chars=max_out))
+            except Exception as e:
+                logger.warning(f"ToolOutputGuard startup error: {e}")
         # MemoryGuardHook
         if self.config.memory_guard.enabled:
             try:
