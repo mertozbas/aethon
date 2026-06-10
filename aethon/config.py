@@ -287,6 +287,9 @@ class ReliabilityConfig(BaseModel):
     # evidence exists for the files edited, append a Definition-of-Done
     # reminder instead of returning the claim clean.
     completion_gate: bool = True
+    # AnglicizationGuard hook — pause edits that replace existing Turkish
+    # text with English-only text (advisory: an identical re-issue passes).
+    anglicization_guard: bool = True
 
 
 class PromptConfig(BaseModel):
@@ -303,6 +306,7 @@ class PromptConfig(BaseModel):
     include_self_awareness: bool = False  # embed key source files — opt-in
     include_tasks: bool = True  # task-ledger snapshot (## Open Tasks)
     include_handoff: bool = True  # reset checkpoints (## Handoff)
+    include_operating_rules: bool = True  # policy-as-code layer (Phase 8 / R13)
     # Recompose the system prompt before every turn so CONTEXT.md / ledger /
     # handoff updates surface mid-session (compose() otherwise runs once per
     # cached agent).

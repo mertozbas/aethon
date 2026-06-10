@@ -116,6 +116,8 @@ class AethonRuntime:
                 self.sop_runner = SOPRunner(
                     sop_dirs, config.sops.builtin_sops_enabled
                 )
+                # Single source of truth for the prompt's SOP layer (R18).
+                self.prompt_composer.sop_runner = self.sop_runner
                 logger.info(
                     f"SOPs: {len(self.sop_runner.list_sops())} loaded"
                 )
@@ -462,6 +464,16 @@ class AethonRuntime:
                 runtime_tools=getattr(self.config, "runtime_tools", None),
             ),
         ]
+        # Tool-input validator (R16) — turn malformed calls into
+        # self-describing cancellations instead of opaque pydantic errors.
+        try:
+            from aethon.agent.hooks.input_validator import (
+                InputValidatorHookProvider,
+            )
+
+            hooks.append(InputValidatorHookProvider())
+        except Exception as e:
+            logger.warning(f"InputValidator startup error: {e}")
         # Tool-output guard — cap oversized tool results before they reach the
         # model (prevents a single huge command from overflowing the context).
         max_out = getattr(self.config.performance, "max_tool_output_chars", 0)
@@ -498,6 +510,25 @@ class AethonRuntime:
                 logger.info("LSPDiagnosticsHook: active")
             except Exception as e:
                 logger.warning(f"LSP diagnostics hook startup error: {e}")
+        # Anglicization guard (R14) — existing non-English text must not be
+        # silently rewritten to English. Advisory: pauses the edit once with
+        # a reminder; an identical re-issue passes (strict always blocks).
+        rel_cfg_guard = getattr(self.config, "reliability", None)
+        if rel_cfg_guard is None or getattr(
+            rel_cfg_guard, "anglicization_guard", True
+        ):
+            try:
+                from aethon.agent.hooks.anglicization_guard import (
+                    AnglicizationGuardHookProvider,
+                )
+
+                hooks.append(
+                    AnglicizationGuardHookProvider(
+                        strict=bool(getattr(rel_cfg_guard, "strict", False))
+                    )
+                )
+            except Exception as e:
+                logger.warning(f"AnglicizationGuard startup error: {e}")
         # Reliability hooks (Phase 8): PostEditVerify (R7) + CompletionGate (R6).
         # Advisory by default; reliability.strict flips them to hard gates.
         rel_cfg = getattr(self.config, "reliability", None)
@@ -513,7 +544,8 @@ class AethonRuntime:
                 )
                 hooks.append(verify_hook)
             except Exception as e:
-                logger.warning(f"PostEditVerify startup error: {e}")
+                # Reliability hooks are the safety net — escalate, don't whisper.
+                logger.error(f"PostEditVerify startup error: {e}")
         if rel_cfg and rel_cfg.completion_gate:
             try:
                 from aethon.agent.hooks.completion_gate import (
@@ -526,7 +558,7 @@ class AethonRuntime:
                     )
                 )
             except Exception as e:
-                logger.warning(f"CompletionGate startup error: {e}")
+                logger.error(f"CompletionGate startup error: {e}")
         # TelemetryHook
         if self._telemetry_hook:
             hooks.append(self._telemetry_hook)
@@ -541,23 +573,27 @@ class AethonRuntime:
             computer_cfg and computer_cfg.enabled and computer_cfg.require_approval
         )
         if self.config.approval.enabled or computer_needs_approval:
-            from aethon.agent.hooks.approval import ApprovalHookProvider
+            try:
+                from aethon.agent.hooks.approval import ApprovalHookProvider
 
-            req = (
-                set(self.config.approval.requires_approval)
-                if self.config.approval.enabled
-                else set()
-            )
-            if computer_needs_approval:
-                req.add("use_computer")
-            hooks.append(
-                ApprovalHookProvider(
-                    list(req),
-                    macos=getattr(self.config, "macos", None),
-                    computer=computer_cfg,
+                req = (
+                    set(self.config.approval.requires_approval)
+                    if self.config.approval.enabled
+                    else set()
                 )
-            )
-            logger.info("ApprovalHook: active")
+                if computer_needs_approval:
+                    req.add("use_computer")
+                hooks.append(
+                    ApprovalHookProvider(
+                        list(req),
+                        macos=getattr(self.config, "macos", None),
+                        computer=computer_cfg,
+                    )
+                )
+                logger.info("ApprovalHook: active")
+            except Exception as e:
+                # A failed safety gate must not vanish silently.
+                logger.error(f"ApprovalHook startup error: {e}")
         return hooks
 
     def get_tools_schemas(self) -> dict:

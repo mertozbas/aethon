@@ -27,6 +27,9 @@ class SystemPromptComposer:
         self.workspace = Path(workspace_dir).expanduser()
         self.config = config
         self.logs_dir = Path(logs_dir).expanduser() if logs_dir else None
+        # Optional SOPRunner — when wired (by the runtime), the SOP layer uses
+        # its registry instead of re-globbing the workspace (R18).
+        self.sop_runner = None
 
     def _flag(self, name: str, default):
         """Read a PromptConfig flag, falling back to a default when no config."""
@@ -182,24 +185,57 @@ class SystemPromptComposer:
             if self_aware:
                 layers.append(self_aware)
 
-        # 8. SOP list (built-in + workspace)
+        # 8. SOP list — from the SOPRunner registry when wired; otherwise a
+        # standalone fallback that mirrors its discovery.
         sop_names = []
-        try:
-            from strands_agents_sops import code_assist, pdd, codebase_summary  # noqa: F401
-            sop_names.extend(["code-assist", "pdd", "codebase-summary"])
-        except ImportError:
-            pass
-        sops_dir = self.workspace / "sops"
-        if sops_dir.exists():
-            for f in sops_dir.glob("*.sop.md"):
-                name = f.stem.removesuffix(".sop")
-                if name not in sop_names:
-                    sop_names.append(name)
+        if self.sop_runner is not None:
+            try:
+                sop_names = [s["name"] for s in self.sop_runner.list_sops()]
+            except Exception:
+                sop_names = []
+        if not sop_names:
+            import importlib.util
+
+            if importlib.util.find_spec("strands_agents_sops") is not None:
+                sop_names.extend(["code-assist", "pdd", "codebase-summary"])
+            sops_dir = self.workspace / "sops"
+            if sops_dir.exists():
+                for f in sops_dir.glob("*.sop.md"):
+                    name = f.stem.removesuffix(".sop")
+                    if name not in sop_names:
+                        sop_names.append(name)
         if sop_names:
             sop_list = "\n".join(f"- /{name}" for name in sop_names)
             layers.append(
                 f"## Available SOP Commands\n"
                 f"When the user types a command starting with /, an SOP is triggered:\n{sop_list}"
+            )
+
+        # 8.5 Operating Rules — policy as code (Phase 8 / R13). Lives in code,
+        # not workspace prose, so every install gets it and it survives
+        # workspace resets.
+        if self._flag("include_operating_rules", True):
+            layers.append(
+                "## Operating Rules\n"
+                "Non-negotiable working policies:\n"
+                "1. Definition of Done: work is done only when verified. Run the "
+                "relevant tests/lint for ALL new code (including scripts and "
+                "tooling) on the real configuration path. Never claim success "
+                "without evidence, and never silence a failing check (e.g. with "
+                "# noqa) instead of fixing it.\n"
+                "2. Never anglicize or rewrite existing non-English text "
+                "(comments, docstrings, documents, user content) unless "
+                "explicitly asked to translate.\n"
+                "3. Surface problems immediately: broken tools, failing "
+                "environments, and any deviation from an approved plan must be "
+                "reported to the user before continuing — never silently worked "
+                "around.\n"
+                "4. Commit hygiene: stage explicit paths (never git add . or "
+                "-A), keep commits atomic (one concern per commit), and write "
+                "accurate commit messages.\n"
+                "5. Keep durable state current: track multi-step work in the "
+                "task ledger (manage_tasks) and record verification evidence "
+                "when completing tasks."
             )
 
         # 9. Agent delegation instructions

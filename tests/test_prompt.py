@@ -141,3 +141,41 @@ def test_self_awareness_via_env(workspace_dir, monkeypatch):
     monkeypatch.setenv("AETHON_SELF_AWARE", "true")
     composer = SystemPromptComposer(str(workspace_dir), config=PromptConfig())
     assert "Self-Awareness" in composer.compose()
+
+
+# --- R13: Operating Rules (policy as code) ---
+
+
+def test_operating_rules_layer_present_by_default(workspace_dir):
+    """R13: the policy layer ships in code so every install gets it."""
+    from aethon.agent.prompt import SystemPromptComposer
+
+    prompt = SystemPromptComposer(str(workspace_dir)).compose("s")
+    assert "## Operating Rules" in prompt
+    assert "Definition of Done" in prompt
+    assert "anglicize" in prompt
+    assert "git add ." in prompt
+
+
+def test_operating_rules_layer_can_be_disabled(workspace_dir):
+    from aethon.agent.prompt import SystemPromptComposer
+    from aethon.config import PromptConfig
+
+    composer = SystemPromptComposer(
+        str(workspace_dir), config=PromptConfig(include_operating_rules=False)
+    )
+    assert "## Operating Rules" not in composer.compose("s")
+
+
+def test_sop_layer_uses_runner_when_wired(workspace_dir):
+    """R18: the SOP layer reads the runner registry instead of re-globbing."""
+    from aethon.agent.prompt import SystemPromptComposer
+
+    class _FakeRunner:
+        def list_sops(self):
+            return [{"name": "ozel-sop", "description": "x"}]
+
+    composer = SystemPromptComposer(str(workspace_dir))
+    composer.sop_runner = _FakeRunner()
+    prompt = composer.compose("s")
+    assert "/ozel-sop" in prompt
