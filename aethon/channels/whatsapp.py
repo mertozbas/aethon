@@ -94,6 +94,9 @@ class WhatsAppAdapter(ChannelAdapter):
         jid = build_jid(chat)
         self.client.send_message(jid, message.text)
 
+    def resolve_recipient(self, message: OutboundMessage):
+        return self._resolve_chat(message)
+
     def _resolve_chat(self, message: OutboundMessage):
         """Resolve the destination chat for an outbound message.
 

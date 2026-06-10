@@ -28,6 +28,18 @@ def get_gateway():
     return _gateway
 
 
+_SEND_TIMEOUT_SECONDS = 30
+
+
+def _log_send_failure(task: "asyncio.Task") -> None:
+    """Surface a failed fire-and-forget send in the log (in-loop path)."""
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc:
+        logger.error(f"Async message send failed: {exc}")
+
+
 @tool
 def send_message(channel: str, text: str, recipient: str = "") -> str:
     """Send a message to the specified channel.
@@ -52,16 +64,44 @@ def send_message(channel: str, text: str, recipient: str = "") -> str:
         text=text,
     )
 
+    # Validate the destination BEFORE dispatch so the tool never reports
+    # success for a message that cannot be delivered (proactive send with no
+    # configured recipient used to be silently dropped by the adapter).
+    resolve = getattr(adapter, "resolve_recipient", None)
+    if callable(resolve) and resolve(outbound) is None:
+        return (
+            f"Error: {channel} has no deliverable recipient. Pass `recipient` "
+            f"explicitly or configure a default destination for the channel "
+            f"(e.g. channels.{channel} default recipient or "
+            f"security.allowed_senders.{channel})."
+        )
+
     try:
         try:
             running_loop = asyncio.get_running_loop()
         except RuntimeError:
             running_loop = None
+
         if running_loop is not None:
-            # Already inside an event loop (e.g. async caller) — schedule it.
-            asyncio.ensure_future(adapter.send(outbound))
+            # On the event loop thread itself — blocking here would deadlock
+            # the loop. The recipient is already validated; schedule the send
+            # and surface any late failure in the log. Phrase the result
+            # honestly: the send has not completed yet.
+            task = asyncio.ensure_future(adapter.send(outbound))
+            task.add_done_callback(_log_send_failure)
+            return f"Message queued for delivery via {channel}."
+
+        gateway_loop = getattr(_gateway, "loop", None)
+        if gateway_loop is not None and gateway_loop.is_running():
+            # Worker thread (the normal tool-executor path): run the send on
+            # the loop the adapter clients live on and wait for the real
+            # outcome — a crashed send must not report success.
+            future = asyncio.run_coroutine_threadsafe(
+                adapter.send(outbound), gateway_loop
+            )
+            future.result(timeout=_SEND_TIMEOUT_SECONDS)
         else:
-            # No running loop (sync caller / worker thread) — run to completion.
+            # No gateway loop (tests / standalone use) — run to completion.
             asyncio.run(adapter.send(outbound))
         return f"Message sent via {channel}."
     except Exception as e:

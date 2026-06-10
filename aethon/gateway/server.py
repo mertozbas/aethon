@@ -50,6 +50,10 @@ class AethonGateway:
         self._tasks: list[asyncio.Task] = []
         self._shutdown_event = asyncio.Event()
         self._scheduler = None
+        # The gateway event loop — set in start(). Lets worker threads (tool
+        # executor) dispatch sends onto the loop the adapters live on and wait
+        # for the real outcome (see aethon/tools/messaging.py).
+        self.loop: asyncio.AbstractEventLoop | None = None
 
         # Set global gateway reference for send_message tool
         from aethon.tools.messaging import set_gateway
@@ -62,6 +66,7 @@ class AethonGateway:
         Waits until a signal arrives or any adapter exits (e.g. CLI 'exit').
         """
         coroutines = []
+        self.loop = asyncio.get_running_loop()
 
         # Start session recording (if enabled) before any channels accept messages.
         if self._recorder:

@@ -64,6 +64,16 @@ class ChannelAdapter(ABC):
     async def send(self, message: OutboundMessage) -> None:
         """Send a message through this channel."""
 
+    def resolve_recipient(self, message: OutboundMessage):
+        """Resolve the delivery destination for an outbound message.
+
+        Returns a channel-specific destination, or ``None`` when the message
+        has no deliverable recipient (so callers can report a real error
+        instead of claiming success). Channels without an addressing concept
+        (CLI, WebChat) keep this default and accept everything.
+        """
+        return message.recipient_id or "default"
+
     async def on_message(self, message: InboundMessage) -> None:
         """Forward incoming message to router."""
         response = await self.router.handle(message)

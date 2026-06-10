@@ -263,6 +263,9 @@ class TelegramAdapter(ChannelAdapter):
                     text=message.text,
                 )
 
+    def resolve_recipient(self, message: OutboundMessage):
+        return self._resolve_chat_id(message)
+
     def _resolve_chat_id(self, message: OutboundMessage):
         """Resolve the destination chat id for an outbound message.
 

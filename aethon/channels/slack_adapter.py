@@ -86,6 +86,9 @@ class SlackAdapter(ChannelAdapter):
             thread_ts=message.thread_id,
         )
 
+    def resolve_recipient(self, message: OutboundMessage):
+        return self._resolve_channel(message)
+
     def _resolve_channel(self, message: OutboundMessage):
         """Resolve the destination channel for an outbound message.
 

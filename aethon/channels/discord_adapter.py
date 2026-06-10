@@ -99,6 +99,9 @@ class DiscordAdapter(ChannelAdapter):
         else:
             await channel.send(text)
 
+    def resolve_recipient(self, message: OutboundMessage):
+        return self._resolve_channel_id(message)
+
     def _resolve_channel_id(self, message: OutboundMessage):
         """Resolve the destination channel/user id for an outbound message.
 
