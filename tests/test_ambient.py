@@ -147,3 +147,35 @@ async def test_stop_cancels_loop():
     await m.stop()
     assert m.running is False
     assert m._task is None
+
+
+# ---- R12: ledger-bound ambient mode ----
+
+def test_completion_signal_requires_empty_ledger(tmp_path):
+    """R12: the free-text signal alone can't stop the loop while open ledger
+    tasks remain — 'done' must be a verified state, not a substring."""
+    from aethon.agent.task_ledger import TaskLedger
+
+    rt = _FakeRuntime()
+    rt._task_ledger = TaskLedger(str(tmp_path))
+    m = _mgr(AmbientConfig(enabled=True, completion_signal="[DONE]"), runtime=rt)
+
+    rt._task_ledger.create("acik is")
+    assert m._check_completion_signal("bitti [DONE]") is False
+
+    rt._task_ledger.complete("T1", evidence="ok")
+    assert m._check_completion_signal("bitti [DONE]") is True
+
+
+def test_completion_signal_without_ledger_falls_back():
+    """Runtimes without a ledger keep the plain substring behavior."""
+    m = _mgr(AmbientConfig(enabled=True, completion_signal="[DONE]"))
+    assert m._check_completion_signal("bitti [DONE]") is True
+
+
+def test_ambient_prompts_are_ledger_bound():
+    """R12: every ambient prompt drives ledger work instead of invention."""
+    m = _mgr(AmbientConfig(enabled=True, completion_signal="[D]"))
+    for i in range(3):
+        m.ambient_iterations = i
+        assert "ledger" in m._build_ambient_prompt()

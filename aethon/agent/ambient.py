@@ -22,14 +22,20 @@ logger = logging.getLogger("aethon.ambient")
 _AMBIENT_SESSION = "ambient:local"
 _MAX_RESULTS_HISTORY = 50  # cap pending results so an undrained autonomous run stays bounded
 
+# R12: ambient work is bound to the task ledger — the loop advances the
+# user's recorded backlog instead of inventing plausible-sounding work.
 _AMBIENT_PROMPTS = [
-    "You have idle time. Review recent context (CONTEXT.md, recent activity) and "
-    "proactively surface anything useful: follow-ups, risks, or small improvements. "
-    "If there is nothing useful to do, reply with exactly {signal} and stop.",
-    "Idle cycle: check whether any recent task left loose ends worth finishing or "
-    "noting. Be concise. If nothing is pending, reply with exactly {signal}.",
-    "Reflect on the last interaction and prepare anything that would help the user "
-    "next. If there is nothing to prepare, reply with exactly {signal}.",
+    "You have idle time. Check the task ledger (manage_tasks action='list'): "
+    "pick the highest-priority task with status open or in_progress and make "
+    "concrete progress on it, updating the ledger as you go. Do NOT invent "
+    "work that is not in the ledger. If no open task exists, reply with "
+    "exactly {signal} and stop.",
+    "Idle cycle: continue the most important open ledger task "
+    "(manage_tasks action='list'). Record progress/evidence on the task. "
+    "If the ledger has no open tasks, reply with exactly {signal}.",
+    "Idle cycle: review open ledger tasks and finish the smallest one you can "
+    "complete now — mark it done with verification evidence. If none are "
+    "open, reply with exactly {signal}.",
 ]
 
 
@@ -150,7 +156,29 @@ class AmbientModeManager:
         return _AMBIENT_PROMPTS[idx].format(signal=self.config.completion_signal)
 
     def _check_completion_signal(self, text: str) -> bool:
-        return bool(text) and self.config.completion_signal in text
+        """True when the agent signals completion AND the ledger agrees.
+
+        The free-text signal alone is trivially emittable (R12); when a task
+        ledger is available, completion also requires that no open task
+        remains, so 'done' is a verified state rather than a substring.
+        """
+        if not (bool(text) and self.config.completion_signal in text):
+            return False
+        ledger = getattr(self.runtime, "_task_ledger", None)
+        if ledger is None:
+            return True
+        try:
+            remaining = ledger.open_tasks()
+        except Exception as e:
+            logger.warning(f"Ambient ledger check failed: {e}")
+            return True
+        if remaining:
+            logger.info(
+                f"Ambient completion signal ignored: {len(remaining)} open "
+                f"ledger task(s) remain"
+            )
+            return False
+        return True
 
     async def _ambient_loop(self) -> None:
         try:

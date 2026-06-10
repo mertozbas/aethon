@@ -96,6 +96,61 @@ def test_tools_list(runtime_config):
     assert any("file_read" in name for name in tool_names)
 
 
+def test_manage_tasks_tool_registered(runtime_config):
+    """R9: the task ledger ships as a manage_tasks tool."""
+    runtime = AethonRuntime(runtime_config)
+    assert runtime._task_ledger is not None
+    names = [
+        getattr(t, "tool_name", getattr(t, "__name__", "")) for t in runtime._get_tools()
+    ]
+    assert any("manage_tasks" in str(n) for n in names)
+
+
+def test_ledger_snapshot_survives_new_prompt_compose(runtime_config):
+    """R9: open tasks surface in the system prompt of brand-new sessions."""
+    runtime = AethonRuntime(runtime_config)
+    runtime._task_ledger.create("Yarim kalan is", acceptance_criteria="test gecer")
+    prompt = runtime.prompt_composer.compose("fresh-session")
+    assert "## Open Tasks" in prompt
+    assert "Yarim kalan is" in prompt
+
+
+def test_volatile_prompt_refreshes_per_turn(runtime_config):
+    """R10: mid-session context/ledger updates surface on the next turn."""
+    runtime = AethonRuntime(runtime_config)
+    agent = runtime.get_or_create_agent("refresh-session")
+    assert "Sonradan eklenen gorev" not in (agent.system_prompt or "")
+
+    runtime._task_ledger.create("Sonradan eklenen gorev")
+    runtime._refresh_volatile_prompt(agent, "refresh-session")
+    assert "Sonradan eklenen gorev" in agent.system_prompt
+
+
+def test_reset_session_writes_handoff_checkpoint(runtime_config, tmp_path):
+    """R11: a session reset distills a checkpoint instead of wiping orientation."""
+    import json as _json
+
+    runtime_config.session.storage_dir = str(tmp_path / "sessions")
+    runtime = AethonRuntime(runtime_config)
+    sessions_dir = tmp_path / "sessions"
+    msgs = sessions_dir / "session_s1" / "agents" / "agent_main" / "messages"
+    msgs.mkdir(parents=True)
+    (msgs / "message_0.json").write_text(_json.dumps(
+        {"message": {"role": "user", "content": [{"text": "raporu bitir"}]}}
+    ))
+    (msgs / "message_1.json").write_text(_json.dumps(
+        {"message": {"role": "assistant", "content": [{"text": "yarisini yaptim"}]}}
+    ))
+
+    runtime._reset_session("s1")
+
+    handoff = (tmp_path / "workspace" / "HANDOFF.md").read_text(encoding="utf-8")
+    assert "raporu bitir" in handoff
+    assert "yarisini yaptim" in handoff
+    # The checkpoint is read back as a prompt layer.
+    assert "## Handoff" in runtime.prompt_composer.compose("s2")
+
+
 def test_hooks_list(runtime_config):
     """Runtime provides security hooks."""
     runtime = AethonRuntime(runtime_config)
