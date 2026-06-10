@@ -28,6 +28,7 @@
 | [PHASE-5-DASHBOARD.md](development/PHASE-5-DASHBOARD.md) | Phase 5 — Dashboard & UX Revolution design |
 | [PHASE-6-INFRASTRUCTURE.md](development/PHASE-6-INFRASTRUCTURE.md) | Phase 6 — Infrastructure Strengthening design |
 | [PHASE-7-INTELLIGENCE.md](development/PHASE-7-INTELLIGENCE.md) | Phase 7 — AI Capabilities Expansion design |
+| [PHASE-8-RELIABILITY.md](development/PHASE-8-RELIABILITY.md) | Phase 8 — Reliability Hardening (autonomous-engineer trustworthiness; from the hermes-strands audit) |
 | [ROADMAP.md](development/ROADMAP.md) | Project roadmap (Phase 1-7) |
 | [SECURITY.md](development/SECURITY.md) | Security model and threat analysis |
 
@@ -42,6 +43,7 @@
 | [PHASE-5-CHECKLIST.md](checklists/PHASE-5-CHECKLIST.md) | Phase 5 completion checklist (76 items) |
 | [PHASE-6-CHECKLIST.md](checklists/PHASE-6-CHECKLIST.md) | Phase 6 completion checklist (54 items) |
 | [PHASE-7-CHECKLIST.md](checklists/PHASE-7-CHECKLIST.md) | Phase 7 completion checklist (53 items) |
+| [PHASE-8-CHECKLIST.md](checklists/PHASE-8-CHECKLIST.md) | Phase 8 reliability checklist (R1-R18, 4 sprints) |
 
 ### References (`references/`)
 
@@ -74,6 +76,7 @@
 | Phase 5 — Dashboard & UX | ✅ Completed | 348 tests | 76 items |
 | Phase 6 — Infrastructure | ✅ v1 slice (Docker + CI + packaging + dashboard auth) | 421 tests | 54 items |
 | Phase 7 — AI Capabilities | ✅ Shipped in 0.2.0 (see [CAPABILITIES.md](CAPABILITIES.md)) | 421 tests | 53 items |
+| Phase 8 — Reliability Hardening | 📋 Planned — design complete ([PHASE-8](development/PHASE-8-RELIABILITY.md)) | — | R1-R18 |
 
 **Completed:** 421 tests, all passing.
 
