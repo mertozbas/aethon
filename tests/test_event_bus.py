@@ -1,7 +1,6 @@
 """Tests for DashboardEventBus."""
 
 import asyncio
-import pytest
 
 from aethon.ui.event_bus import DashboardEventBus
 

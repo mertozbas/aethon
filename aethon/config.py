@@ -4,7 +4,6 @@ YAML config loading with environment variable resolution and Pydantic validation
 """
 
 from pathlib import Path
-from typing import Optional
 
 import os
 import yaml

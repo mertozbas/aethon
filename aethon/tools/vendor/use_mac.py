@@ -7,14 +7,12 @@ Shortcuts, Messages, Keychain, Music, and raw AppleScript execution.
 One tool to control the whole Mac.
 """
 
-import json
 import logging
 import os
 import platform
-import re
 import subprocess
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from strands import tool
 
@@ -288,8 +286,8 @@ def _reminders_lists() -> Dict:
     r = _run_applescript(script)
     if r.returncode != 0:
         return _err(f"Error: {r.stderr.strip()}")
-    lists = [l.strip() for l in r.stdout.strip().split("\n") if l.strip()]
-    return _ok("✅ Reminder Lists:\n" + "\n".join(f"  • {l}" for l in lists))
+    lists = [ln.strip() for ln in r.stdout.strip().split("\n") if ln.strip()]
+    return _ok("✅ Reminder Lists:\n" + "\n".join(f"  • {name}" for name in lists))
 
 
 # =============================================================================
@@ -576,7 +574,6 @@ def _finder_selection() -> Dict:
 def _finder_tag(path: str, tags: str) -> Dict:
     """Add Finder tags to a file."""
     tag_list = [t.strip() for t in tags.split(",")]
-    tag_str = ", ".join(f'"{_esc(t)}"' for t in tag_list)
     # Use xattr for tagging (more reliable)
     import plistlib
 
@@ -830,18 +827,8 @@ def _system_battery() -> Dict:
 def _system_do_not_disturb(enable: bool = None) -> Dict:
     """Toggle Focus/Do Not Disturb mode."""
     if enable is not None:
-        # Use shortcuts to toggle DND
-        action = "turn on" if enable else "turn off"
-        script = f"""
-        tell application "System Events"
-            -- Toggle via Control Center
-            tell application process "ControlCenter"
-                -- Click Focus in menu bar
-            end tell
-        end tell
-        """
-        # More reliable: use shortcuts
-        r = subprocess.run(
+        # Use shortcuts to toggle DND (more reliable than UI scripting)
+        subprocess.run(
             (
                 ["shortcuts", "run", "Toggle Focus"]
                 if enable

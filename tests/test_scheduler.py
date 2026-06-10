@@ -8,7 +8,6 @@ from aethon.tools.scheduler import (
     AethonScheduler, set_scheduler,
     schedule_task, list_scheduled_jobs, remove_scheduled_job,
 )
-import aethon.tools.scheduler as scheduler_module
 
 
 @pytest.fixture

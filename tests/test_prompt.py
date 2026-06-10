@@ -1,6 +1,5 @@
 """Tests for SystemPromptComposer."""
 
-import pytest
 
 from aethon.agent.prompt import SystemPromptComposer
 from aethon.config import PromptConfig

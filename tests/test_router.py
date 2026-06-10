@@ -1,7 +1,6 @@
 """Tests for MessageRouter."""
 
 import pytest
-import asyncio
 
 from aethon.config import AethonConfig, SecurityConfig
 from aethon.channels.base import InboundMessage

@@ -2,7 +2,6 @@
 
 import pytest
 import requests
-from pathlib import Path
 
 from aethon.config import AethonConfig
 

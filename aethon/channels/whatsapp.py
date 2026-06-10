@@ -22,7 +22,6 @@ class WhatsAppAdapter(ChannelAdapter):
         try:
             from neonize.client import NewClient
             from neonize.events import MessageEv, ConnectedEv
-            from neonize.utils import log as neonize_log
         except ImportError:
             raise ImportError(
                 "WhatsApp requires neonize: pip install neonize"

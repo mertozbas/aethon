@@ -1,7 +1,6 @@
 """Tests for TelemetryHookProvider."""
 
 import time
-import pytest
 from unittest.mock import MagicMock
 
 from aethon.agent.hooks.telemetry import TelemetryHookProvider

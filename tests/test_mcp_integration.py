@@ -1,6 +1,5 @@
 """Tests for MCP server integration."""
 
-import pytest
 from unittest.mock import MagicMock, patch
 
 from aethon.tools.mcp_integration import MCPToolLoader

@@ -1,6 +1,5 @@
 """Tests for ContextUpdater."""
 
-import pytest
 
 from aethon.agent.context_updater import ContextUpdater
 

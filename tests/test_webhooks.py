@@ -10,7 +10,6 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from aethon.gateway.webhooks import setup_webhooks
-from aethon.channels.base import OutboundMessage
 
 
 @pytest.fixture

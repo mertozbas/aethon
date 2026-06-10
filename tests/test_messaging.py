@@ -4,7 +4,6 @@ import pytest
 from unittest.mock import MagicMock, AsyncMock
 
 from aethon.tools.messaging import send_message, set_gateway, get_gateway
-import aethon.tools.messaging as messaging_module
 
 
 @pytest.fixture(autouse=True)

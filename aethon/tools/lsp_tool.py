@@ -26,7 +26,6 @@ import threading
 import time
 from pathlib import Path
 from typing import Any, Optional
-from urllib.parse import quote as url_quote
 from urllib.request import pathname2url
 
 from strands import tool
@@ -586,7 +585,7 @@ def _action_goto_definition(file_path: str, line: int, character: int,
     """Go to definition at a position."""
     lang = language or _detect_language(file_path)
     if not lang or lang not in LSP_SERVERS or not LSP_SERVERS[lang].get("running"):
-        return {"status": "error", "content": [{"text": f"No running LSP server. Start one first."}]}
+        return {"status": "error", "content": [{"text": "No running LSP server. Start one first."}]}
 
     uri = _ensure_document_open(lang, file_path)
 
@@ -609,9 +608,9 @@ def _action_goto_definition(file_path: str, line: int, character: int,
         target_range = loc.get("range") or loc.get("targetRange", {})
         start = target_range.get("start", {})
         path = _uri_to_path(target_uri)
-        l = start.get("line", 0) + 1
-        c = start.get("character", 0) + 1
-        lines.append(f"{path}:{l}:{c}")
+        line_no = start.get("line", 0) + 1
+        col_no = start.get("character", 0) + 1
+        lines.append(f"{path}:{line_no}:{col_no}")
 
     return {
         "status": "success",
@@ -650,9 +649,9 @@ def _action_find_references(file_path: str, line: int, character: int,
         rng = loc.get("range", {})
         start = rng.get("start", {})
         path = _uri_to_path(target_uri)
-        l = start.get("line", 0) + 1
-        c = start.get("character", 0) + 1
-        lines.append(f"{path}:{l}:{c}")
+        line_no = start.get("line", 0) + 1
+        col_no = start.get("character", 0) + 1
+        lines.append(f"{path}:{line_no}:{col_no}")
 
     header = f"Found {len(lines)} reference(s)"
     if truncated:
@@ -858,8 +857,8 @@ def lsp(
                 if not LSP_SERVERS:
                     return {"status": "success", "content": [{"text": "No LSP servers running."}]}
                 results = []
-                for l in list(LSP_SERVERS.keys()):
-                    r = _stop_server(l)
+                for lang in list(LSP_SERVERS.keys()):
+                    r = _stop_server(lang)
                     results.append(r["content"][0]["text"])
                 return {"status": "success", "content": [{"text": "\n".join(results)}]}
             return _stop_server(lang)

@@ -6,7 +6,6 @@ Provides non-interactive, programmatic access to Apple Notes.
 import logging
 import os
 import platform
-import shutil
 import subprocess
 from typing import Any, Dict, Optional
 

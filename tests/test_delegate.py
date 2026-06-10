@@ -11,7 +11,6 @@ from aethon.tools.delegate import (
     ask_researcher,
     ask_analyst,
     ask_planner,
-    _specialist_factory,
 )
 import aethon.tools.delegate as delegate_module
 

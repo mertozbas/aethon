@@ -12,7 +12,6 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Optional
 
 from fastapi import Request, WebSocket, WebSocketDisconnect, Query
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse

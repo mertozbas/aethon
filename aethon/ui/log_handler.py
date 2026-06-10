@@ -6,7 +6,6 @@ enabling real-time log streaming to the browser.
 
 import logging
 from datetime import datetime
-from typing import Any
 
 
 class WebSocketLogHandler(logging.Handler):

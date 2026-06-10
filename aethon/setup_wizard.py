@@ -143,7 +143,7 @@ def _ensure_embedding_model(memory_cfg: dict) -> None:
     model = memory_cfg.get("embedding_model", "nomic-embed-text")
 
     if shutil.which("ollama") is None:
-        console.print(f"\n[yellow]Memory needs Ollama for embeddings, but it isn't installed.[/]")
+        console.print("\n[yellow]Memory needs Ollama for embeddings, but it isn't installed.[/]")
         if shutil.which("brew") and click.confirm("  Install Ollama now with Homebrew?", default=False):
             try:
                 subprocess.run(["brew", "install", "ollama"], check=True)

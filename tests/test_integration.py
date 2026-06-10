@@ -7,7 +7,6 @@ Requires Ollama to be running with qwen3-coder-next and nomic-embed-text.
 """
 
 import pytest
-import asyncio
 
 from aethon.config import (
     AethonConfig, PathsConfig, ModelConfig, MemoryConfig,

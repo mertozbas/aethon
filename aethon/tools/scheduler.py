@@ -5,7 +5,6 @@ APScheduler integration for automatic SOP triggering with result delivery to cha
 
 import logging
 import uuid
-from typing import Any
 
 from strands import tool
 

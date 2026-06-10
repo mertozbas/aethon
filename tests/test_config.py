@@ -1,12 +1,10 @@
 """Tests for AethonConfig."""
 
 import os
-import pytest
 from pathlib import Path
 
 from aethon.config import (
-    AethonConfig, ModelConfig, MemoryConfig, ChannelsConfig,
-    MultiAgentConfig, SOPConfig, ApprovalConfig,
+    AethonConfig, ModelConfig, MemoryConfig, MultiAgentConfig, SOPConfig, ApprovalConfig,
     TelemetryConfig, MemoryGuardConfig, SchedulerConfig,
     DashboardConfig, WebhookConfig, MCPConfig, PerformanceConfig,
 )
@@ -19,7 +17,6 @@ def test_version_matches_pyproject():
     __version__. They must match so a release tag matches what users see.
     """
     import re
-    from pathlib import Path
 
     from aethon import __version__
 

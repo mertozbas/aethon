@@ -1,6 +1,5 @@
 """Tests for MemoryGuardHookProvider."""
 
-import pytest
 from unittest.mock import MagicMock
 
 from aethon.agent.hooks.memory_guard import MemoryGuardHookProvider

@@ -127,7 +127,7 @@ def test_cosine_similarity():
 @pytest.mark.ollama
 def test_store_with_metadata(memory):
     """Store with metadata preserves it."""
-    mid = memory.store(
+    memory.store(
         "onemli bilgi",
         category="notes",
         metadata={"source": "test", "priority": "high"},

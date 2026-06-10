@@ -4,7 +4,7 @@ Tests REST API endpoints, SPA serving, and WebSocket connections.
 """
 
 import pytest
-from unittest.mock import MagicMock, PropertyMock
+from unittest.mock import MagicMock
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient

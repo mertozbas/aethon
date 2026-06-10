@@ -1,7 +1,6 @@
 """Tests for SOPRunner."""
 
 import pytest
-from pathlib import Path
 
 from aethon.sops.runner import SOPRunner
 

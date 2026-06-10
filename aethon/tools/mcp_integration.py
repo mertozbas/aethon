@@ -4,7 +4,6 @@ Loads tools from external MCP servers and makes them available to AETHON agents.
 """
 
 import logging
-from typing import Any
 
 from strands.tools.mcp import MCPClient
 from mcp import StdioServerParameters, stdio_client

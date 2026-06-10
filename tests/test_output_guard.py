@@ -1,7 +1,7 @@
 """Tests for the tool-output guard (context-overflow protection)."""
 
 from aethon.config import (
-    AethonConfig, PathsConfig, ModelConfig, MemoryConfig, MCPConfig, PerformanceConfig,
+    AethonConfig, PathsConfig, ModelConfig, MemoryConfig, MCPConfig,
 )
 from aethon.agent.runtime import AethonRuntime
 from aethon.agent.hooks.output_guard import ToolOutputGuardHookProvider

@@ -94,7 +94,6 @@ def test_embedding_cache(tmp_path):
     from aethon.memory.vector import VectorMemory
 
     call_count = 0
-    original_post = None
 
     def mock_post(url, json=None, timeout=None):
         nonlocal call_count
@@ -122,7 +121,7 @@ def test_embedding_cache(tmp_path):
         assert call_count == 1  # No additional API call
 
         # Different text — hits API
-        emb3 = memory._get_embedding("world")
+        memory._get_embedding("world")
         assert call_count == 2
 
         # Results should be equal
