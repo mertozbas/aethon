@@ -67,6 +67,26 @@ def test_different_session_different_agent(runtime_config):
     assert len(runtime.agents) == 2
 
 
+def test_context_updater_writes_where_prompt_reads(runtime_config):
+    """R1 regression: update_context must write the exact file compose() reads.
+
+    runtime.py used to pass workspace/CONTEXT.md as the workspace dir, so the
+    updater targeted CONTEXT.md/CONTEXT.md and every write raised
+    NotADirectoryError.
+    """
+    from pathlib import Path
+
+    runtime = AethonRuntime(runtime_config)
+    workspace = Path(runtime_config.paths.workspace).expanduser()
+
+    assert runtime._context_updater is not None
+    assert runtime._context_updater.context_file == workspace / "CONTEXT.md"
+
+    # Round-trip: the write must succeed and land in the prompt source file.
+    runtime._context_updater.update("Aktif Gorev", "R1 regresyon")
+    assert "R1 regresyon" in (workspace / "CONTEXT.md").read_text(encoding="utf-8")
+
+
 def test_tools_list(runtime_config):
     """Runtime provides Phase 1 tools."""
     runtime = AethonRuntime(runtime_config)

@@ -145,10 +145,11 @@ class AethonRuntime:
         try:
             from aethon.agent.context_updater import ContextUpdater
 
-            context_path = str(
-                Path(config.paths.workspace).expanduser() / "CONTEXT.md"
-            )
-            self._context_updater = ContextUpdater(context_path)
+            # ContextUpdater expects the workspace *directory* and appends
+            # CONTEXT.md itself — passing the file path here used to produce
+            # CONTEXT.md/CONTEXT.md and break every update_context write.
+            workspace_dir = str(Path(config.paths.workspace).expanduser())
+            self._context_updater = ContextUpdater(workspace_dir)
             logger.info("ContextUpdater: active")
         except Exception as e:
             logger.warning(f"ContextUpdater startup error: {e}")
