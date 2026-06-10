@@ -76,17 +76,68 @@ class DiscordAdapter(ChannelAdapter):
         if not self.client:
             return
 
-        channel_id = message.raw.get("channel_id")
-        if channel_id:
-            channel = self.client.get_channel(channel_id)
-        else:
-            channel = self.client.get_channel(int(message.recipient_id))
+        target_id = self._resolve_channel_id(message)
+        if target_id is None:
+            logger.warning(
+                "Discord send skipped: no destination. Set channels.discord.channel_id "
+                "or security.allowed_senders.discord, or reply to an inbound message."
+            )
+            return
 
-        if channel:
-            text = message.text
-            if len(text) > 2000:
-                chunks = [text[i : i + 2000] for i in range(0, len(text), 2000)]
-                for chunk in chunks:
-                    await channel.send(chunk)
-            else:
-                await channel.send(text)
+        channel = self.client.get_channel(target_id)
+        if channel is None:
+            channel = await self._fetch_destination(target_id)
+        if channel is None:
+            logger.warning(f"Discord send skipped: destination {target_id} not reachable.")
+            return
+
+        text = message.text
+        if len(text) > 2000:
+            chunks = [text[i : i + 2000] for i in range(0, len(text), 2000)]
+            for chunk in chunks:
+                await channel.send(chunk)
+        else:
+            await channel.send(text)
+
+    def _resolve_channel_id(self, message: OutboundMessage):
+        """Resolve the destination channel/user id for an outbound message.
+
+        Order: inbound raw (reactive replies) → numeric recipient_id →
+        configured ``discord.channel_id`` → first numeric
+        ``allowed_senders.discord`` entry (user id → DM).
+        Returns an int id, or ``None`` if nothing resolves (proactive send
+        with no configured destination — caller skips instead of crashing).
+        """
+        raw_id = message.raw.get("channel_id")
+        if raw_id is not None:
+            return int(raw_id)
+        rid = (message.recipient_id or "").strip()
+        if rid and rid != "default" and rid.lstrip("-").isdigit():
+            return int(rid)
+        cfg_id = (self.config.channels.discord.channel_id or "").strip()
+        if cfg_id.lstrip("-").isdigit() and cfg_id:
+            return int(cfg_id)
+        allowed = self.config.security.allowed_senders.get("discord") or []
+        for entry in allowed:
+            entry = str(entry).strip()
+            if entry.lstrip("-").isdigit() and entry:
+                return int(entry)
+        return None
+
+    async def _fetch_destination(self, target_id: int):
+        """Resolve an id missing from the channel cache.
+
+        Tries the id as a channel first, then as a user (opens a DM) — the
+        allowed_senders fallback carries user ids, which never appear in the
+        channel cache.
+        """
+        try:
+            return await self.client.fetch_channel(target_id)
+        except Exception:
+            pass
+        try:
+            user = await self.client.fetch_user(target_id)
+            return await user.create_dm()
+        except Exception as e:
+            logger.warning(f"Discord destination {target_id} not resolvable: {e}")
+            return None

@@ -79,11 +79,40 @@ class WhatsAppAdapter(ChannelAdapter):
         if not self.client:
             return
 
-        try:
-            from neonize.utils.jid import build_jid
+        chat = self._resolve_chat(message)
+        if chat is None:
+            logger.warning(
+                "WhatsApp send skipped: no chat. Set channels.whatsapp.chat "
+                "or security.allowed_senders.whatsapp, or reply to an inbound message."
+            )
+            return
 
-            chat = message.raw.get("chat", message.recipient_id)
-            jid = build_jid(chat)
-            self.client.send_message(jid, message.text)
-        except Exception as e:
-            logger.error(f"WhatsApp message send error: {e}")
+        from neonize.utils.jid import build_jid
+
+        # No blanket except here: a failed send must propagate so callers
+        # (send_message tool, router) report the real outcome instead of "sent".
+        jid = build_jid(chat)
+        self.client.send_message(jid, message.text)
+
+    def _resolve_chat(self, message: OutboundMessage):
+        """Resolve the destination chat for an outbound message.
+
+        Order: inbound raw (reactive replies) → explicit recipient_id →
+        configured ``whatsapp.chat`` → first ``allowed_senders.whatsapp``
+        entry. Returns a chat user id, or ``None`` if nothing resolves
+        (proactive send with no configured destination — caller skips
+        instead of building a 'default' JID).
+        """
+        raw_chat = message.raw.get("chat")
+        if raw_chat:
+            return raw_chat
+        rid = (message.recipient_id or "").strip()
+        if rid and rid != "default":
+            return rid
+        cfg = (self.config.channels.whatsapp.chat or "").strip()
+        if cfg:
+            return cfg
+        allowed = self.config.security.allowed_senders.get("whatsapp") or []
+        if allowed:
+            return allowed[0]
+        return None

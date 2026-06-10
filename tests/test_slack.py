@@ -56,3 +56,56 @@ def test_slack_adapter_is_channel_adapter():
     from aethon.channels.base import ChannelAdapter
 
     assert issubclass(SlackAdapter, ChannelAdapter)
+
+
+# --- _resolve_channel (proactive/outbound destination) tests ---
+
+
+def _adapter(*, channel="", allowed=None):
+    from aethon.config import SecurityConfig
+    from aethon.channels.slack_adapter import SlackAdapter
+
+    config = AethonConfig(
+        channels=ChannelsConfig(
+            slack=SlackChannelConfig(
+                enabled=True, bot_token="xoxb-test", app_token="xapp-test",
+                channel=channel,
+            ),
+        ),
+        security=SecurityConfig(allowed_senders={"slack": allowed} if allowed else {}),
+    )
+    return SlackAdapter(config, router=None)
+
+
+def _out(recipient_id="default", raw=None):
+    from aethon.channels.base import OutboundMessage
+
+    return OutboundMessage(channel="slack", recipient_id=recipient_id, text="hi", raw=raw or {})
+
+
+def test_resolve_channel_prefers_inbound_raw():
+    """Reactive replies use the inbound channel regardless of config."""
+    adapter = _adapter(channel="C999")
+    assert adapter._resolve_channel(_out(recipient_id="C42", raw={"channel": "C7"})) == "C7"
+
+
+def test_resolve_channel_explicit_recipient():
+    adapter = _adapter()
+    assert adapter._resolve_channel(_out(recipient_id="C123456")) == "C123456"
+
+
+def test_resolve_channel_default_falls_back_to_config():
+    """Proactive send with recipient 'default' must NOT reach the API as a
+    channel name — it resolves to the configured channel."""
+    adapter = _adapter(channel="C555")
+    assert adapter._resolve_channel(_out(recipient_id="default")) == "C555"
+
+
+def test_resolve_channel_falls_back_to_allowed_senders():
+    adapter = _adapter(allowed=["U777"])
+    assert adapter._resolve_channel(_out(recipient_id="default")) == "U777"
+
+
+def test_resolve_channel_none_when_nothing_configured():
+    adapter = _adapter()
+    assert adapter._resolve_channel(_out(recipient_id="default")) is None

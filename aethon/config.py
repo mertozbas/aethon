@@ -57,16 +57,27 @@ class TelegramChannelConfig(BaseModel):
 class DiscordChannelConfig(BaseModel):
     enabled: bool = False
     token: str = ""
+    # Default destination for PROACTIVE/outbound sends (scheduler, send_message,
+    # notifications) — a channel id or a user id (DM). Reactive replies always
+    # answer the inbound channel and ignore this.
+    channel_id: str = ""
 
 
 class SlackChannelConfig(BaseModel):
     enabled: bool = False
     bot_token: str = ""
     app_token: str = ""
+    # Default destination for PROACTIVE/outbound sends — a channel id (C...),
+    # user id (U..., opens the app DM) or channel name. Reactive replies always
+    # answer the inbound channel and ignore this.
+    channel: str = ""
 
 
 class WhatsAppChannelConfig(BaseModel):
     enabled: bool = False
+    # Default destination for PROACTIVE/outbound sends — a phone number / chat
+    # user id. Reactive replies always answer the inbound chat and ignore this.
+    chat: str = ""
 
 
 class ChannelsConfig(BaseModel):

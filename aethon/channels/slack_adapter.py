@@ -72,11 +72,40 @@ class SlackAdapter(ChannelAdapter):
         if not self.app:
             return
 
-        channel = message.raw.get("channel", message.recipient_id)
-        thread_ts = message.thread_id
+        channel = self._resolve_channel(message)
+        if channel is None:
+            logger.warning(
+                "Slack send skipped: no channel. Set channels.slack.channel "
+                "or security.allowed_senders.slack, or reply to an inbound message."
+            )
+            return
 
         await self.app.client.chat_postMessage(
             channel=channel,
             text=message.text,
-            thread_ts=thread_ts,
+            thread_ts=message.thread_id,
         )
+
+    def _resolve_channel(self, message: OutboundMessage):
+        """Resolve the destination channel for an outbound message.
+
+        Order: inbound raw (reactive replies) → explicit recipient_id →
+        configured ``slack.channel`` → first ``allowed_senders.slack`` entry
+        (a user id opens the app's DM with that user).
+        Returns a Slack channel/user id, or ``None`` if nothing resolves
+        (proactive send with no configured destination — caller skips
+        instead of passing 'default' to the API).
+        """
+        raw_channel = message.raw.get("channel")
+        if raw_channel:
+            return raw_channel
+        rid = (message.recipient_id or "").strip()
+        if rid and rid != "default":
+            return rid
+        cfg = (self.config.channels.slack.channel or "").strip()
+        if cfg:
+            return cfg
+        allowed = self.config.security.allowed_senders.get("slack") or []
+        if allowed:
+            return allowed[0]
+        return None
