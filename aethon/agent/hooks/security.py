@@ -224,7 +224,22 @@ class SecurityHookProvider(HookProvider):
             return False
 
     def log_tool_result(self, event: AfterToolCallEvent) -> None:
-        """Log tool execution results."""
+        """Log tool execution results.
+
+        Errors log the tool input and error text — a bare OK/ERROR hid real
+        failures (e.g. a pydantic rejection swallowed behind a bare except).
+        """
         tool_name = event.tool_use["name"]
-        status = "ERROR" if event.result.get("status") == "error" else "OK"
-        logger.info(f"TOOL: {tool_name} | STATUS: {status}")
+        if event.result.get("status") == "error":
+            tool_input = str(event.tool_use.get("input", ""))[:200]
+            error_text = " ".join(
+                str(block.get("text", ""))
+                for block in event.result.get("content", []) or []
+                if isinstance(block, dict)
+            ).strip()[:500]
+            logger.warning(
+                f"TOOL: {tool_name} | STATUS: ERROR | "
+                f"INPUT: {tool_input} | ERROR: {error_text}"
+            )
+        else:
+            logger.info(f"TOOL: {tool_name} | STATUS: OK")

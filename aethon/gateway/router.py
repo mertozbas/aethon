@@ -83,8 +83,8 @@ class MessageRouter:
                 )
                 if extra:
                     response_text = (response_text or "") + "\n\n---\n" + extra
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Ambient integration error: {e}")
 
         # 4. Build response (raw alanini kopyala — kanal-spesifik veri icin)
         return OutboundMessage(

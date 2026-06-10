@@ -269,8 +269,10 @@ class AethonRuntime:
             from aethon.tools.messaging import send_message
 
             tools.append(send_message)
-        except Exception:
+        except ImportError:
             pass
+        except Exception as e:
+            logger.warning(f"Tool load error (send_message): {e}")
         # Scheduler tools
         try:
             from aethon.tools.scheduler import (
@@ -280,8 +282,10 @@ class AethonRuntime:
 
             if _scheduler_instance:
                 tools.extend([schedule_task, list_scheduled_jobs, remove_scheduled_job])
-        except Exception:
+        except ImportError:
             pass
+        except Exception as e:
+            logger.warning(f"Tool load error (scheduler): {e}")
         # MCP tools
         if self._mcp_loader:
             tools.extend(self._mcp_loader.get_tools())
@@ -294,29 +298,37 @@ class AethonRuntime:
                     from aethon.tools.vendor.scraper import scraper
 
                     tools.append(scraper)
-                except Exception:
+                except ImportError:
                     pass
+                except Exception as e:
+                    logger.warning(f"Tool load error (scraper): {e}")
             if caps.github.enabled:
                 try:
                     from aethon.tools.vendor.use_github import use_github
 
                     tools.append(use_github)
-                except Exception:
+                except ImportError:
                     pass
+                except Exception as e:
+                    logger.warning(f"Tool load error (use_github): {e}")
             if caps.jsonrpc.enabled:
                 try:
                     from aethon.tools.vendor.jsonrpc import jsonrpc
 
                     tools.append(jsonrpc)
-                except Exception:
+                except ImportError:
                     pass
+                except Exception as e:
+                    logger.warning(f"Tool load error (jsonrpc): {e}")
             if caps.notify.enabled:
                 try:
                     from aethon.tools.vendor.notify import notify
 
                     tools.append(notify)
-                except Exception:
+                except ImportError:
                     pass
+                except Exception as e:
+                    logger.warning(f"Tool load error (notify): {e}")
             # use_computer — high-risk; only when enabled AND pyautogui is present.
             if getattr(caps, "computer", None) and caps.computer.enabled:
                 import importlib.util as _ilu
@@ -326,8 +338,10 @@ class AethonRuntime:
                         from aethon.tools.vendor.use_computer import use_computer
 
                         tools.append(use_computer)
-                    except Exception:
+                    except ImportError:
                         pass
+                    except Exception as e:
+                        logger.warning(f"Tool load error (use_computer): {e}")
         # macOS native tools (Darwin-only; config-gated; import-guarded). The
         # security hook hard-blocks disabled action groups (Messages/Keychain
         # default off); apple_notes registers only when macos.enable_notes is set.
@@ -337,15 +351,19 @@ class AethonRuntime:
                 from aethon.tools.vendor.use_mac import use_mac
 
                 tools.append(use_mac)
-            except Exception:
+            except ImportError:
                 pass
+            except Exception as e:
+                logger.warning(f"Tool load error (use_mac): {e}")
             if macos_cfg.enable_notes:
                 try:
                     from aethon.tools.vendor.apple_notes import apple_notes
 
                     tools.append(apple_notes)
-                except Exception:
+                except ImportError:
                     pass
+                except Exception as e:
+                    logger.warning(f"Tool load error (apple_notes): {e}")
         # LSP tool — opt-in (avoid spawning language servers on boot).
         lsp_cfg = getattr(self.config, "lsp", None)
         if lsp_cfg and lsp_cfg.enabled:
@@ -353,8 +371,10 @@ class AethonRuntime:
                 from aethon.tools.lsp_tool import lsp
 
                 tools.append(lsp)
-            except Exception:
+            except ImportError:
                 pass
+            except Exception as e:
+                logger.warning(f"Tool load error (lsp): {e}")
         # record_learning — persists discoveries to LEARNINGS.md (read back into
         # the prompt by SystemPromptComposer when prompt.include_learnings).
         prompt_cfg = getattr(self.config, "prompt", None)
@@ -363,16 +383,20 @@ class AethonRuntime:
                 from aethon.tools.learning import create_learning_tool
 
                 tools.append(create_learning_tool(self.config.paths.workspace))
-            except Exception:
+            except ImportError:
                 pass
+            except Exception as e:
+                logger.warning(f"Tool load error (record_learning): {e}")
         # manage_messages — introspective only (reads message history; no mutation,
         # no gating needed). Always available when importable.
         try:
             from aethon.tools.manage_messages import manage_messages
 
             tools.append(manage_messages)
-        except Exception:
+        except ImportError:
             pass
+        except Exception as e:
+            logger.warning(f"Tool load error (manage_messages): {e}")
         # Ambient mode tools — only when enabled AND the gateway wired a manager.
         if (
             getattr(self.config, "ambient", None)
@@ -383,8 +407,10 @@ class AethonRuntime:
                 from aethon.tools.ambient import create_ambient_tools
 
                 tools.extend(create_ambient_tools(self._ambient_manager))
-            except Exception:
+            except ImportError:
                 pass
+            except Exception as e:
+                logger.warning(f"Tool load error (ambient): {e}")
         # manage_tools — dynamic tool loading. Opt-in; the security/approval hooks
         # and the tool's own config check gate the dangerous actions.
         rt_cfg = getattr(self.config, "runtime_tools", None)
@@ -393,8 +419,10 @@ class AethonRuntime:
                 from aethon.tools.manage_tools import manage_tools
 
                 tools.append(manage_tools)
-            except Exception:
+            except ImportError:
                 pass
+            except Exception as e:
+                logger.warning(f"Tool load error (manage_tools): {e}")
         return tools
 
     def _get_hooks(self) -> list:

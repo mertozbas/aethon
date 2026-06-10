@@ -107,7 +107,8 @@ class AethonScheduler:
             self.scheduler.remove_job(job_id)
             self._jobs_meta.pop(job_id, None)
             return True
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Job removal failed ({job_id}): {e}")
             return False
 
     def list_jobs(self) -> list[dict]:
