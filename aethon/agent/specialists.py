@@ -6,6 +6,7 @@ Creates and caches specialist agents for multi-agent delegation.
 import logging
 
 from strands import Agent
+from strands.agent.conversation_manager import SummarizingConversationManager
 from strands_tools import (
     file_read, file_write, editor, shell, think, current_time,
     python_repl, http_request, calculator,
@@ -63,9 +64,13 @@ SPECIALIST_CONFIGS = {
 class SpecialistFactory:
     """Create and cache specialist agents."""
 
-    def __init__(self, model):
+    def __init__(self, model, session_config=None):
         self.model = model
         self._cache: dict[str, Agent] = {}
+        self._summary_ratio = getattr(session_config, "summary_ratio", 0.3)
+        self._preserve_recent = getattr(
+            session_config, "preserve_recent_messages", 10
+        )
 
     def get(self, specialist_name: str) -> Agent:
         """Get or create a specialist agent."""
@@ -80,6 +85,13 @@ class SpecialistFactory:
                 tools=config["tools"],
                 name=config["name"],
                 agent_id=specialist_name,
+                # Specialists are process-cached and reused for every
+                # delegation; without a conversation manager their in-memory
+                # history grows unbounded until the model rejects the request.
+                conversation_manager=SummarizingConversationManager(
+                    summary_ratio=self._summary_ratio,
+                    preserve_recent_messages=self._preserve_recent,
+                ),
             )
             # Session key for the dashboard pixel office (matches /api/agents/active).
             self._cache[specialist_name].__aethon_session__ = f"specialist:{specialist_name}"

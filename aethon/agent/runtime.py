@@ -93,7 +93,9 @@ class AethonRuntime:
                 from aethon.agent.specialists import SpecialistFactory
                 from aethon.tools.delegate import set_specialist_factory
 
-                self.specialist_factory = SpecialistFactory(self.model)
+                self.specialist_factory = SpecialistFactory(
+                    self.model, session_config=config.session
+                )
                 set_specialist_factory(self.specialist_factory)
                 logger.info("Multi-agent: active")
             except Exception as e:

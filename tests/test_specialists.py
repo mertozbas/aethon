@@ -75,3 +75,24 @@ def test_specialist_configs_complete():
         assert "system_prompt" in config
         assert "tools" in config
         assert len(config["tools"]) > 0
+
+
+def test_specialists_have_conversation_manager(factory):
+    """R8 regression: specialists are process-cached and reused for every
+    delegation — without a conversation manager their history grows unbounded
+    until the model rejects the request (context overflow)."""
+    from strands.agent.conversation_manager import SummarizingConversationManager
+
+    agent = factory.get("coder")
+    assert isinstance(agent.conversation_manager, SummarizingConversationManager)
+
+
+def test_factory_honors_session_config(model):
+    """summary_ratio / preserve_recent_messages come from session config."""
+    from aethon.config import SessionConfig
+
+    factory = SpecialistFactory(
+        model, session_config=SessionConfig(summary_ratio=0.5, preserve_recent_messages=4)
+    )
+    assert factory._summary_ratio == 0.5
+    assert factory._preserve_recent == 4
