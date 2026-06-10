@@ -5,6 +5,64 @@ All notable changes to AETHON are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Phase 8 — Reliability Hardening (R1-R18)
+
+Derived from the hermes-strands autonomous-development audit: moves AETHON
+from *trusting* the agent's word to *verifying* it. Design doc:
+`docs/development/PHASE-8-RELIABILITY.md`.
+
+### Fixed
+- **`update_context` double-path bug (R1)** — every write raised
+  `NotADirectoryError` (`CONTEXT.md/CONTEXT.md`); the agent's only durable
+  scratchpad never persisted. Regression test pins the write path to the
+  exact file the prompt composer reads.
+- **Recipient resolver ported to Discord/Slack/WhatsApp (R2)** — the
+  `int('default')` proactive-send crash class fixed for Telegram was still
+  live in the other three channels. New config: `discord.channel_id`,
+  `slack.channel`, `whatsapp.chat`.
+- **`send_message` no longer lies (R3)** — recipient validated before
+  dispatch; worker-thread sends run on the gateway loop and report the real
+  outcome; in-loop sends say "queued", never "sent".
+- **Editor `.bak` sidecar leak (R4)** — `EDITOR_DISABLE_BACKUP` defaulted on;
+  `*.bak` gitignored; stray workspace sidecars removed.
+- **Silent failures surfaced (R5)** — tool error results log input + error
+  text; 14 blanket import guards split (ImportError silent, real bugs
+  logged); router/scheduler silent excepts now log.
+- **Specialists bounded (R8)** — process-cached specialist agents get a
+  `SummarizingConversationManager` (no more unbounded history → overflow).
+
+### Added
+- **Verification backstop (R6, R7)** — `PostEditVerifyHookProvider` runs the
+  configured `reliability.verify_cmd` (or auto-detected `ruff check`) on
+  edited files and appends `[Verify] PASS/FAIL` to the tool result;
+  `CompletionGateHookProvider` flags success claims that carry no PASS
+  evidence. Advisory by default; `reliability.strict` hardens both.
+- **Task Ledger (R9)** — durable `TASKS.json` working state via the new
+  `manage_tasks` tool (completion requires evidence) + an `## Open Tasks`
+  prompt layer that survives resets and restarts.
+- **Per-turn prompt refresh (R10)** — CONTEXT.md / ledger / handoff updates
+  now surface mid-session (`prompt.refresh_per_turn`).
+- **Reset checkpoints (R11)** — session resets write a compact orientation
+  checkpoint to `HANDOFF.md`, read back as a prompt layer.
+- **Ledger-bound ambient mode (R12)** — idle cycles work the recorded
+  backlog; the completion signal also requires an empty ledger.
+- **Operating Rules prompt layer (R13)** — Definition of Done, no
+  anglicization, surface-don't-hide, commit hygiene, ledger discipline —
+  shipped in code, not workspace prose.
+- **Enforcement hooks (R14-R17)** — anglicization guard (TR→EN edit pause),
+  commit-hygiene blocks (`git add .`/`-A`/`commit -a`, `*.bak`),
+  self-describing input validation for malformed tool calls, and a
+  repeated-tool-failure surfacer (3 failures/10 min → loud notice).
+- **`reliability` config section** — `strict`, `post_edit_verify`,
+  `verify_cmd`, `verify_timeout`, `completion_gate`, `anglicization_guard`.
+
+### Changed
+- Hook housekeeping (R18) — SOP prompt layer reads `SOPRunner.list_sops()`;
+  ApprovalHook construction guarded; reliability-hook startup failures
+  escalate to ERROR. Repo made fully ruff-clean.
+
 ## [0.2.0] - 2026-06-08
 
 ### Added

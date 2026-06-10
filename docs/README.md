@@ -76,9 +76,9 @@
 | Phase 5 — Dashboard & UX | ✅ Completed | 348 tests | 76 items |
 | Phase 6 — Infrastructure | ✅ v1 slice (Docker + CI + packaging + dashboard auth) | 421 tests | 54 items |
 | Phase 7 — AI Capabilities | ✅ Shipped in 0.2.0 (see [CAPABILITIES.md](CAPABILITIES.md)) | 421 tests | 53 items |
-| Phase 8 — Reliability Hardening | 📋 Planned — design complete ([PHASE-8](development/PHASE-8-RELIABILITY.md)) | — | R1-R18 |
+| Phase 8 — Reliability Hardening | ✅ Implemented ([PHASE-8](development/PHASE-8-RELIABILITY.md)) | 556 tests | R1-R18 |
 
-**Completed:** 421 tests, all passing.
+**Completed:** 556 tests, all passing.
 
 **0.2.0** added the capability tools, macOS integration, LSP, dynamic tool loading,
 ambient mode, session recording/replay, the MCP server, and system-prompt awareness —
