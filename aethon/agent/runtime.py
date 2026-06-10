@@ -163,6 +163,18 @@ class AethonRuntime:
         except Exception as e:
             logger.warning(f"ContextUpdater startup error: {e}")
 
+        # Task ledger (R9) — durable, machine-readable working state.
+        try:
+            from aethon.agent.task_ledger import TaskLedger
+
+            self._task_ledger = TaskLedger(
+                str(Path(config.paths.workspace).expanduser())
+            )
+            logger.info("TaskLedger: active")
+        except Exception as e:
+            logger.warning(f"TaskLedger startup error: {e}")
+            self._task_ledger = None
+
         # MCP Tool Loader
         if config.mcp.enabled and config.mcp.servers:
             try:
@@ -271,6 +283,10 @@ class AethonRuntime:
             from aethon.tools.context_tool import create_context_tool
 
             tools.append(create_context_tool(self._context_updater))
+        if self._task_ledger:
+            from aethon.tools.task_tool import create_task_tool
+
+            tools.append(create_task_tool(self._task_ledger))
         # send_message tool
         try:
             from aethon.tools.messaging import send_message
@@ -668,6 +684,7 @@ class AethonRuntime:
 
             # Normal message processing
             agent = self.get_or_create_agent(session_id)
+            self._refresh_volatile_prompt(agent, session_id)
             result = agent(message.text)
             response = self._extract_text(result)
             return self._apply_completion_gate(agent, session_id, response)
@@ -691,6 +708,22 @@ class AethonRuntime:
 
             logger.error(f"Model error ({session_id}): {type(e).__name__}: {e}")
             raise
+
+    def _refresh_volatile_prompt(self, agent, session_id: str) -> None:
+        """R10: recompose the system prompt before each turn.
+
+        compose() otherwise runs once per cached agent, so CONTEXT.md /
+        task-ledger / handoff updates never surface mid-session.
+        """
+        prompt_cfg = getattr(self.config, "prompt", None)
+        if prompt_cfg is not None and not getattr(
+            prompt_cfg, "refresh_per_turn", True
+        ):
+            return
+        try:
+            agent.system_prompt = self.prompt_composer.compose(session_id)
+        except Exception as e:
+            logger.warning(f"Prompt refresh error: {e}")
 
     @staticmethod
     def _extract_text(result) -> str:
@@ -773,6 +806,9 @@ class AethonRuntime:
             return
         files = sorted(messages_dir.glob("message_*.json"))
         if files:
+            # R11: distill a checkpoint to HANDOFF.md BEFORE clearing, so a
+            # reset doesn't wipe live orientation (read back as a prompt layer).
+            self._write_reset_checkpoint(session_id, files)
             try:
                 backup_root = agent_dir / "cleared"
                 backup_root.mkdir(exist_ok=True)
@@ -788,6 +824,58 @@ class AethonRuntime:
                         pass
         self.agents.pop(session_id, None)
         self._completion_gates.pop(session_id, None)
+
+    def _write_reset_checkpoint(self, session_id: str, files: list) -> None:
+        """Append a compact state checkpoint to workspace/HANDOFF.md.
+
+        Mechanical distillation (no model call): the last user message and the
+        tail of the last assistant reply — enough to re-orient after a reset.
+        Only the most recent checkpoints are kept.
+        """
+        import json as _json
+
+        def _last_text(role: str) -> str:
+            for path in reversed(files):
+                try:
+                    msg = _json.loads(path.read_text(encoding="utf-8")).get(
+                        "message", {}
+                    )
+                    if msg.get("role") != role:
+                        continue
+                    texts = [
+                        b["text"] for b in msg.get("content", []) if "text" in b
+                    ]
+                    if texts:
+                        return "\n".join(texts).strip()
+                except Exception:
+                    continue
+            return ""
+
+        try:
+            from datetime import datetime
+
+            user_text = _last_text("user")[:500]
+            assistant_text = _last_text("assistant")[-500:]
+            checkpoint = (
+                f"### Checkpoint {datetime.now().isoformat(timespec='seconds')}"
+                f" — session {session_id} (history reset)\n"
+                f"- Last user message: {user_text or '(none)'}\n"
+                f"- Last assistant reply (tail): {assistant_text or '(none)'}\n"
+            )
+
+            handoff = Path(self.config.paths.workspace).expanduser() / "HANDOFF.md"
+            existing = (
+                handoff.read_text(encoding="utf-8") if handoff.exists() else ""
+            )
+            sections = [
+                s for s in existing.split("### ") if s.strip()
+            ]
+            kept = sections[-4:]  # keep the last few checkpoints, never grow unbounded
+            body = "".join(f"### {s}" for s in kept) + "\n" + checkpoint
+            handoff.write_text(body.strip() + "\n", encoding="utf-8")
+            logger.info(f"Reset checkpoint written to HANDOFF.md ({session_id})")
+        except Exception as e:
+            logger.warning(f"Reset checkpoint write failed ({session_id}): {e}")
 
     async def process(self, message: InboundMessage, session_id: str) -> str:
         """Process message asynchronously.

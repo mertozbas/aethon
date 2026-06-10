@@ -126,6 +126,32 @@ class SystemPromptComposer:
         if context_path.exists():
             layers.append(f"## Current Context\n{context_path.read_text(encoding='utf-8')}")
 
+        # 4.5 Open tasks — durable task ledger snapshot (survives cache
+        # eviction, session resets and restarts)
+        if self._flag("include_tasks", True):
+            tasks_path = self.workspace / "TASKS.json"
+            if tasks_path.exists():
+                try:
+                    from aethon.agent.task_ledger import TaskLedger
+
+                    snapshot = TaskLedger(str(self.workspace)).snapshot()
+                except Exception:
+                    snapshot = ""
+                if snapshot:
+                    layers.append(
+                        "## Open Tasks\n"
+                        "Durable task ledger (manage with the manage_tasks tool; "
+                        "complete tasks with verification evidence):\n" + snapshot
+                    )
+
+        # 4.7 HANDOFF.md — checkpoint written on session resets
+        if self._flag("include_handoff", True):
+            handoff_path = self.workspace / "HANDOFF.md"
+            if handoff_path.exists():
+                text = handoff_path.read_text(encoding="utf-8").strip()
+                if text:
+                    layers.append(f"## Handoff (session checkpoints)\n{text[-2000:]}")
+
         # 5. LEARNINGS.md — Persistent learnings
         if self._flag("include_learnings", True):
             learnings_path = self.workspace / "LEARNINGS.md"

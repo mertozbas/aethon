@@ -301,6 +301,12 @@ class PromptConfig(BaseModel):
     include_recent_logs: bool = True
     include_learnings: bool = True
     include_self_awareness: bool = False  # embed key source files — opt-in
+    include_tasks: bool = True  # task-ledger snapshot (## Open Tasks)
+    include_handoff: bool = True  # reset checkpoints (## Handoff)
+    # Recompose the system prompt before every turn so CONTEXT.md / ledger /
+    # handoff updates surface mid-session (compose() otherwise runs once per
+    # cached agent).
+    refresh_per_turn: bool = True
     shell_history_lines: int = 50
     log_lines: int = 50
     session_id_format: str = "aethon-{date}"
