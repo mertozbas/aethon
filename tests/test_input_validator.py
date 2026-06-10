@@ -64,3 +64,22 @@ def test_unknown_tools_are_ignored():
     event = _event("think", {})
     hook.validate_input(event)
     assert not event.cancel_tool
+
+
+# --- review fixes ---
+
+
+def test_existing_cancellation_is_preserved():
+    """An earlier hook's cancel reason must not be overwritten."""
+    hook = InputValidatorHookProvider()
+    event = _event("shell", {"command": ""})
+    event.cancel_tool = "BLOCKED by security"
+    hook.validate_input(event)
+    assert event.cancel_tool == "BLOCKED by security"
+
+
+def test_non_dict_input_does_not_crash():
+    hook = InputValidatorHookProvider()
+    event = _event("shell", "rm -rf x")  # malformed: input is a string
+    hook.validate_input(event)  # must not raise
+    assert not event.cancel_tool

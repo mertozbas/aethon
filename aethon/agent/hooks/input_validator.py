@@ -32,11 +32,15 @@ class InputValidatorHookProvider(HookProvider):
         registry.add_callback(BeforeToolCallEvent, self.validate_input)
 
     def validate_input(self, event: BeforeToolCallEvent) -> None:
+        if getattr(event, "cancel_tool", None):
+            return  # an earlier hook already cancelled — keep its reason
         tool_name = str(event.tool_use.get("name", ""))
         requirements = self.REQUIRED_FIELDS.get(tool_name)
         if not requirements:
             return
         tool_input = event.tool_use.get("input", {}) or {}
+        if not isinstance(tool_input, dict):
+            return  # malformed shape — let the tool layer report it
 
         for alternatives in requirements:
             if any(str(tool_input.get(f, "") or "").strip() for f in alternatives):

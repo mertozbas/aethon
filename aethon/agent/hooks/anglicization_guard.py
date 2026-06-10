@@ -54,10 +54,20 @@ class AnglicizationGuardHookProvider(HookProvider):
         registry.add_callback(BeforeToolCallEvent, self.check_edit)
 
     def check_edit(self, event: BeforeToolCallEvent) -> None:
+        if getattr(event, "cancel_tool", None):
+            return  # an earlier hook already cancelled — keep its reason
         tool_name = str(event.tool_use.get("name", "")).lower()
         if tool_name not in GUARDED_TOOLS:
             return
         tool_input = event.tool_use.get("input", {}) or {}
+        if not isinstance(tool_input, dict):
+            return
+
+        # file_write overwrites whole files: compare the replacement content
+        # against what is on disk (replace-style edits carry old/new inline).
+        if tool_name == "file_write":
+            self._check_overwrite(event, tool_input)
+            return
 
         for old_key, new_key in _REPLACE_KEY_PAIRS:
             old = tool_input.get(old_key)
@@ -80,6 +90,33 @@ class AnglicizationGuardHookProvider(HookProvider):
                 f"Anglicization guard: TR→EN replacement paused ({tool_name})"
             )
             return
+
+    def _check_overwrite(self, event: BeforeToolCallEvent, tool_input: dict) -> None:
+        """Guard file_write: new content drops the TR text the file holds."""
+        from pathlib import Path
+
+        new = tool_input.get("content")
+        path = tool_input.get("path", "") or tool_input.get("file_path", "")
+        if not isinstance(new, str) or not new.strip() or not path:
+            return
+        try:
+            target = Path(str(path)).expanduser()
+            if not target.is_file() or target.stat().st_size > 262_144:
+                return
+            old = target.read_text(encoding="utf-8", errors="ignore")
+        except Exception:
+            return
+        if not self._anglicizes(old, new):
+            return
+
+        fingerprint = hashlib.sha256(
+            f"{path}\x00{new}".encode("utf-8")
+        ).hexdigest()
+        if not self.strict and fingerprint in self._reminded:
+            return
+        self._reminded.add(fingerprint)
+        event.cancel_tool = REMINDER
+        logger.warning("Anglicization guard: TR→EN overwrite paused (file_write)")
 
     @staticmethod
     def _anglicizes(old: str, new: str) -> bool:

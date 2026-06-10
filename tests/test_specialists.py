@@ -96,3 +96,45 @@ def test_factory_honors_session_config(model):
     )
     assert factory._summary_ratio == 0.5
     assert factory._preserve_recent == 4
+
+
+def test_specialists_receive_hooks_from_factory(model):
+    """Review fix: delegated specialists must not bypass the security and
+    reliability layer — the factory injects fresh hooks per specialist."""
+    calls = []
+
+    def fake_hooks():
+        calls.append(1)
+        return []
+
+    factory = SpecialistFactory(model, hooks_factory=fake_hooks)
+    factory.get("coder")
+    factory.get("planner")
+    assert len(calls) == 2  # fresh hooks per specialist
+
+
+def test_runtime_wires_specialist_hooks(tmp_path):
+    """Runtime's specialist hook set: security + validator + guard + verify."""
+    from aethon.config import (
+        AethonConfig, ModelConfig, PathsConfig, MultiAgentConfig,
+    )
+    from aethon.agent.runtime import AethonRuntime
+
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    config = AethonConfig(
+        model=ModelConfig(provider="fake", model_id="fake"),
+        multi_agent=MultiAgentConfig(enabled=True),
+        paths=PathsConfig(
+            workspace=str(workspace), sessions=str(tmp_path / "s"),
+            logs=str(tmp_path / "l"), memory_db=str(tmp_path / "m.sqlite"),
+            credentials=str(tmp_path / "c"),
+        ),
+    )
+    runtime = AethonRuntime(config)
+    names = [type(h).__name__ for h in runtime._get_specialist_hooks()]
+    assert "SecurityHookProvider" in names
+    assert "InputValidatorHookProvider" in names
+    assert "AnglicizationGuardHookProvider" in names
+    assert "PostEditVerifyHookProvider" in names
+    assert "CompletionGateHookProvider" not in names  # runtime-coupled; excluded

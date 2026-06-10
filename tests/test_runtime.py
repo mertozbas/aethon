@@ -317,3 +317,58 @@ async def test_process_returns_response(runtime_config):
     response = await runtime.process(msg, "test-session")
     assert isinstance(response, str)
     assert len(response) > 0
+
+
+# --- review fixes: hook ordering, inert gate, SOP gating ---
+
+
+def test_output_guard_registered_last(runtime_config):
+    """AfterToolCallEvent callbacks run in REVERSE registration order, so the
+    output guard must be registered last — it then truncates the raw output
+    FIRST and the [Verify]/LSP feedback appended by earlier-registered hooks
+    survives."""
+    from aethon.agent.hooks.output_guard import ToolOutputGuardHookProvider
+
+    runtime = AethonRuntime(runtime_config)
+    hooks = runtime._get_hooks()
+    assert isinstance(hooks[-1], ToolOutputGuardHookProvider)
+
+
+def test_completion_gate_skipped_without_evidence_source(runtime_config, caplog):
+    """A gate with no verify hook can never fire — skip it loudly instead of
+    registering a silently inert guard."""
+    import logging
+
+    runtime_config.reliability.post_edit_verify = False
+    runtime_config.reliability.completion_gate = True
+    runtime = AethonRuntime(runtime_config)
+    with caplog.at_level(logging.WARNING, logger="aethon.runtime"):
+        hooks = runtime._get_hooks()
+    names = [type(h).__name__ for h in hooks]
+    assert "CompletionGateHookProvider" not in names
+    assert any("CompletionGate skipped" in rec.message for rec in caplog.records)
+
+
+def test_sop_replies_are_gated(runtime_config):
+    """A pending DoD note must attach to the SOP reply, not leak into the
+    next unrelated turn."""
+    runtime = AethonRuntime(runtime_config)
+    runtime.get_or_create_agent("sop-session")
+    runtime._completion_gates["sop-session"]._pending_note = "[Completion Gate] nag"
+
+    class _StubSOP:
+        def is_sop_command(self, text):
+            return True, "rapor", ""
+
+        def run_sop(self, name, agent, user_input=""):
+            return "SOP bitti"
+
+    runtime.sop_runner = _StubSOP()
+    reply = runtime._try_process(
+        InboundMessage(channel="cli", sender_id="u", sender_name="u", text="/rapor"),
+        "sop-session", allow_retry=False,
+    )
+    assert reply.startswith("SOP bitti")
+    assert "[Completion Gate] nag" in reply
+    # Consumed — nothing leaks into the next turn.
+    assert runtime._completion_gates["sop-session"]._pending_note is None

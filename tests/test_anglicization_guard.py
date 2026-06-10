@@ -92,3 +92,53 @@ def test_non_edit_tools_are_ignored():
     event = _event("shell", {"command": "echo 'çalışıyor' > x && echo done"})
     hook.check_edit(event)
     assert not event.cancel_tool
+
+
+# --- review fixes: file_write overwrite guard + defensive paths ---
+
+
+def test_file_write_tr_to_en_overwrite_is_paused(tmp_path):
+    """file_write replaces whole files — compare against what is on disk."""
+    target = tmp_path / "notlar.md"
+    target.write_text("# Önemli notlar\nyarın toplantı var", encoding="utf-8")
+
+    hook = AnglicizationGuardHookProvider()
+    event = _event("file_write", {
+        "path": str(target),
+        "content": "# Important notes\nmeeting tomorrow",
+    })
+    hook.check_edit(event)
+    assert event.cancel_tool
+
+    # Identical re-issue is an explicit decision (advisory mode).
+    second = _event("file_write", {
+        "path": str(target),
+        "content": "# Important notes\nmeeting tomorrow",
+    })
+    hook.check_edit(second)
+    assert not second.cancel_tool
+
+
+def test_file_write_new_file_passes(tmp_path):
+    hook = AnglicizationGuardHookProvider()
+    event = _event("file_write", {
+        "path": str(tmp_path / "yeni.md"),
+        "content": "# brand new english file",
+    })
+    hook.check_edit(event)
+    assert not event.cancel_tool
+
+
+def test_existing_cancellation_is_preserved():
+    hook = AnglicizationGuardHookProvider()
+    event = _event("editor", {"old_str": "çalışıyor", "new_str": "works"})
+    event.cancel_tool = "BLOCKED by security"
+    hook.check_edit(event)
+    assert event.cancel_tool == "BLOCKED by security"
+
+
+def test_non_dict_input_does_not_crash():
+    hook = AnglicizationGuardHookProvider()
+    event = _event("editor", "garip girdi")
+    hook.check_edit(event)
+    assert not event.cancel_tool

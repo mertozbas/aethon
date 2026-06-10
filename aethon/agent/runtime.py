@@ -97,7 +97,9 @@ class AethonRuntime:
                 from aethon.tools.delegate import set_specialist_factory
 
                 self.specialist_factory = SpecialistFactory(
-                    self.model, session_config=config.session
+                    self.model,
+                    session_config=config.session,
+                    hooks_factory=self._get_specialist_hooks,
                 )
                 set_specialist_factory(self.specialist_factory)
                 logger.info("Multi-agent: active")
@@ -474,16 +476,6 @@ class AethonRuntime:
             hooks.append(InputValidatorHookProvider())
         except Exception as e:
             logger.warning(f"InputValidator startup error: {e}")
-        # Tool-output guard — cap oversized tool results before they reach the
-        # model (prevents a single huge command from overflowing the context).
-        max_out = getattr(self.config.performance, "max_tool_output_chars", 0)
-        if max_out and max_out > 0:
-            try:
-                from aethon.agent.hooks.output_guard import ToolOutputGuardHookProvider
-
-                hooks.append(ToolOutputGuardHookProvider(max_chars=max_out))
-            except Exception as e:
-                logger.warning(f"ToolOutputGuard startup error: {e}")
         # MemoryGuardHook
         if self.config.memory_guard.enabled:
             try:
@@ -547,18 +539,26 @@ class AethonRuntime:
                 # Reliability hooks are the safety net — escalate, don't whisper.
                 logger.error(f"PostEditVerify startup error: {e}")
         if rel_cfg and rel_cfg.completion_gate:
-            try:
-                from aethon.agent.hooks.completion_gate import (
-                    CompletionGateHookProvider,
+            if verify_hook is None:
+                # Without an evidence source the gate can never fire — say so
+                # loudly instead of registering a silently inert guard.
+                logger.warning(
+                    "CompletionGate skipped: it needs reliability."
+                    "post_edit_verify as its evidence source."
                 )
-
-                hooks.append(
-                    CompletionGateHookProvider(
-                        config=rel_cfg, verify_hook=verify_hook
+            else:
+                try:
+                    from aethon.agent.hooks.completion_gate import (
+                        CompletionGateHookProvider,
                     )
-                )
-            except Exception as e:
-                logger.error(f"CompletionGate startup error: {e}")
+
+                    hooks.append(
+                        CompletionGateHookProvider(
+                            config=rel_cfg, verify_hook=verify_hook
+                        )
+                    )
+                except Exception as e:
+                    logger.error(f"CompletionGate startup error: {e}")
         # TelemetryHook
         if self._telemetry_hook:
             hooks.append(self._telemetry_hook)
@@ -594,6 +594,82 @@ class AethonRuntime:
             except Exception as e:
                 # A failed safety gate must not vanish silently.
                 logger.error(f"ApprovalHook startup error: {e}")
+        # Tool-output guard — cap oversized tool results before they reach the
+        # model. Registered LAST on purpose: AfterToolCallEvent callbacks run
+        # in REVERSE registration order, so this truncates the raw output
+        # FIRST and the feedback appended by LSP/Verify/Telemetry survives.
+        max_out = getattr(self.config.performance, "max_tool_output_chars", 0)
+        if max_out and max_out > 0:
+            try:
+                from aethon.agent.hooks.output_guard import ToolOutputGuardHookProvider
+
+                hooks.append(ToolOutputGuardHookProvider(max_chars=max_out))
+            except Exception as e:
+                logger.warning(f"ToolOutputGuard startup error: {e}")
+        return hooks
+
+    def _get_specialist_hooks(self) -> list:
+        """Hooks for delegated specialist agents.
+
+        Specialists edit files with their own tools; without these they
+        bypass the security and reliability layer entirely. The
+        CompletionGate is intentionally absent — its pending note is consumed
+        by the runtime reply path, which specialists don't go through.
+        """
+        hooks = [
+            SecurityHookProvider(
+                workspace=self.config.paths.workspace,
+                blocked_commands=self.config.security.blocked_commands,
+                workspace_only=self.config.security.workspace_only,
+                macos=getattr(self.config, "macos", None),
+                runtime_tools=getattr(self.config, "runtime_tools", None),
+            ),
+        ]
+        try:
+            from aethon.agent.hooks.input_validator import (
+                InputValidatorHookProvider,
+            )
+
+            hooks.append(InputValidatorHookProvider())
+        except Exception as e:
+            logger.warning(f"Specialist InputValidator startup error: {e}")
+        rel_cfg = getattr(self.config, "reliability", None)
+        if rel_cfg is None or getattr(rel_cfg, "anglicization_guard", True):
+            try:
+                from aethon.agent.hooks.anglicization_guard import (
+                    AnglicizationGuardHookProvider,
+                )
+
+                hooks.append(
+                    AnglicizationGuardHookProvider(
+                        strict=bool(getattr(rel_cfg, "strict", False))
+                    )
+                )
+            except Exception as e:
+                logger.warning(f"Specialist AnglicizationGuard startup error: {e}")
+        if rel_cfg and rel_cfg.post_edit_verify:
+            try:
+                from aethon.agent.hooks.post_edit_verify import (
+                    PostEditVerifyHookProvider,
+                )
+
+                hooks.append(
+                    PostEditVerifyHookProvider(
+                        config=rel_cfg, workspace=self.config.paths.workspace
+                    )
+                )
+            except Exception as e:
+                logger.error(f"Specialist PostEditVerify startup error: {e}")
+        max_out = getattr(self.config.performance, "max_tool_output_chars", 0)
+        if max_out and max_out > 0:
+            try:
+                from aethon.agent.hooks.output_guard import (
+                    ToolOutputGuardHookProvider,
+                )
+
+                hooks.append(ToolOutputGuardHookProvider(max_chars=max_out))
+            except Exception as e:
+                logger.warning(f"Specialist ToolOutputGuard startup error: {e}")
         return hooks
 
     def get_tools_schemas(self) -> dict:
@@ -716,7 +792,10 @@ class AethonRuntime:
                 )
                 if is_sop:
                     agent = self.get_or_create_agent(session_id)
-                    return self.sop_runner.run_sop(sop_name, agent, sop_input)
+                    sop_reply = self.sop_runner.run_sop(sop_name, agent, sop_input)
+                    # Gate SOP replies too — otherwise a pending DoD note
+                    # would leak into the next unrelated turn.
+                    return self._apply_completion_gate(agent, session_id, sop_reply)
 
             # Normal message processing
             agent = self.get_or_create_agent(session_id)

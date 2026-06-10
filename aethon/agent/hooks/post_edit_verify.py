@@ -12,6 +12,7 @@ agent must address it before claiming success.
 """
 
 import logging
+import re
 import shlex
 import shutil
 import subprocess
@@ -29,6 +30,14 @@ FILE_TOOLS = LSPDiagnosticsHookProvider.FILE_TOOLS
 
 # Tail of the verify output appended on FAIL (keep tool results compact).
 _MAX_OUTPUT_CHARS = 800
+
+# Shell commands count as edits only when they look mutating — a plain
+# cat/grep/pytest that mentions a file must not open an evidence window
+# (or, in strict mode, flip a successful read to error).
+_SHELL_MUTATION_RE = re.compile(
+    r"(>>?|\bsed\s+(-\w*\s+)*-i|\btee\b|\bmv\b|\bcp\b|\brm\b|\btouch\b"
+    r"|\bpatch\b|\bgit\s+apply\b|\bdd\b\s+.*\bof=)"
+)
 
 
 class PostEditVerifyHookProvider(HookProvider):
@@ -52,6 +61,15 @@ class PostEditVerifyHookProvider(HookProvider):
             return
         if event.result.get("status") == "error":
             return  # the edit itself failed; nothing to verify
+        tool_input = event.tool_use.get("input", {})
+        if not isinstance(tool_input, dict):
+            return
+        if tool_name == "shell":
+            command = tool_input.get("command", "")
+            if not (
+                isinstance(command, str) and _SHELL_MUTATION_RE.search(command)
+            ):
+                return  # read-only shell usage — not an edit
 
         paths = [
             fp
@@ -67,6 +85,9 @@ class PostEditVerifyHookProvider(HookProvider):
 
         cmd = self._build_command(paths)
         if cmd is None:
+            # This edit cannot be verified, so any PASS from an earlier run
+            # is stale evidence — invalidate it.
+            self.last_outcome = None
             return
 
         try:

@@ -64,13 +64,17 @@ SPECIALIST_CONFIGS = {
 class SpecialistFactory:
     """Create and cache specialist agents."""
 
-    def __init__(self, model, session_config=None):
+    def __init__(self, model, session_config=None, hooks_factory=None):
         self.model = model
         self._cache: dict[str, Agent] = {}
         self._summary_ratio = getattr(session_config, "summary_ratio", 0.3)
         self._preserve_recent = getattr(
             session_config, "preserve_recent_messages", 10
         )
+        # Optional callable returning a fresh hooks list per specialist —
+        # specialists edit files with their own tools, so they must not
+        # bypass the security/reliability layer the main agent runs under.
+        self._hooks_factory = hooks_factory
 
     def get(self, specialist_name: str) -> Agent:
         """Get or create a specialist agent."""
@@ -79,12 +83,14 @@ class SpecialistFactory:
             if not config:
                 raise ValueError(f"Unknown specialist: {specialist_name}")
 
+            hooks = self._hooks_factory() if self._hooks_factory else []
             self._cache[specialist_name] = Agent(
                 model=self.model,
                 system_prompt=config["system_prompt"],
                 tools=config["tools"],
                 name=config["name"],
                 agent_id=specialist_name,
+                hooks=hooks,
                 # Specialists are process-cached and reused for every
                 # delegation; without a conversation manager their in-memory
                 # history grows unbounded until the model rejects the request.

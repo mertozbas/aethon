@@ -115,3 +115,55 @@ def test_timeout_is_surfaced(tmp_path):
     texts = [b["text"] for b in ev.result["content"]]
     assert any("[Verify] TIMEOUT" in t for t in texts)
     assert hook.last_outcome is None
+
+
+# --- review fixes: stale evidence + read-only shell ---
+
+
+def test_unverifiable_edit_invalidates_stale_pass(tmp_path):
+    """Review fix: a PASS from an earlier run must not vouch for a later
+    edit that could not be verified."""
+    path = _py_file(tmp_path)
+    hook = _hook(verify_cmd="true")
+    hook._on_tool_complete(_Ev("file_write", {"path": path}))
+    assert hook.last_outcome == "pass"
+
+    hook.config.verify_cmd = ""  # verify no longer available
+    import shutil as _shutil
+    real_which = _shutil.which
+    _shutil.which = lambda _: None
+    try:
+        hook._on_tool_complete(_Ev("file_write", {"path": path}))
+    finally:
+        _shutil.which = real_which
+    assert hook.last_outcome is None  # stale PASS invalidated
+    assert hook.edits_seen == 2
+
+
+def test_read_only_shell_is_not_an_edit(tmp_path):
+    """Review fix: cat/grep/pytest mentioning a file must not open an
+    evidence window or trigger a verify run."""
+    path = _py_file(tmp_path)
+    hook = _hook(verify_cmd="exit 1", strict=True)
+    ev = _Ev("shell", {"command": f"cat {path}"})
+    hook._on_tool_complete(ev)
+    assert hook.edits_seen == 0
+    assert ev.result["status"] == "success"  # strict must not flip a read
+    assert ev.result["content"] == []
+
+
+def test_mutating_shell_is_an_edit(tmp_path):
+    path = _py_file(tmp_path)
+    hook = _hook(verify_cmd="true")
+    ev = _Ev("shell", {"command": f"sed -i '' 's/x/y/' {path}"})
+    hook._on_tool_complete(ev)
+    assert hook.edits_seen == 1
+    assert hook.last_outcome == "pass"
+
+
+def test_non_dict_input_is_ignored(tmp_path):
+    hook = _hook(verify_cmd="true")
+    ev = _Ev("file_write", {"path": _py_file(tmp_path)})
+    ev.tool_use["input"] = "bozuk girdi"
+    hook._on_tool_complete(ev)  # must not raise
+    assert hook.edits_seen == 0
