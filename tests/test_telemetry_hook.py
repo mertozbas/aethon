@@ -186,3 +186,38 @@ def test_telemetry_concurrent_tool_tracking():
     assert len(hook.metrics) == 2
     assert hook.metrics[0]["name"] == "file_read"
     assert hook.metrics[1]["name"] == "shell"
+
+
+# --- R17: repeated-tool-failure surfacer ---
+
+
+def test_repeated_failures_surface_to_agent():
+    """R17: the third failure in the window injects a loud notice into the
+    tool result instead of only logging."""
+    from aethon.agent.hooks.telemetry import TelemetryHookProvider
+
+    hook = TelemetryHookProvider()
+    last_event = None
+    for _ in range(TelemetryHookProvider.FAILURE_THRESHOLD):
+        last_event = _make_after_tool_event(status="error")
+        last_event.result["content"] = []
+        hook.after_tool(last_event)
+
+    texts = [b.get("text", "") for b in last_event.result["content"]]
+    assert any("[Reliability]" in t for t in texts)
+    # Counter resets after surfacing — the next single failure is quiet.
+    quiet = _make_after_tool_event(status="error")
+    quiet.result["content"] = []
+    hook.after_tool(quiet)
+    assert quiet.result["content"] == []
+
+
+def test_successes_do_not_accumulate():
+    from aethon.agent.hooks.telemetry import TelemetryHookProvider
+
+    hook = TelemetryHookProvider()
+    for _ in range(5):
+        ev = _make_after_tool_event(status="success")
+        ev.result["content"] = []
+        hook.after_tool(ev)
+        assert ev.result["content"] == []

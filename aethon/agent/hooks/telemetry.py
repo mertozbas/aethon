@@ -23,10 +23,17 @@ logger = logging.getLogger("aethon.telemetry")
 class TelemetryHookProvider(HookProvider):
     """Track and log tool and model call metrics."""
 
+    # R17: a tool failing this many times within the window is surfaced to the
+    # conversation (injected into the tool result) instead of only logged —
+    # the agent must report it to the user rather than silently work around it.
+    FAILURE_THRESHOLD = 3
+    FAILURE_WINDOW_SECONDS = 600
+
     def __init__(self, max_history: int = 10000, event_bus=None):
         self.metrics: deque = deque(maxlen=max_history)
         self._timers: dict[str, float] = {}
         self._event_bus = event_bus
+        self._failures: dict[str, list[float]] = {}
 
     def register_hooks(self, registry: HookRegistry, **kwargs: Any) -> None:
         registry.add_callback(BeforeToolCallEvent, self.before_tool)
@@ -85,6 +92,8 @@ class TelemetryHookProvider(HookProvider):
                 f"TOOL EXCEPTION: {record['name']} -> "
                 f"{type(event.exception).__name__}: {event.exception}"
             )
+        if status != "success":
+            self._track_repeated_failure(event, record["name"])
 
         # Emit to dashboard event bus
         if self._event_bus:
@@ -96,6 +105,47 @@ class TelemetryHookProvider(HookProvider):
                 "duration": record["duration"],
                 "timestamp": record["timestamp"],
                 **self._identity(event),
+            })
+
+    def _track_repeated_failure(self, event: AfterToolCallEvent, name: str) -> None:
+        """R17: surface a recurring tool failure instead of only logging it.
+
+        Keeps a per-tool failure timestamp window; on threshold, injects a
+        loud notice into the tool result (the agent's Operating Rules require
+        reporting it to the user), emits a reliability event for the
+        dashboard, and logs at ERROR.
+        """
+        now = time.monotonic()
+        window = [
+            t for t in self._failures.get(name, [])
+            if now - t < self.FAILURE_WINDOW_SECONDS
+        ]
+        window.append(now)
+        self._failures[name] = window
+        if len(window) < self.FAILURE_THRESHOLD:
+            return
+        self._failures[name] = []  # reset so the notice fires once per streak
+
+        notice = (
+            f"[Reliability] The '{name}' tool has failed "
+            f"{self.FAILURE_THRESHOLD}+ times in the last "
+            f"{self.FAILURE_WINDOW_SECONDS // 60} minutes. This looks like a "
+            f"broken tool or environment — report it to the user now instead "
+            f"of working around it."
+        )
+        logger.error(f"REPEATED TOOL FAILURE: {name} — surfacing to the agent")
+        try:
+            existing = event.result.get("content", []) or []
+            existing.append({"text": "\n" + notice})
+            event.result["content"] = existing
+        except Exception as e:
+            logger.warning(f"Failure notice injection failed: {e}")
+        if self._event_bus:
+            self._event_bus.emit("reliability", {
+                "event": "repeated_tool_failure",
+                "tool_name": name,
+                "threshold": self.FAILURE_THRESHOLD,
+                "timestamp": datetime.now().isoformat(),
             })
 
     def before_model(self, event: BeforeModelCallEvent) -> None:

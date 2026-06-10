@@ -179,3 +179,55 @@ def test_allow_http_request(security_hook, fake_agent):
     event = _make_before_event(fake_agent, "http_request", {"url": "https://api.example.com"})
     security_hook.check_tool_safety(event)
     assert not event.cancel_tool
+
+
+# --- R15: commit hygiene + .bak blocks ---
+
+
+@pytest.mark.parametrize("cmd", [
+    "git add .",
+    "git add -A",
+    "git add --all",
+    "git add . && git commit -m 'x'",
+    "git commit -a -m 'x'",
+    "git commit -am 'x'",
+])
+def test_block_git_catchall(security_hook, fake_agent, cmd):
+    """R15: catch-all staging/committing is blocked with guidance."""
+    event = _make_before_event(fake_agent, "shell", {"command": cmd})
+    security_hook.check_tool_safety(event)
+    assert event.cancel_tool, cmd
+    assert "explicit paths" in str(event.cancel_tool)
+
+
+@pytest.mark.parametrize("cmd", [
+    "git add aethon/agent/runtime.py tests/test_runtime.py",
+    "git commit -m 'fix: a thing'",
+    "git commit --amend -m 'better message'",
+    "git status",
+    "ls -a",
+    "tar -cf x.tar --all-files thing",
+])
+def test_explicit_git_usage_passes(security_hook, fake_agent, cmd):
+    """R15 must not over-block: explicit staging and --amend are fine."""
+    event = _make_before_event(fake_agent, "shell", {"command": cmd})
+    security_hook.check_tool_safety(event)
+    assert not event.cancel_tool, cmd
+
+
+def test_block_git_add_bak(security_hook, fake_agent):
+    event = _make_before_event(
+        fake_agent, "shell", {"command": "git add notes.md.bak"}
+    )
+    security_hook.check_tool_safety(event)
+    assert event.cancel_tool
+
+
+def test_block_bak_file_write(security_hook, fake_agent, tmp_path):
+    event = _make_before_event(
+        fake_agent, "file_write",
+        {"path": str(tmp_path / "config.py.bak"), "content": "x"},
+    )
+    security_hook.check_tool_safety(event)
+    assert event.cancel_tool
+    assert ".bak" in str(event.cancel_tool)

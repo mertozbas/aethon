@@ -3,10 +3,12 @@
 Filters tool calls based on security policies:
 - Blocks dangerous shell commands
 - Restricts file access to workspace
+- Enforces commit hygiene (no catch-all git staging) and blocks .bak noise
 - Logs network operations
 """
 
 import logging
+import re
 from pathlib import Path
 from typing import Any
 
@@ -37,6 +39,16 @@ class SecurityHookProvider(HookProvider):
         "~/.ssh/", "~/.gnupg/",
         "~/.aethon/credentials/",
     ]
+
+    # Commit hygiene (Phase 8 / R15): catch-all staging bundles unrelated
+    # concerns (and stray files) into commits — require explicit paths.
+    # Word-aware regexes, not substring checks: 'git commit --amend' must
+    # NOT match the -a flag.
+    GIT_CATCHALL_PATTERNS = [
+        re.compile(r"\bgit\s+add\s+(?:[^|;&]*\s)?(?:-A\b|--all\b|\.(?=\s|;|&|$))"),
+        re.compile(r"\bgit\s+commit\s+[^|;&]*(?:(?<![\w-])-a(?:m)?\b|--all\b)"),
+    ]
+    GIT_ADD_BAK_PATTERN = re.compile(r"\bgit\s+add\b[^|;&]*\.bak\b")
 
     # use_mac action prefix -> the MacOSConfig flag that must be enabled for it.
     MACOS_ACTION_GATES = {
@@ -88,6 +100,24 @@ class SecurityHookProvider(HookProvider):
                         )
                         logger.warning(f"BLOCKED COMMAND: {command}")
                         return
+                # 1b. Commit hygiene (R15): no catch-all staging/committing.
+                for pattern in self.GIT_CATCHALL_PATTERNS:
+                    if pattern.search(command):
+                        event.cancel_tool = (
+                            "BLOCKED: catch-all git staging (git add . / -A / "
+                            "--all, git commit -a) is forbidden — stage "
+                            "explicit paths so commits stay atomic and "
+                            "reviewable."
+                        )
+                        logger.warning(f"BLOCKED GIT CATCH-ALL: {command}")
+                        return
+                if self.GIT_ADD_BAK_PATTERN.search(command):
+                    event.cancel_tool = (
+                        "BLOCKED: do not stage editor backup files (*.bak) — "
+                        "they are noise, not source."
+                    )
+                    logger.warning(f"BLOCKED .bak STAGING: {command}")
+                    return
 
         # 2. File access outside workspace
         if tool_name in ("file_read", "file_write", "editor"):
@@ -96,6 +126,20 @@ class SecurityHookProvider(HookProvider):
                 or tool_input.get("file_path", "")
                 or tool_input.get("command", "")
             )
+            # 2a. .bak writes (R15): AETHON keeps its own session history;
+            # backup sidecars only pollute workspaces and commits.
+            if (
+                tool_name in ("file_write", "editor")
+                and isinstance(path, str)
+                and path.strip().endswith(".bak")
+            ):
+                event.cancel_tool = (
+                    "BLOCKED: writing *.bak files is forbidden (editor backup "
+                    "noise). Edit the real file; session history already "
+                    "preserves prior versions."
+                )
+                logger.warning(f"BLOCKED .bak WRITE: {path}")
+                return
             if path and not self._is_safe_path(path):
                 allowed_root = self.workspace if self.workspace_only else str(Path.home())
                 event.cancel_tool = (
