@@ -15,6 +15,9 @@ env/
 .env
 *.so
 .DS_Store
+
+# Editor backup sidecars (strands editor; disabled via EDITOR_DISABLE_BACKUP, belt+braces)
+*.bak
 .idea/
 .vscode/
 repl_state/

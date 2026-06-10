@@ -42,6 +42,10 @@ class AethonRuntime:
         os.environ["STRANDS_NON_INTERACTIVE"] = "true"
         if os.environ.get("STRANDS_TOOL_CONSOLE_MODE") == "enabled":
             os.environ["STRANDS_TOOL_CONSOLE_MODE"] = "disabled"
+        # AETHON keeps full edit history via its own FileSessionManager; the
+        # strands editor's FILE.bak sidecars are pure noise that leaks into
+        # workspaces and commits ('git add .'). An explicit env var still wins.
+        os.environ.setdefault("EDITOR_DISABLE_BACKUP", "true")
         self.model = create_model(config.model)
         self.prompt_composer = SystemPromptComposer(
             config.paths.workspace,
