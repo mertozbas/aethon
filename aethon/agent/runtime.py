@@ -792,6 +792,7 @@ class AethonRuntime:
                 )
                 if is_sop:
                     agent = self.get_or_create_agent(session_id)
+                    self._discard_stale_gate_note(session_id)
                     sop_reply = self.sop_runner.run_sop(sop_name, agent, sop_input)
                     # Gate SOP replies too — otherwise a pending DoD note
                     # would leak into the next unrelated turn.
@@ -799,6 +800,7 @@ class AethonRuntime:
 
             # Normal message processing
             agent = self.get_or_create_agent(session_id)
+            self._discard_stale_gate_note(session_id)
             self._refresh_volatile_prompt(agent, session_id)
             result = agent(message.text)
             response = self._extract_text(result)
@@ -823,6 +825,17 @@ class AethonRuntime:
 
             logger.error(f"Model error ({session_id}): {type(e).__name__}: {e}")
             raise
+
+    def _discard_stale_gate_note(self, session_id: str) -> None:
+        """Drop a gate note left over from an earlier turn.
+
+        AfterInvocationEvent fires even when the turn later fails (strands
+        runs it in a finally block), so a note set during a failed turn
+        would otherwise attach to the next unrelated reply.
+        """
+        gate = self._completion_gates.get(session_id)
+        if gate is not None and gate.consume_note():
+            logger.debug(f"Stale completion-gate note discarded ({session_id})")
 
     def _refresh_volatile_prompt(self, agent, session_id: str) -> None:
         """R10: recompose the system prompt before each turn.

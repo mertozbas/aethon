@@ -350,17 +350,21 @@ def test_completion_gate_skipped_without_evidence_source(runtime_config, caplog)
 
 
 def test_sop_replies_are_gated(runtime_config):
-    """A pending DoD note must attach to the SOP reply, not leak into the
-    next unrelated turn."""
+    """A DoD note raised DURING the SOP turn must attach to the SOP reply,
+    not leak into the next unrelated turn."""
     runtime = AethonRuntime(runtime_config)
     runtime.get_or_create_agent("sop-session")
-    runtime._completion_gates["sop-session"]._pending_note = "[Completion Gate] nag"
 
     class _StubSOP:
         def is_sop_command(self, text):
             return True, "rapor", ""
 
         def run_sop(self, name, agent, user_input=""):
+            # Simulates the gate firing on AfterInvocationEvent inside
+            # run_sop's agent(prompt) call.
+            runtime._completion_gates["sop-session"]._pending_note = (
+                "[Completion Gate] nag"
+            )
             return "SOP bitti"
 
     runtime.sop_runner = _StubSOP()
@@ -372,3 +376,20 @@ def test_sop_replies_are_gated(runtime_config):
     assert "[Completion Gate] nag" in reply
     # Consumed — nothing leaks into the next turn.
     assert runtime._completion_gates["sop-session"]._pending_note is None
+
+
+def test_stale_gate_note_discarded_at_turn_start(runtime_config):
+    """Review fix: AfterInvocationEvent fires even on turns that later fail
+    (strands runs it in a finally block) — a note from such a turn must not
+    attach to the next unrelated reply."""
+    runtime = AethonRuntime(runtime_config)
+    runtime.get_or_create_agent("stale-session")
+    runtime._completion_gates["stale-session"]._pending_note = (
+        "[Completion Gate] eski turdan kalan nag"
+    )
+
+    reply = runtime._try_process(
+        InboundMessage(channel="cli", sender_id="u", sender_name="u", text="merhaba"),
+        "stale-session", allow_retry=False,
+    )
+    assert "[Completion Gate] eski turdan kalan nag" not in reply
