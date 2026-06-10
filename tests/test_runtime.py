@@ -105,6 +105,45 @@ def test_hooks_list(runtime_config):
     assert isinstance(hooks[0], SecurityHookProvider)
 
 
+def test_reliability_hooks_registered_by_default(runtime_config):
+    """R6+R7: PostEditVerify and CompletionGate ship enabled (advisory)."""
+    from aethon.agent.hooks.post_edit_verify import PostEditVerifyHookProvider
+    from aethon.agent.hooks.completion_gate import CompletionGateHookProvider
+
+    runtime = AethonRuntime(runtime_config)
+    hooks = runtime._get_hooks()
+    assert any(isinstance(h, PostEditVerifyHookProvider) for h in hooks)
+    assert any(isinstance(h, CompletionGateHookProvider) for h in hooks)
+
+    # The gate is wired to the verify hook (its evidence source).
+    gate = next(h for h in hooks if isinstance(h, CompletionGateHookProvider))
+    assert isinstance(gate.verify_hook, PostEditVerifyHookProvider)
+
+
+def test_reliability_hooks_can_be_disabled(runtime_config):
+    runtime_config.reliability.post_edit_verify = False
+    runtime_config.reliability.completion_gate = False
+    runtime = AethonRuntime(runtime_config)
+    names = [type(h).__name__ for h in runtime._get_hooks()]
+    assert "PostEditVerifyHookProvider" not in names
+    assert "CompletionGateHookProvider" not in names
+
+
+def test_completion_gate_note_appended_to_reply(runtime_config):
+    """R6: the runtime appends the gate's pending reminder to the response."""
+    runtime = AethonRuntime(runtime_config)
+    agent = runtime.get_or_create_agent("gate-session")
+    gate = runtime._completion_gates["gate-session"]
+
+    # No pending note — reply returns clean.
+    assert runtime._apply_completion_gate(agent, "gate-session", "ok") == "ok"
+
+    gate._pending_note = "[Completion Gate] test reminder"
+    gated = runtime._apply_completion_gate(agent, "gate-session", "Done.")
+    assert gated.startswith("Done.")
+    assert "[Completion Gate] test reminder" in gated
+
+
 def test_runtime_with_multi_agent(tmp_path):
     """Runtime creates with multi-agent enabled."""
     workspace = tmp_path / "workspace"

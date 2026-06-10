@@ -262,6 +262,33 @@ class LSPConfig(BaseModel):
     auto_diagnostics: bool = False  # append diagnostics after file-modifying tools
 
 
+class ReliabilityConfig(BaseModel):
+    """Reliability hardening (Phase 8) — the verification backstop.
+
+    All gates are ADVISORY by default (they append feedback, mirroring the
+    LSP diagnostics pattern) so they add no friction; ``strict`` flips them
+    to hard gates. See docs/development/PHASE-8-RELIABILITY.md.
+    """
+
+    # Escalate findings from advisory feedback to hard gates (failed verify
+    # marks the tool result as error; completion gate re-prompts the agent).
+    strict: bool = False
+    # PostEditVerify hook — run a verify command on files the agent edits and
+    # append a [Verify] PASS/FAIL block to the tool result.
+    post_edit_verify: bool = True
+    # Verify command. ``{paths}`` is replaced with the edited file paths; a
+    # command without the placeholder runs as-is (e.g. "pytest -q").
+    # Empty = auto-detect: ``ruff check`` on edited *.py files when ruff is
+    # on PATH, otherwise skip silently.
+    verify_cmd: str = ""
+    # Seconds before a verify run is abandoned (logged, never blocks forever).
+    verify_timeout: int = 30
+    # CompletionGate hook — when a reply asserts success but no verification
+    # evidence exists for the files edited, append a Definition-of-Done
+    # reminder instead of returning the claim clean.
+    completion_gate: bool = True
+
+
 class PromptConfig(BaseModel):
     """System-prompt composition options.
 
@@ -397,6 +424,7 @@ class AethonConfig(BaseModel):
     ambient: AmbientConfig = AmbientConfig()
     lsp: LSPConfig = LSPConfig()
     prompt: PromptConfig = PromptConfig()
+    reliability: ReliabilityConfig = ReliabilityConfig()
     capabilities: CapabilitiesConfig = CapabilitiesConfig()
     performance: PerformanceConfig = PerformanceConfig()
     paths: PathsConfig = PathsConfig()

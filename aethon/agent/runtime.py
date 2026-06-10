@@ -64,6 +64,9 @@ class AethonRuntime:
         self._context_updater = None
         self._mcp_loader = None
         self._event_bus = None
+        # Per-session CompletionGate instances (R6) — read after each turn so a
+        # success claim with no verification evidence doesn't return clean.
+        self._completion_gates: dict[str, object] = {}
 
         # VectorMemory
         if getattr(config, "memory", None) and config.memory.enabled:
@@ -190,6 +193,7 @@ class AethonRuntime:
 
         if not messages_dir.exists():
             self.agents.pop(session_id, None)
+            self._completion_gates.pop(session_id, None)
             return
 
         sanitized = 0
@@ -248,6 +252,7 @@ class AethonRuntime:
 
         # Evict from cache so it gets recreated with clean history
         self.agents.pop(session_id, None)
+        self._completion_gates.pop(session_id, None)
 
     def _get_tools(self) -> list:
         """Tool list — includes memory, delegate, context, messaging, scheduler, MCP tools."""
@@ -477,6 +482,35 @@ class AethonRuntime:
                 logger.info("LSPDiagnosticsHook: active")
             except Exception as e:
                 logger.warning(f"LSP diagnostics hook startup error: {e}")
+        # Reliability hooks (Phase 8): PostEditVerify (R7) + CompletionGate (R6).
+        # Advisory by default; reliability.strict flips them to hard gates.
+        rel_cfg = getattr(self.config, "reliability", None)
+        verify_hook = None
+        if rel_cfg and rel_cfg.post_edit_verify:
+            try:
+                from aethon.agent.hooks.post_edit_verify import (
+                    PostEditVerifyHookProvider,
+                )
+
+                verify_hook = PostEditVerifyHookProvider(
+                    config=rel_cfg, workspace=self.config.paths.workspace
+                )
+                hooks.append(verify_hook)
+            except Exception as e:
+                logger.warning(f"PostEditVerify startup error: {e}")
+        if rel_cfg and rel_cfg.completion_gate:
+            try:
+                from aethon.agent.hooks.completion_gate import (
+                    CompletionGateHookProvider,
+                )
+
+                hooks.append(
+                    CompletionGateHookProvider(
+                        config=rel_cfg, verify_hook=verify_hook
+                    )
+                )
+            except Exception as e:
+                logger.warning(f"CompletionGate startup error: {e}")
         # TelemetryHook
         if self._telemetry_hook:
             hooks.append(self._telemetry_hook)
@@ -543,6 +577,7 @@ class AethonRuntime:
         # Evict oldest if cache full
         if len(self.agents) >= self._session_cache_size:
             evicted_id, _ = self.agents.popitem(last=False)
+            self._completion_gates.pop(evicted_id, None)
             logger.debug(f"Session evicted from cache: {evicted_id}")
 
         system_prompt = self.prompt_composer.compose(session_id)
@@ -559,19 +594,30 @@ class AethonRuntime:
             preserve_recent_messages=self.config.session.preserve_recent_messages,
         )
 
+        hooks = self._get_hooks()
         self.agents[session_id] = Agent(
             model=self.model,
             system_prompt=system_prompt,
             tools=self._get_tools(),
             session_manager=session_mgr,
             conversation_manager=conv_mgr,
-            hooks=self._get_hooks(),
+            hooks=hooks,
             agent_id="main",
             name="AETHON",
             # Don't let Strands print to stdout — each channel renders the reply itself
             # (otherwise the CLI shows every answer twice).
             callback_handler=None,
         )
+        # Track this session's CompletionGate so _try_process can gate the reply.
+        try:
+            from aethon.agent.hooks.completion_gate import CompletionGateHookProvider
+
+            for hook in hooks:
+                if isinstance(hook, CompletionGateHookProvider):
+                    self._completion_gates[session_id] = hook
+                    break
+        except ImportError:
+            pass
         # Inject config so config-aware tools (e.g. manage_tools) can read their gates,
         # and the session id so telemetry maps activity to the dashboard pixel office.
         self.agents[session_id].__aethon_config__ = self.config
@@ -623,13 +669,8 @@ class AethonRuntime:
             # Normal message processing
             agent = self.get_or_create_agent(session_id)
             result = agent(message.text)
-
-            try:
-                content = result.message["content"]
-                text_parts = [block["text"] for block in content if "text" in block]
-                return "\n".join(text_parts) if text_parts else str(result)
-            except (KeyError, TypeError, IndexError):
-                return str(result)
+            response = self._extract_text(result)
+            return self._apply_completion_gate(agent, session_id, response)
 
         except Exception as e:
             if allow_retry and self._is_context_overflow_error(e):
@@ -650,6 +691,43 @@ class AethonRuntime:
 
             logger.error(f"Model error ({session_id}): {type(e).__name__}: {e}")
             raise
+
+    @staticmethod
+    def _extract_text(result) -> str:
+        """Extract plain text from an agent invocation result."""
+        try:
+            content = result.message["content"]
+            text_parts = [block["text"] for block in content if "text" in block]
+            return "\n".join(text_parts) if text_parts else str(result)
+        except (KeyError, TypeError, IndexError):
+            return str(result)
+
+    def _apply_completion_gate(self, agent, session_id: str, response: str) -> str:
+        """R6: a success claim with no verification evidence doesn't return clean.
+
+        Advisory mode appends the gate's Definition-of-Done reminder to the
+        reply; strict mode re-prompts the agent once to verify or retract.
+        """
+        gate = self._completion_gates.get(session_id)
+        if gate is None:
+            return response
+        note = gate.consume_note()
+        if not note:
+            return response
+
+        rel = getattr(self.config, "reliability", None)
+        if rel is not None and rel.strict:
+            try:
+                follow_up = agent(
+                    f"{note}\nVerify the claim now by running the relevant "
+                    f"checks, or explicitly retract it."
+                )
+                gate.consume_note()  # don't carry a second nag into next turn
+                return response + "\n\n" + self._extract_text(follow_up)
+            except Exception as e:
+                logger.warning(f"CompletionGate strict re-prompt failed: {e}")
+                return response + "\n\n" + note
+        return response + "\n\n" + note
 
     @staticmethod
     def _is_session_format_error(exc: Exception) -> bool:
@@ -691,6 +769,7 @@ class AethonRuntime:
         messages_dir = agent_dir / "messages"
         if not messages_dir.exists():
             self.agents.pop(session_id, None)
+            self._completion_gates.pop(session_id, None)
             return
         files = sorted(messages_dir.glob("message_*.json"))
         if files:
@@ -708,6 +787,7 @@ class AethonRuntime:
                     except Exception:
                         pass
         self.agents.pop(session_id, None)
+        self._completion_gates.pop(session_id, None)
 
     async def process(self, message: InboundMessage, session_id: str) -> str:
         """Process message asynchronously.

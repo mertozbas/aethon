@@ -31,6 +31,7 @@ def test_reset_session_clears_message_history(tmp_path):
             storage_dir = str(tmp_path)
     rt.config = _Cfg()
     rt.agents = {"cli:local": object()}
+    rt._completion_gates = {}
 
     # Lay down a couple of fake persisted messages.
     msgs = tmp_path / "session_cli:local" / "agents" / "agent_main" / "messages"
