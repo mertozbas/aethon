@@ -28,6 +28,11 @@ Users/
 # Local development notes/plans — never pushed
 _dev/
 
+# Claude Code workspace config — local dev guidance, never published.
+# Root-anchored so it doesn't touch codex-proxy's own tracked .claude/.
+/CLAUDE.md
+/.claude/
+
 # Vendored codex-proxy — never commit its secrets / runtime state / deps
 codex-proxy/node_modules/
 codex-proxy/**/node_modules/
