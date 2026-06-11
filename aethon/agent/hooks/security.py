@@ -9,6 +9,7 @@ Filters tool calls based on security policies:
 
 import logging
 import re
+import shlex
 from pathlib import Path
 from typing import Any
 
@@ -42,13 +43,20 @@ class SecurityHookProvider(HookProvider):
 
     # Commit hygiene (Phase 8 / R15): catch-all staging bundles unrelated
     # concerns (and stray files) into commits — require explicit paths.
-    # Word-aware regexes, not substring checks: 'git commit --amend' must
-    # NOT match the -a flag.
+    # Primary check is quote-aware token analysis (_git_hygiene_violation);
+    # these regexes are only the fallback for unparseable command strings.
     GIT_CATCHALL_PATTERNS = [
         re.compile(r"\bgit\s+add\s+(?:[^|;&]*\s)?(?:-A\b|--all\b|\.(?=\s|;|&|$))"),
         re.compile(r"\bgit\s+commit\s+[^|;&]*(?:(?<![\w-])-a(?:m)?\b|--all\b)"),
     ]
     GIT_ADD_BAK_PATTERN = re.compile(r"\bgit\s+add\b[^|;&]*\.bak\b")
+
+    # Shell operator characters for segment splitting (quote-aware).
+    _SHELL_OPERATOR_CHARS = set("|&;")
+    # git global options that consume a value before the subcommand.
+    _GIT_OPTS_WITH_VALUE = {
+        "-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path",
+    }
 
     # use_mac action prefix -> the MacOSConfig flag that must be enabled for it.
     MACOS_ACTION_GATES = {
@@ -88,10 +96,13 @@ class SecurityHookProvider(HookProvider):
         tool_name = event.tool_use["name"]
         tool_input = event.tool_use.get("input", {})
 
-        # 1. Dangerous command check
+        # 1. Dangerous command check. The shell tool accepts a string, a list
+        # of strings, or a list of {'command': ...} dicts — every form goes
+        # through the same checks (a list used to bypass them entirely).
         if tool_name == "shell":
-            command = tool_input.get("command", "")
-            if isinstance(command, str):
+            for command in self._normalize_shell_commands(
+                tool_input.get("command")
+            ):
                 for blocked in self.BLOCKED_COMMANDS:
                     if blocked in command:
                         event.cancel_tool = (
@@ -100,23 +111,25 @@ class SecurityHookProvider(HookProvider):
                         )
                         logger.warning(f"BLOCKED COMMAND: {command}")
                         return
-                # 1b. Commit hygiene (R15): no catch-all staging/committing.
-                for pattern in self.GIT_CATCHALL_PATTERNS:
-                    if pattern.search(command):
-                        event.cancel_tool = (
-                            "BLOCKED: catch-all git staging (git add . / -A / "
-                            "--all, git commit -a) is forbidden — stage "
-                            "explicit paths so commits stay atomic and "
-                            "reviewable."
-                        )
-                        logger.warning(f"BLOCKED GIT CATCH-ALL: {command}")
-                        return
-                if self.GIT_ADD_BAK_PATTERN.search(command):
+                # 1b. Commit hygiene (R15): no catch-all staging/committing,
+                # no *.bak creation/staging. Quote-aware so a commit MESSAGE
+                # mentioning '-a' is not mistaken for the flag.
+                violation = self._shell_hygiene_violation(command)
+                if violation == "catchall":
                     event.cancel_tool = (
-                        "BLOCKED: do not stage editor backup files (*.bak) — "
-                        "they are noise, not source."
+                        "BLOCKED: catch-all git staging (git add . / -A / "
+                        "--all, git commit -a) is forbidden — stage "
+                        "explicit paths so commits stay atomic and "
+                        "reviewable."
                     )
-                    logger.warning(f"BLOCKED .bak STAGING: {command}")
+                    logger.warning(f"BLOCKED GIT CATCH-ALL: {command}")
+                    return
+                if violation == "bak":
+                    event.cancel_tool = (
+                        "BLOCKED: do not create or stage editor backup files "
+                        "(*.bak) — they are noise, not source."
+                    )
+                    logger.warning(f"BLOCKED .bak: {command}")
                     return
 
         # 2. File access outside workspace
@@ -266,6 +279,123 @@ class SecurityHookProvider(HookProvider):
             return False
         except Exception:
             return False
+
+    @staticmethod
+    def _normalize_shell_commands(raw) -> list[str]:
+        """Flatten the shell tool's command forms into plain strings."""
+        if isinstance(raw, str):
+            return [raw]
+        if isinstance(raw, (list, tuple)):
+            commands = []
+            for item in raw:
+                if isinstance(item, str):
+                    commands.append(item)
+                elif isinstance(item, dict) and isinstance(
+                    item.get("command"), str
+                ):
+                    commands.append(item["command"])
+            return commands
+        return []
+
+    def _shell_hygiene_violation(self, command: str) -> str | None:
+        """R15 check over one command string: 'catchall', 'bak' or None."""
+        segments = self._shell_segments(command)
+        if not segments:
+            # Unparseable (e.g. unbalanced quotes) — conservative regex fallback.
+            if any(p.search(command) for p in self.GIT_CATCHALL_PATTERNS):
+                return "catchall"
+            if self.GIT_ADD_BAK_PATTERN.search(command):
+                return "bak"
+            return None
+        for segment in segments:
+            violation = self._git_hygiene_violation(segment)
+            if violation:
+                return violation
+            if self._writes_bak(segment):
+                return "bak"
+        return None
+
+    @classmethod
+    def _shell_segments(cls, command: str) -> list[list[str]]:
+        """Split a command into argv-like segments at |, &, ; boundaries.
+
+        Quote-aware (shlex), so flags inside quoted strings — e.g. a commit
+        message that mentions '-a' — are not mistaken for real flags.
+        """
+        try:
+            lex = shlex.shlex(command, posix=True, punctuation_chars="();<>|&")
+            lex.whitespace_split = True
+            tokens = list(lex)
+        except ValueError:
+            return []
+        segments: list[list[str]] = []
+        current: list[str] = []
+        for tok in tokens:
+            if tok and all(ch in cls._SHELL_OPERATOR_CHARS for ch in tok):
+                if current:
+                    segments.append(current)
+                current = []
+            elif tok.endswith(";"):
+                # ';' is not in punctuation_chars (it would also split shell
+                # one-liners like 'for ...; do'), so it can trail a token.
+                current.append(tok[:-1])
+                segments.append([t for t in current if t])
+                current = []
+            else:
+                current.append(tok)
+        if current:
+            segments.append(current)
+        return segments
+
+    @classmethod
+    def _git_subcommand(cls, segment: list[str]):
+        """Return (subcommand, args) for a git segment, else (None, [])."""
+        if not segment or Path(segment[0]).name != "git":
+            return None, []
+        i = 1
+        while i < len(segment):
+            tok = segment[i]
+            if tok in cls._GIT_OPTS_WITH_VALUE:
+                i += 2
+                continue
+            if tok.startswith("-"):
+                i += 1
+                continue
+            return tok, segment[i + 1:]
+        return None, []
+
+    def _git_hygiene_violation(self, segment: list[str]) -> str | None:
+        sub, args = self._git_subcommand(segment)
+        if sub == "add":
+            if any(a in (".", "./", "-A", "--all") for a in args):
+                return "catchall"
+            if any(a.endswith(".bak") for a in args):
+                return "bak"
+        elif sub == "commit":
+            # '-a' alone or inside a short-flag cluster (-am, -sa); '--amend'
+            # must NOT match.
+            if any(
+                a == "--all" or re.fullmatch(r"-[a-zA-Z]*a[a-zA-Z]*", a)
+                for a in args
+            ):
+                return "catchall"
+        return None
+
+    @staticmethod
+    def _writes_bak(segment: list[str]) -> bool:
+        """Redirects to *.bak, or cp/mv with a *.bak destination."""
+        for i, tok in enumerate(segment):
+            if tok in (">", ">>") and i + 1 < len(segment) and segment[
+                i + 1
+            ].endswith(".bak"):
+                return True
+        if (
+            len(segment) >= 3
+            and Path(segment[0]).name in ("cp", "mv")
+            and segment[-1].endswith(".bak")
+        ):
+            return True
+        return False
 
     def log_tool_result(self, event: AfterToolCallEvent) -> None:
         """Log tool execution results.

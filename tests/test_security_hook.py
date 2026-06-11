@@ -231,3 +231,66 @@ def test_block_bak_file_write(security_hook, fake_agent, tmp_path):
     security_hook.check_tool_safety(event)
     assert event.cancel_tool
     assert ".bak" in str(event.cancel_tool)
+
+
+# --- review fixes: quote-aware R15 + list-form shell commands ---
+
+
+def test_commit_message_mentioning_a_flag_is_allowed(security_hook, fake_agent):
+    """Review fix: '-a' inside a quoted commit MESSAGE is not the flag."""
+    event = _make_before_event(fake_agent, "shell", {
+        "command": "git commit -m 'engelle: -a bayragi tehlikeli'"
+    })
+    security_hook.check_tool_safety(event)
+    assert not event.cancel_tool
+
+
+@pytest.mark.parametrize("cmd", [
+    "git -C /tmp/repo add .",
+    "git add ./",
+    "cd repo && git add -A",
+])
+def test_catchall_variants_are_blocked(security_hook, fake_agent, cmd):
+    """Review fix: -C/./ variants used to slip past the regex."""
+    event = _make_before_event(fake_agent, "shell", {"command": cmd})
+    security_hook.check_tool_safety(event)
+    assert event.cancel_tool, cmd
+
+
+def test_explicit_relative_path_is_allowed(security_hook, fake_agent):
+    event = _make_before_event(fake_agent, "shell", {"command": "git add ./src/main.py"})
+    security_hook.check_tool_safety(event)
+    assert not event.cancel_tool
+
+
+def test_list_form_shell_commands_are_checked(security_hook, fake_agent):
+    """Review fix: command=[...] used to bypass ALL shell checks."""
+    event = _make_before_event(fake_agent, "shell", {
+        "command": ["echo ok", "git add ."]
+    })
+    security_hook.check_tool_safety(event)
+    assert event.cancel_tool
+
+
+def test_dict_form_shell_commands_are_checked(security_hook, fake_agent):
+    event = _make_before_event(fake_agent, "shell", {
+        "command": [{"command": "sudo rm -rf /tmp/x", "timeout": 5}]
+    })
+    security_hook.check_tool_safety(event)
+    assert event.cancel_tool
+
+
+@pytest.mark.parametrize("cmd", [
+    "echo data > notes.md.bak",
+    "cp config.py config.py.bak",
+])
+def test_bak_creation_via_shell_is_blocked(security_hook, fake_agent, cmd):
+    event = _make_before_event(fake_agent, "shell", {"command": cmd})
+    security_hook.check_tool_safety(event)
+    assert event.cancel_tool, cmd
+
+
+def test_reading_bak_via_shell_is_allowed(security_hook, fake_agent):
+    event = _make_before_event(fake_agent, "shell", {"command": "cat old.bak"})
+    security_hook.check_tool_safety(event)
+    assert not event.cancel_tool
