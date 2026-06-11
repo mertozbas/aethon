@@ -7,6 +7,7 @@ build/
 .eggs/
 *.egg
 .pytest_cache/
+.coverage
 .ruff_cache/
 .mypy_cache/
 .venv/

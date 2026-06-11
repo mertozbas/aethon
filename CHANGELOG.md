@@ -58,6 +58,31 @@ from *trusting* the agent's word to *verifying* it. Design doc:
 - **`reliability` config section** — `strict`, `post_edit_verify`,
   `verify_cmd`, `verify_timeout`, `completion_gate`, `anglicization_guard`.
 
+### Fixed (post-implementation adversarial review, 2 full rounds — 40 findings: 26 fixed, 14 verified-already-fixed)
+- Scheduled SOPs no longer block the gateway loop (executor offload); a
+  timed-out send_message is cancelled instead of delivering late after
+  reporting failure.
+- TASKS.json mutations are locked (concurrent tool calls lost tasks /
+  duplicated ids); corrupt ledgers are quarantined, never clobbered.
+- Ledger/handoff text is whitespace-flattened before reaching the system
+  prompt (persistent prompt-injection vector closed); HANDOFF rotation is
+  line-anchored; reset checkpoints sort message files numerically.
+- Per-turn prompt refresh is mtime-gated — unchanged sources leave the
+  prompt byte-identical, preserving provider prompt caching.
+- CompletionGate implements the designed ledger-evidence branch (flags
+  unevidenced in-progress tasks by name) and works from the ledger alone.
+- Shell security checks cover list/dict-form commands (previously bypassed
+  ALL checks incl. blocked_commands); R15 git-hygiene checks are
+  quote-aware token analysis (no more -m message false positives).
+- Discord explicit recipients resolve or fail loudly (no silent redirect
+  to the default); id coercion is exception-safe; WhatsApp reactive
+  failures are owned and logged; repeated-tool-failure notices also
+  escalate out-of-band to the session's channel.
+- Ambient mode can no longer spin forever on a blocked backlog; the setup
+  wizard collects Discord/Slack destinations + allowlists (Telegram parity);
+  reliability.input_validator flag added; degraded hooks aggregate into a
+  startup health record.
+
 ### Changed
 - Hook housekeeping (R18) — SOP prompt layer reads `SOPRunner.list_sops()`;
   ApprovalHook construction guarded; reliability-hook startup failures
