@@ -105,27 +105,39 @@ class DiscordAdapter(ChannelAdapter):
     def _resolve_channel_id(self, message: OutboundMessage):
         """Resolve the destination channel/user id for an outbound message.
 
-        Order: inbound raw (reactive replies) → numeric recipient_id →
+        Order: inbound raw (reactive replies) → explicit recipient_id →
         configured ``discord.channel_id`` → first numeric
         ``allowed_senders.discord`` entry (user id → DM).
-        Returns an int id, or ``None`` if nothing resolves (proactive send
-        with no configured destination — caller skips instead of crashing).
+        An EXPLICIT but unusable recipient returns ``None`` rather than
+        silently redirecting to the configured default — delivering to the
+        wrong place while reporting success is worse than failing loudly.
+        Returns an int id, or ``None`` if nothing resolves.
         """
         raw_id = message.raw.get("channel_id")
         if raw_id is not None:
-            return int(raw_id)
+            return self._coerce_id(raw_id)
         rid = (message.recipient_id or "").strip()
-        if rid and rid != "default" and rid.lstrip("-").isdigit():
-            return int(rid)
+        if rid and rid != "default":
+            return self._coerce_id(rid)
         cfg_id = (self.config.channels.discord.channel_id or "").strip()
-        if cfg_id.lstrip("-").isdigit() and cfg_id:
-            return int(cfg_id)
+        if cfg_id:
+            coerced = self._coerce_id(cfg_id)
+            if coerced is not None:
+                return coerced
         allowed = self.config.security.allowed_senders.get("discord") or []
         for entry in allowed:
-            entry = str(entry).strip()
-            if entry.lstrip("-").isdigit() and entry:
-                return int(entry)
+            coerced = self._coerce_id(entry)
+            if coerced is not None:
+                return coerced
         return None
+
+    @staticmethod
+    def _coerce_id(value):
+        """int() with a None fallback — isdigit() lies about '--123'/'²³'."""
+        try:
+            return int(str(value).strip())
+        except (TypeError, ValueError):
+            return None
 
     async def _fetch_destination(self, target_id: int):
         """Resolve an id missing from the channel cache.

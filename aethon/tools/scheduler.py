@@ -3,6 +3,7 @@
 APScheduler integration for automatic SOP triggering with result delivery to channels.
 """
 
+import asyncio
 import logging
 import uuid
 
@@ -77,7 +78,14 @@ class AethonScheduler:
         """Execute scheduled SOP and send result to channel."""
         try:
             agent = self.runtime.get_or_create_agent("scheduler:cron")
-            result = self.sop_runner.run_sop(sop_name, agent)
+            # Offload the blocking agent turn to an executor. Running it on
+            # the gateway loop froze every channel for the whole turn and
+            # deadlocked any send_message the SOP made (the tool waits on a
+            # loop that is blocked waiting on the tool).
+            loop = asyncio.get_running_loop()
+            result = await loop.run_in_executor(
+                None, self.sop_runner.run_sop, sop_name, agent
+            )
 
             if channel:
                 from aethon.tools.messaging import get_gateway

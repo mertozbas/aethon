@@ -95,3 +95,57 @@ def test_resolve_channel_id_skips_non_numeric_allowed_senders():
 def test_resolve_channel_id_none_when_nothing_configured():
     adapter = _adapter()
     assert adapter._resolve_channel_id(_out(recipient_id="default")) is None
+
+
+# --- review fixes: explicit recipients must not silently redirect ---
+
+
+def test_explicit_non_numeric_recipient_returns_none():
+    """Review fix: '#general' must NOT silently fall back to the configured
+    default (wrong-destination delivery reported as success)."""
+    adapter = _adapter(channel_id="555")
+    assert adapter._resolve_channel_id(_out(recipient_id="#general")) is None
+
+
+def test_malformed_numeric_recipient_returns_none():
+    """'--123' passes isdigit-after-lstrip but crashes int() — coercion must
+    be exception-safe."""
+    adapter = _adapter()
+    assert adapter._resolve_channel_id(_out(recipient_id="--123")) is None
+
+
+def test_non_numeric_raw_channel_id_returns_none():
+    adapter = _adapter()
+    assert adapter._resolve_channel_id(_out(raw={"channel_id": "bozuk"})) is None
+
+
+# --- review fixes: send()-level coverage (the original R2 bug lived here) ---
+
+
+def test_send_with_no_destination_skips_client(tmp_path):
+    """send() with nothing resolvable must not touch the client (the old
+    int('default') crash lived exactly here)."""
+    import asyncio
+    from unittest.mock import MagicMock
+
+    adapter = _adapter()
+    adapter.client = MagicMock()
+    asyncio.run(adapter.send(_out(recipient_id="default")))
+    adapter.client.get_channel.assert_not_called()
+
+
+def test_send_chunks_long_messages():
+    """>2000 chars must be split into 2000-char chunks."""
+    import asyncio
+    from unittest.mock import AsyncMock, MagicMock
+
+    adapter = _adapter(channel_id="555")
+    channel = MagicMock()
+    channel.send = AsyncMock()
+    adapter.client = MagicMock()
+    adapter.client.get_channel.return_value = channel
+
+    msg = _out(recipient_id="555")
+    msg.text = "x" * 4500
+    asyncio.run(adapter.send(msg))
+    assert channel.send.await_count == 3

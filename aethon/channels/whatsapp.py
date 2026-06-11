@@ -17,6 +17,9 @@ class WhatsAppAdapter(ChannelAdapter):
     def __init__(self, config, router):
         super().__init__(config, router)
         self.client = None
+        # Strong refs to in-flight inbound tasks (the loop holds only weak
+        # references) + a done-callback so failures are logged, not lost.
+        self._inbound_tasks: set = set()
 
     async def start(self) -> None:
         try:
@@ -59,12 +62,22 @@ class WhatsAppAdapter(ChannelAdapter):
 
             loop = asyncio.get_event_loop()
             if loop.is_running():
-                asyncio.ensure_future(self.on_message(inbound))
+                task = asyncio.ensure_future(self.on_message(inbound))
+                self._inbound_tasks.add(task)
+                task.add_done_callback(self._on_inbound_done)
             else:
                 loop.run_until_complete(self.on_message(inbound))
 
         logger.info("WhatsApp: waiting for QR code pairing...")
         self.client.connect()
+
+    def _on_inbound_done(self, task) -> None:
+        self._inbound_tasks.discard(task)
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc:
+            logger.error(f"WhatsApp inbound handling failed: {exc}")
 
     async def stop(self) -> None:
         if self.client:

@@ -1,9 +1,12 @@
 """Base channel adapter and message models."""
 
+import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
+
+logger = logging.getLogger("aethon.channels")
 
 
 @dataclass
@@ -78,4 +81,13 @@ class ChannelAdapter(ABC):
         """Forward incoming message to router."""
         response = await self.router.handle(message)
         if response:
-            await self.send(response)
+            try:
+                await self.send(response)
+            except Exception as e:
+                # The reactive path owns delivery failures: adapters' send()
+                # may raise (deliberately — the send_message tool reports the
+                # real outcome), but a lost reply must still be logged here
+                # rather than vanish into the channel framework.
+                logger.error(
+                    f"Reply delivery failed ({message.channel}): {e}"
+                )

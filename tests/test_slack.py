@@ -109,3 +109,14 @@ def test_resolve_channel_falls_back_to_allowed_senders():
 def test_resolve_channel_none_when_nothing_configured():
     adapter = _adapter()
     assert adapter._resolve_channel(_out(recipient_id="default")) is None
+
+
+def test_send_with_no_destination_skips_client():
+    """Review fix: send() must skip cleanly instead of posting to 'default'."""
+    import asyncio
+    from unittest.mock import MagicMock
+
+    adapter = _adapter()
+    adapter.app = MagicMock()
+    asyncio.run(adapter.send(_out(recipient_id="default")))
+    adapter.app.client.chat_postMessage.assert_not_called()

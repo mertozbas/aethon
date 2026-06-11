@@ -1,5 +1,7 @@
 """Tests for send_message tool."""
 
+import time
+
 import pytest
 from unittest.mock import MagicMock, AsyncMock
 
@@ -119,6 +121,10 @@ def test_send_message_runs_on_gateway_loop_and_reports_failure():
     loop = asyncio.new_event_loop()
     thread = threading.Thread(target=loop.run_forever, daemon=True)
     thread.start()
+    deadline = time.monotonic() + 5
+    while not loop.is_running():  # don't race run_forever() startup
+        assert time.monotonic() < deadline, "loop failed to start"
+        time.sleep(0.001)
     try:
         async def boom(outbound):
             raise RuntimeError("kanal patladi")
@@ -145,6 +151,10 @@ def test_send_message_runs_on_gateway_loop_success():
     loop = asyncio.new_event_loop()
     thread = threading.Thread(target=loop.run_forever, daemon=True)
     thread.start()
+    deadline = time.monotonic() + 5
+    while not loop.is_running():  # don't race run_forever() startup
+        assert time.monotonic() < deadline, "loop failed to start"
+        time.sleep(0.001)
     try:
         sent = []
 
@@ -187,3 +197,55 @@ def test_send_message_in_loop_reports_queued_not_sent():
         await asyncio.wait_for(started.wait(), timeout=5)
 
     asyncio.run(main())
+
+
+def test_send_message_timeout_cancels_future(monkeypatch):
+    """Review fix: a timed-out send must be cancelled (not delivered later,
+    after the agent was told it failed) and the error must say timeout."""
+    import asyncio
+    import threading
+
+    import aethon.tools.messaging as messaging_module
+
+    monkeypatch.setattr(messaging_module, "_SEND_TIMEOUT_SECONDS", 1)
+    loop = asyncio.new_event_loop()
+    thread = threading.Thread(target=loop.run_forever, daemon=True)
+    thread.start()
+    deadline = time.monotonic() + 5
+    while not loop.is_running():
+        assert time.monotonic() < deadline
+        time.sleep(0.001)
+    try:
+        delivered = []
+
+        async def slow_send(outbound):
+            await asyncio.sleep(10)
+            delivered.append(outbound.text)
+
+        adapter = MagicMock()
+        adapter.send = slow_send
+        adapter.resolve_recipient = lambda outbound: "42"
+        set_gateway(_mock_gateway(adapter, loop=loop))
+
+        result = send_message._tool_func(channel="telegram", text="gec kaldi")
+        assert "Error" in result
+        assert "timed out" in result
+        time.sleep(0.1)
+        assert delivered == []  # cancelled — never delivered late
+    finally:
+        loop.call_soon_threadsafe(loop.stop)
+        thread.join(timeout=5)
+        loop.close()
+
+
+def test_send_message_resolver_exception_returns_error():
+    """A crashing resolver degrades to a structured error, not a traceback."""
+    adapter = MagicMock()
+    adapter.send = AsyncMock()
+    adapter.resolve_recipient = MagicMock(side_effect=RuntimeError("patladi"))
+    set_gateway(_mock_gateway(adapter))
+
+    result = send_message._tool_func(channel="telegram", text="x")
+    assert "Error" in result
+    assert "patladi" in result
+    assert adapter.send.await_count == 0

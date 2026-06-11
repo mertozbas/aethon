@@ -278,8 +278,13 @@ class TelegramAdapter(ChannelAdapter):
         if raw_id is not None:
             return raw_id
         rid = (message.recipient_id or "").strip()
-        if rid and rid != "default" and rid.lstrip("-").isdigit():
-            return int(rid)
+        if rid and rid != "default":
+            # int() directly — isdigit() accepts strings int() rejects
+            # ('--123', unicode digits) and used to crash the send.
+            try:
+                return int(rid)
+            except ValueError:
+                pass  # not a chat id — fall through to configured defaults
         cfg_id = (self.config.channels.telegram.chat_id or "").strip()
         if cfg_id:
             return cfg_id

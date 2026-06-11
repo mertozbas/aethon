@@ -205,3 +205,10 @@ def test_split_html_message():
     assert len(chunks) > 1
     for chunk in chunks:
         assert len(chunk) <= 200
+
+
+def test_resolve_chat_id_malformed_numeric_falls_through():
+    """Review fix: '--123' passed isdigit-after-lstrip but crashed int();
+    it now falls through to the configured default instead."""
+    adapter = _adapter(chat_id="555")
+    assert adapter._resolve_chat_id(_out(recipient_id="--123")) == "555"

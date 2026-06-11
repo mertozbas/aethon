@@ -30,10 +30,17 @@ def get_gateway():
 
 _SEND_TIMEOUT_SECONDS = 30
 
+# Strong references to in-flight fire-and-forget sends: the event loop keeps
+# only weak references to tasks, so an unreferenced send could be garbage
+# collected mid-flight.
+_pending_sends: set = set()
+
 
 def _log_send_failure(task: "asyncio.Task") -> None:
     """Surface a failed fire-and-forget send in the log (in-loop path)."""
+    _pending_sends.discard(task)
     if task.cancelled():
+        logger.error("Async message send was cancelled before completing.")
         return
     exc = task.exception()
     if exc:
@@ -68,13 +75,19 @@ def send_message(channel: str, text: str, recipient: str = "") -> str:
     # success for a message that cannot be delivered (proactive send with no
     # configured recipient used to be silently dropped by the adapter).
     resolve = getattr(adapter, "resolve_recipient", None)
-    if callable(resolve) and resolve(outbound) is None:
-        return (
-            f"Error: {channel} has no deliverable recipient. Pass `recipient` "
-            f"explicitly or configure a default destination for the channel "
-            f"(e.g. channels.{channel} default recipient or "
-            f"security.allowed_senders.{channel})."
-        )
+    if callable(resolve):
+        try:
+            resolved = resolve(outbound)
+        except Exception as e:
+            logger.error(f"Recipient resolution error ({channel}): {e}")
+            return f"Error: Could not resolve recipient ({e})"
+        if resolved is None:
+            return (
+                f"Error: {channel} has no deliverable recipient. Pass "
+                f"`recipient` explicitly or configure a default destination "
+                f"for the channel (e.g. channels.{channel} default recipient "
+                f"or security.allowed_senders.{channel})."
+            )
 
     try:
         try:
@@ -88,6 +101,7 @@ def send_message(channel: str, text: str, recipient: str = "") -> str:
             # and surface any late failure in the log. Phrase the result
             # honestly: the send has not completed yet.
             task = asyncio.ensure_future(adapter.send(outbound))
+            _pending_sends.add(task)
             task.add_done_callback(_log_send_failure)
             return f"Message queued for delivery via {channel}."
 
@@ -99,7 +113,16 @@ def send_message(channel: str, text: str, recipient: str = "") -> str:
             future = asyncio.run_coroutine_threadsafe(
                 adapter.send(outbound), gateway_loop
             )
-            future.result(timeout=_SEND_TIMEOUT_SECONDS)
+            try:
+                future.result(timeout=_SEND_TIMEOUT_SECONDS)
+            except TimeoutError:
+                # A timed-out send must not deliver later — the agent was
+                # told it failed and may retry (duplicate deliveries).
+                future.cancel()
+                return (
+                    f"Error: send via {channel} timed out after "
+                    f"{_SEND_TIMEOUT_SECONDS}s and was cancelled."
+                )
         else:
             # No gateway loop (tests / standalone use) — run to completion.
             asyncio.run(adapter.send(outbound))
