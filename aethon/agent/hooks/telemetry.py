@@ -147,6 +147,31 @@ class TelemetryHookProvider(HookProvider):
                 "threshold": self.FAILURE_THRESHOLD,
                 "timestamp": datetime.now().isoformat(),
             })
+        self._notify_user(event, name, notice)
+
+    def _notify_user(self, event: AfterToolCallEvent, failing_tool: str, notice: str) -> None:
+        """Best-effort out-of-band escalation (R17/FM4).
+
+        The in-band notice depends on the (failing) agent relaying it; when
+        the session belongs to a real messaging channel, also message the
+        user directly — unless the broken tool IS the messenger.
+        """
+        if failing_tool == "send_message":
+            return
+        session = str(
+            getattr(getattr(event, "agent", None), "__aethon_session__", "") or ""
+        )
+        channel = session.split(":", 1)[0]
+        if channel in ("", "cli", "webchat", "ambient", "scheduler", "specialist"):
+            return  # local/synthetic sessions — the in-band notice suffices
+        try:
+            from aethon.tools.messaging import send_message
+
+            result = send_message._tool_func(channel=channel, text=notice)
+            if result.startswith("Error"):
+                logger.warning(f"Reliability escalation not delivered: {result}")
+        except Exception as e:
+            logger.warning(f"Reliability escalation send failed: {e}")
 
     def before_model(self, event: BeforeModelCallEvent) -> None:
         self._timers["model"] = time.monotonic()

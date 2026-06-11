@@ -294,3 +294,13 @@ def test_reading_bak_via_shell_is_allowed(security_hook, fake_agent):
     event = _make_before_event(fake_agent, "shell", {"command": "cat old.bak"})
     security_hook.check_tool_safety(event)
     assert not event.cancel_tool
+
+
+def test_unparseable_command_falls_back_to_regex(security_hook, fake_agent):
+    """Review fix coverage: unbalanced quotes break shlex — the conservative
+    regex fallback must still catch catch-all staging."""
+    event = _make_before_event(
+        fake_agent, "shell", {"command": "git add . 'unbalanced"}
+    )
+    security_hook.check_tool_safety(event)
+    assert event.cancel_tool

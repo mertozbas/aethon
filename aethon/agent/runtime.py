@@ -468,14 +468,18 @@ class AethonRuntime:
         ]
         # Tool-input validator (R16) — turn malformed calls into
         # self-describing cancellations instead of opaque pydantic errors.
-        try:
-            from aethon.agent.hooks.input_validator import (
-                InputValidatorHookProvider,
-            )
+        degraded_hooks: list[str] = []
+        rel_cfg_iv = getattr(self.config, "reliability", None)
+        if rel_cfg_iv is None or getattr(rel_cfg_iv, "input_validator", True):
+            try:
+                from aethon.agent.hooks.input_validator import (
+                    InputValidatorHookProvider,
+                )
 
-            hooks.append(InputValidatorHookProvider())
-        except Exception as e:
-            logger.warning(f"InputValidator startup error: {e}")
+                hooks.append(InputValidatorHookProvider())
+            except Exception as e:
+                degraded_hooks.append("InputValidator")
+                logger.warning(f"InputValidator startup error: {e}")
         # MemoryGuardHook
         if self.config.memory_guard.enabled:
             try:
@@ -487,6 +491,7 @@ class AethonRuntime:
                     )
                 )
             except Exception as e:
+                degraded_hooks.append("MemoryGuard")
                 logger.warning(f"MemoryGuard startup error: {e}")
         # LSP diagnostics hook (opt-in; only when the LSP tool is also enabled)
         lsp_cfg = getattr(self.config, "lsp", None)
@@ -501,6 +506,7 @@ class AethonRuntime:
                 )
                 logger.info("LSPDiagnosticsHook: active")
             except Exception as e:
+                degraded_hooks.append("LSPDiagnostics")
                 logger.warning(f"LSP diagnostics hook startup error: {e}")
         # Anglicization guard (R14) — existing non-English text must not be
         # silently rewritten to English. Advisory: pauses the edit once with
@@ -520,6 +526,7 @@ class AethonRuntime:
                     )
                 )
             except Exception as e:
+                degraded_hooks.append("AnglicizationGuard")
                 logger.warning(f"AnglicizationGuard startup error: {e}")
         # Reliability hooks (Phase 8): PostEditVerify (R7) + CompletionGate (R6).
         # Advisory by default; reliability.strict flips them to hard gates.
@@ -537,14 +544,15 @@ class AethonRuntime:
                 hooks.append(verify_hook)
             except Exception as e:
                 # Reliability hooks are the safety net — escalate, don't whisper.
+                degraded_hooks.append("PostEditVerify")
                 logger.error(f"PostEditVerify startup error: {e}")
         if rel_cfg and rel_cfg.completion_gate:
-            if verify_hook is None:
-                # Without an evidence source the gate can never fire — say so
-                # loudly instead of registering a silently inert guard.
+            if verify_hook is None and self._task_ledger is None:
+                # Without any evidence source the gate can never fire — say
+                # so loudly instead of registering a silently inert guard.
                 logger.warning(
                     "CompletionGate skipped: it needs reliability."
-                    "post_edit_verify as its evidence source."
+                    "post_edit_verify or the task ledger as an evidence source."
                 )
             else:
                 try:
@@ -554,10 +562,13 @@ class AethonRuntime:
 
                     hooks.append(
                         CompletionGateHookProvider(
-                            config=rel_cfg, verify_hook=verify_hook
+                            config=rel_cfg,
+                            verify_hook=verify_hook,
+                            task_ledger=self._task_ledger,
                         )
                     )
                 except Exception as e:
+                    degraded_hooks.append("CompletionGate")
                     logger.error(f"CompletionGate startup error: {e}")
         # TelemetryHook
         if self._telemetry_hook:
@@ -593,6 +604,7 @@ class AethonRuntime:
                 logger.info("ApprovalHook: active")
             except Exception as e:
                 # A failed safety gate must not vanish silently.
+                degraded_hooks.append("Approval")
                 logger.error(f"ApprovalHook startup error: {e}")
         # Tool-output guard — cap oversized tool results before they reach the
         # model. Registered LAST on purpose: AfterToolCallEvent callbacks run
@@ -605,7 +617,16 @@ class AethonRuntime:
 
                 hooks.append(ToolOutputGuardHookProvider(max_chars=max_out))
             except Exception as e:
+                degraded_hooks.append("ToolOutputGuard")
                 logger.warning(f"ToolOutputGuard startup error: {e}")
+        # R18: aggregate degraded hooks into one loud, greppable health record
+        # (and keep it on the runtime for status surfacing).
+        self._degraded_hooks = degraded_hooks
+        if degraded_hooks:
+            logger.error(
+                f"Hook startup DEGRADED — running without: "
+                f"{', '.join(degraded_hooks)}"
+            )
         return hooks
 
     def _get_specialist_hooks(self) -> list:

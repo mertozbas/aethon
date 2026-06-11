@@ -220,3 +220,88 @@ def test_successes_do_not_accumulate():
         ev.result["content"] = []
         hook.after_tool(ev)
         assert ev.result["content"] == []
+
+
+# --- review fixes: window pruning, per-tool isolation, out-of-band path ---
+
+
+def test_failure_window_prunes_old_entries(monkeypatch):
+    """Two failures, a >window gap, then a third — no notice fires."""
+    import time as _time
+    from aethon.agent.hooks.telemetry import TelemetryHookProvider
+
+    hook = TelemetryHookProvider()
+    clock = [1000.0]
+    monkeypatch.setattr(_time, "monotonic", lambda: clock[0])
+
+    for _ in range(2):
+        ev = _make_after_tool_event(status="error")
+        ev.result["content"] = []
+        hook.after_tool(ev)
+    clock[0] += TelemetryHookProvider.FAILURE_WINDOW_SECONDS + 1
+    ev = _make_after_tool_event(status="error")
+    ev.result["content"] = []
+    hook.after_tool(ev)
+    assert ev.result["content"] == []  # old failures pruned, no notice
+
+
+def test_failures_are_counted_per_tool(monkeypatch):
+    """Interleaved failures of two tools must not cross-contaminate."""
+    from aethon.agent.hooks.telemetry import TelemetryHookProvider
+
+    hook = TelemetryHookProvider()
+    last = {}
+    for tool in ("shell", "editor") * 2:  # 2 failures each — below threshold
+        ev = _make_after_tool_event(tool_name=tool, status="error")
+        ev.result["content"] = []
+        hook.after_tool(ev)
+        last[tool] = ev
+    assert last["shell"].result["content"] == []
+    assert last["editor"].result["content"] == []
+
+
+def test_escalation_skipped_when_send_message_is_the_failing_tool():
+    """R17 out-of-band: never escalate through the broken messenger."""
+    from unittest.mock import patch
+    from aethon.agent.hooks.telemetry import TelemetryHookProvider
+
+    hook = TelemetryHookProvider()
+    with patch("aethon.tools.messaging.send_message") as mocked:
+        for _ in range(TelemetryHookProvider.FAILURE_THRESHOLD):
+            ev = _make_after_tool_event(tool_name="send_message", status="error")
+            ev.result["content"] = []
+            ev.agent.__aethon_session__ = "telegram:123"
+            hook.after_tool(ev)
+        mocked._tool_func.assert_not_called()
+
+
+def test_escalation_targets_the_session_channel():
+    from unittest.mock import MagicMock, patch
+    from aethon.agent.hooks.telemetry import TelemetryHookProvider
+
+    hook = TelemetryHookProvider()
+    fake_tool = MagicMock()
+    fake_tool._tool_func.return_value = "Message sent via telegram."
+    with patch("aethon.tools.messaging.send_message", fake_tool):
+        for _ in range(TelemetryHookProvider.FAILURE_THRESHOLD):
+            ev = _make_after_tool_event(tool_name="shell", status="error")
+            ev.result["content"] = []
+            ev.agent.__aethon_session__ = "telegram:123"
+            hook.after_tool(ev)
+    fake_tool._tool_func.assert_called_once()
+    assert fake_tool._tool_func.call_args.kwargs["channel"] == "telegram"
+
+
+def test_no_escalation_for_local_sessions():
+    from unittest.mock import MagicMock, patch
+    from aethon.agent.hooks.telemetry import TelemetryHookProvider
+
+    hook = TelemetryHookProvider()
+    fake_tool = MagicMock()
+    with patch("aethon.tools.messaging.send_message", fake_tool):
+        for _ in range(TelemetryHookProvider.FAILURE_THRESHOLD):
+            ev = _make_after_tool_event(tool_name="shell", status="error")
+            ev.result["content"] = []
+            ev.agent.__aethon_session__ = "cli:local"
+            hook.after_tool(ev)
+    fake_tool._tool_func.assert_not_called()

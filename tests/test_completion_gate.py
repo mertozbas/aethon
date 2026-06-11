@@ -85,3 +85,55 @@ def test_no_verify_hook_is_safe():
     gate = _gate(None)
     gate._on_after_invocation(_event(_agent_with_reply("Done, tests passed.")))
     assert gate.consume_note() is None
+
+
+# --- review fixes: the design's ledger-evidence branch (R6 ↔ R9) ---
+
+
+class _FakeLedger:
+    def __init__(self, tasks):
+        self._tasks = tasks
+
+    def list(self, status=None):
+        return [t for t in self._tasks if status is None or t["status"] == status]
+
+
+def test_unevidenced_in_progress_task_is_flagged_by_name():
+    """R6 design: a success claim while an in-progress task has acceptance
+    criteria but no evidence must be flagged, naming the task."""
+    ledger = _FakeLedger([{
+        "id": "T3", "title": "Raporu bitir", "status": "in_progress",
+        "acceptance_criteria": "rapor gonderildi", "evidence": "",
+    }])
+    gate = CompletionGateHookProvider(
+        config=ReliabilityConfig(), verify_hook=None, task_ledger=ledger,
+    )
+    gate._on_after_invocation(_event(_agent_with_reply("All done!")))
+    note = gate.consume_note()
+    assert note is not None
+    assert "T3" in note
+
+
+def test_evidenced_task_passes_clean():
+    ledger = _FakeLedger([{
+        "id": "T3", "title": "Is", "status": "in_progress",
+        "acceptance_criteria": "test gecer", "evidence": "pytest: 5 passed",
+    }])
+    gate = CompletionGateHookProvider(
+        config=ReliabilityConfig(), verify_hook=None, task_ledger=ledger,
+    )
+    gate._on_after_invocation(_event(_agent_with_reply("Done!")))
+    assert gate.consume_note() is None
+
+
+def test_open_backlog_tasks_do_not_nag():
+    """Only in-progress tasks count — an untouched backlog is not a claim."""
+    ledger = _FakeLedger([{
+        "id": "T9", "title": "Gelecek is", "status": "open",
+        "acceptance_criteria": "x", "evidence": "",
+    }])
+    gate = CompletionGateHookProvider(
+        config=ReliabilityConfig(), verify_hook=None, task_ledger=ledger,
+    )
+    gate._on_after_invocation(_event(_agent_with_reply("Done!")))
+    assert gate.consume_note() is None

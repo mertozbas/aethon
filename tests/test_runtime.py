@@ -335,18 +335,32 @@ def test_output_guard_registered_last(runtime_config):
 
 
 def test_completion_gate_skipped_without_evidence_source(runtime_config, caplog):
-    """A gate with no verify hook can never fire — skip it loudly instead of
-    registering a silently inert guard."""
+    """A gate with NO evidence source (no verify hook, no ledger) can never
+    fire — skip it loudly instead of registering a silently inert guard."""
     import logging
 
     runtime_config.reliability.post_edit_verify = False
     runtime_config.reliability.completion_gate = True
     runtime = AethonRuntime(runtime_config)
+    runtime._task_ledger = None  # remove the second evidence source too
     with caplog.at_level(logging.WARNING, logger="aethon.runtime"):
         hooks = runtime._get_hooks()
     names = [type(h).__name__ for h in hooks]
     assert "CompletionGateHookProvider" not in names
     assert any("CompletionGate skipped" in rec.message for rec in caplog.records)
+
+
+def test_completion_gate_runs_on_ledger_alone(runtime_config):
+    """R6 design: the ledger is an evidence source in its own right — the
+    gate must register even when post_edit_verify is disabled."""
+    runtime_config.reliability.post_edit_verify = False
+    runtime = AethonRuntime(runtime_config)
+    gates = [
+        h for h in runtime._get_hooks()
+        if type(h).__name__ == "CompletionGateHookProvider"
+    ]
+    assert len(gates) == 1
+    assert gates[0].task_ledger is runtime._task_ledger
 
 
 def test_sop_replies_are_gated(runtime_config):
@@ -472,3 +486,47 @@ def test_r10_can_be_disabled(runtime_config):
     runtime._task_ledger.create("Gorunmemesi gereken is")
     runtime._refresh_volatile_prompt(agent, "frozen-session")
     assert agent.system_prompt == before
+
+
+def test_input_validator_can_be_disabled(runtime_config):
+    """Review fix: R16 now honors a config flag like every other new hook."""
+    runtime_config.reliability.input_validator = False
+    runtime = AethonRuntime(runtime_config)
+    names = [type(h).__name__ for h in runtime._get_hooks()]
+    assert "InputValidatorHookProvider" not in names
+
+
+def test_strict_gate_reprompts_once(runtime_config):
+    """Review fix: the strict-mode re-prompt path was untested."""
+    runtime_config.reliability.strict = True
+    runtime = AethonRuntime(runtime_config)
+    agent = runtime.get_or_create_agent("strict-session")
+    gate = runtime._completion_gates["strict-session"]
+    gate._pending_note = "[Completion Gate] kanit yok"
+
+    reply = runtime._apply_completion_gate(agent, "strict-session", "Bitti.")
+    assert reply.startswith("Bitti.")
+    assert len(reply) > len("Bitti.")  # follow-up text appended
+    assert gate._pending_note is None  # no second nag carried over
+
+
+def test_strict_gate_falls_back_to_note_on_error(runtime_config):
+    runtime_config.reliability.strict = True
+    runtime = AethonRuntime(runtime_config)
+    runtime.get_or_create_agent("strict-err")
+    gate = runtime._completion_gates["strict-err"]
+    gate._pending_note = "[Completion Gate] kanit yok"
+
+    class _Boom:
+        def __call__(self, *a, **k):
+            raise RuntimeError("model down")
+
+    reply = runtime._apply_completion_gate(_Boom(), "strict-err", "Bitti.")
+    assert "[Completion Gate] kanit yok" in reply
+
+
+def test_degraded_hooks_empty_on_clean_startup(runtime_config):
+    """R18: hook failures aggregate into a runtime health record."""
+    runtime = AethonRuntime(runtime_config)
+    runtime._get_hooks()
+    assert runtime._degraded_hooks == []

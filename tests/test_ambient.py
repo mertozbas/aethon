@@ -174,11 +174,19 @@ def test_completion_signal_without_ledger_falls_back():
 
 
 def test_ambient_prompts_are_ledger_bound():
-    """R12: every ambient prompt drives ledger work instead of invention."""
+    """R12: every ambient prompt drives ledger work instead of invention,
+    and the completion signal is actually substituted into the text."""
     m = _mgr(AmbientConfig(enabled=True, completion_signal="[D]"))
+    prompts = []
     for i in range(3):
         m.ambient_iterations = i
-        assert "ledger" in m._build_ambient_prompt()
+        prompt = m._build_ambient_prompt()
+        prompts.append(prompt)
+        assert "ledger" in prompt
+        assert "[D]" in prompt          # substituted signal present
+        assert "{signal}" not in prompt  # placeholder must not leak
+    assert any("manage_tasks" in p for p in prompts)
+    assert any("Do NOT invent" in p for p in prompts)
 
 
 def test_blocked_backlog_stops_after_consecutive_ignored_signals(tmp_path):

@@ -125,10 +125,36 @@ def _wizard_channels() -> tuple[dict, dict]:
     if click.confirm("  Enable Discord?", default=False):
         token = click.prompt("    Discord bot token", hide_input=True, default="").strip()
         channels["discord"] = {"enabled": True, "token": token}
+        channel_id = click.prompt(
+            "    Default destination for proactive sends "
+            "(a channel id or your user id; empty = skip)",
+            default="",
+        ).strip()
+        if channel_id:
+            channels["discord"]["channel_id"] = channel_id
+            if click.confirm(
+                "    Restrict the bot to only respond to this id? "
+                "(recommended — it has shell/tool access)",
+                default=True,
+            ):
+                allowed.setdefault("discord", []).append(channel_id)
     if click.confirm("  Enable Slack?", default=False):
         bot_token = click.prompt("    Slack bot token (xoxb-...)", hide_input=True, default="").strip()
         app_token = click.prompt("    Slack app token (xapp-...)", hide_input=True, default="").strip()
         channels["slack"] = {"enabled": True, "bot_token": bot_token, "app_token": app_token}
+        slack_dest = click.prompt(
+            "    Default destination for proactive sends "
+            "(channel id C... or your user id U...; empty = skip)",
+            default="",
+        ).strip()
+        if slack_dest:
+            channels["slack"]["channel"] = slack_dest
+            if click.confirm(
+                "    Restrict the bot to only respond to this id? "
+                "(recommended — it has shell/tool access)",
+                default=True,
+            ):
+                allowed.setdefault("slack", []).append(slack_dest)
     return channels, allowed
 
 

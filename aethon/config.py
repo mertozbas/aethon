@@ -289,6 +289,9 @@ class ReliabilityConfig(BaseModel):
     # AnglicizationGuard hook — pause edits that replace existing Turkish
     # text with English-only text (advisory: an identical re-issue passes).
     anglicization_guard: bool = True
+    # InputValidator hook — cancel malformed tool calls (empty shell command,
+    # missing file path) with a self-describing reason.
+    input_validator: bool = True
 
 
 class PromptConfig(BaseModel):
