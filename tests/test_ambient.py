@@ -179,3 +179,30 @@ def test_ambient_prompts_are_ledger_bound():
     for i in range(3):
         m.ambient_iterations = i
         assert "ledger" in m._build_ambient_prompt()
+
+
+def test_blocked_backlog_stops_after_consecutive_ignored_signals(tmp_path):
+    """Review fix: open tasks must not trap the loop forever — two
+    consecutive ignored signals stop it loudly."""
+    from aethon.agent.task_ledger import TaskLedger
+
+    rt = _FakeRuntime()
+    rt._task_ledger = TaskLedger(str(tmp_path))
+    rt._task_ledger.create("tikali is")
+    m = _mgr(AmbientConfig(enabled=True, completion_signal="[DONE]"), runtime=rt)
+
+    assert m._check_completion_signal("yapacak bir sey yok [DONE]") is False
+    assert m._check_completion_signal("hala bir sey yok [DONE]") is True  # 2nd in a row
+
+
+def test_progress_between_signals_resets_the_streak(tmp_path):
+    from aethon.agent.task_ledger import TaskLedger
+
+    rt = _FakeRuntime()
+    rt._task_ledger = TaskLedger(str(tmp_path))
+    rt._task_ledger.create("is")
+    m = _mgr(AmbientConfig(enabled=True, completion_signal="[DONE]"), runtime=rt)
+
+    assert m._check_completion_signal("bir sey yok [DONE]") is False
+    assert m._check_completion_signal("T1 uzerinde calisiyorum") is False  # progress
+    assert m._check_completion_signal("yine bir sey yok [DONE]") is False  # streak reset

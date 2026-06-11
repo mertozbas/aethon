@@ -750,6 +750,9 @@ class AethonRuntime:
         # and the session id so telemetry maps activity to the dashboard pixel office.
         self.agents[session_id].__aethon_config__ = self.config
         self.agents[session_id].__aethon_session__ = session_id
+        # The prompt was composed just now — record the volatile-source
+        # fingerprint so the first turn doesn't immediately recompose (R10).
+        self.agents[session_id].__aethon_prompt_fp__ = self._volatile_fingerprint()
 
         return self.agents[session_id]
 
@@ -793,6 +796,9 @@ class AethonRuntime:
                 if is_sop:
                     agent = self.get_or_create_agent(session_id)
                     self._discard_stale_gate_note(session_id)
+                    # R10 applies to SOP turns too — they were running
+                    # against a stale system prompt on cached agents.
+                    self._refresh_volatile_prompt(agent, session_id)
                     sop_reply = self.sop_runner.run_sop(sop_name, agent, sop_input)
                     # Gate SOP replies too — otherwise a pending DoD note
                     # would leak into the next unrelated turn.
@@ -837,19 +843,43 @@ class AethonRuntime:
         if gate is not None and gate.consume_note():
             logger.debug(f"Stale completion-gate note discarded ({session_id})")
 
+    # Volatile prompt sources watched for per-turn refresh (R10). aethon.log
+    # is deliberately absent: it changes every turn, and recomposing for it
+    # would make the prompt unique per turn — defeating provider prompt
+    # caching for zero orientation value.
+    _VOLATILE_PROMPT_FILES = (
+        "CONTEXT.md", "TASKS.json", "HANDOFF.md", "LEARNINGS.md",
+    )
+
+    def _volatile_fingerprint(self) -> tuple:
+        workspace = Path(self.config.paths.workspace).expanduser()
+        fingerprint = []
+        for name in self._VOLATILE_PROMPT_FILES:
+            try:
+                fingerprint.append((workspace / name).stat().st_mtime_ns)
+            except OSError:
+                fingerprint.append(None)
+        return tuple(fingerprint)
+
     def _refresh_volatile_prompt(self, agent, session_id: str) -> None:
-        """R10: recompose the system prompt before each turn.
+        """R10: recompose the system prompt when its volatile sources changed.
 
         compose() otherwise runs once per cached agent, so CONTEXT.md /
-        task-ledger / handoff updates never surface mid-session.
+        task-ledger / handoff updates never surface mid-session. The mtime
+        gate keeps the prompt byte-stable across unchanged turns so provider
+        prompt caching stays effective.
         """
         prompt_cfg = getattr(self.config, "prompt", None)
         if prompt_cfg is not None and not getattr(
             prompt_cfg, "refresh_per_turn", True
         ):
             return
+        fingerprint = self._volatile_fingerprint()
+        if getattr(agent, "__aethon_prompt_fp__", None) == fingerprint:
+            return
         try:
             agent.system_prompt = self.prompt_composer.compose(session_id)
+            agent.__aethon_prompt_fp__ = fingerprint
         except Exception as e:
             logger.warning(f"Prompt refresh error: {e}")
 
@@ -932,7 +962,14 @@ class AethonRuntime:
             self.agents.pop(session_id, None)
             self._completion_gates.pop(session_id, None)
             return
-        files = sorted(messages_dir.glob("message_*.json"))
+        # Numeric sort — strands names files message_<int>.json unpadded, so
+        # a lexicographic sort would order message_10 before message_9 and
+        # the checkpoint would distill the wrong "last" messages.
+        def _msg_index(path):
+            stem = path.stem.removeprefix("message_")
+            return (0, int(stem)) if stem.isdigit() else (1, stem)
+
+        files = sorted(messages_dir.glob("message_*.json"), key=_msg_index)
         if files:
             # R11: distill a checkpoint to HANDOFF.md BEFORE clearing, so a
             # reset doesn't wipe live orientation (read back as a prompt layer).
@@ -980,10 +1017,17 @@ class AethonRuntime:
             return ""
 
         try:
+            import re as _re
             from datetime import datetime
 
-            user_text = _last_text("user")[:500]
-            assistant_text = _last_text("assistant")[-500:]
+            def _flatten(text: str) -> str:
+                # Collapse newlines — checkpoint excerpts land in the system
+                # prompt, and raw multi-line user text could fabricate prompt
+                # layers or fake checkpoint headers.
+                return _re.sub(r"\s+", " ", text).strip()
+
+            user_text = _flatten(_last_text("user"))[:500]
+            assistant_text = _flatten(_last_text("assistant"))[-500:]
             checkpoint = (
                 f"### Checkpoint {datetime.now().isoformat(timespec='seconds')}"
                 f" — session {session_id} (history reset)\n"
@@ -995,11 +1039,17 @@ class AethonRuntime:
             existing = (
                 handoff.read_text(encoding="utf-8") if handoff.exists() else ""
             )
+            # Anchored split: only real checkpoint headers at line starts
+            # count — '### ' inside an excerpt must not break the rotation.
             sections = [
-                s for s in existing.split("### ") if s.strip()
+                s for s in _re.split(r"(?m)^### Checkpoint ", existing)
+                if s.strip()
             ]
             kept = sections[-4:]  # keep the last few checkpoints, never grow unbounded
-            body = "".join(f"### {s}" for s in kept) + "\n" + checkpoint
+            body = (
+                "\n".join(f"### Checkpoint {s.strip()}" for s in kept)
+                + "\n\n" + checkpoint
+            )
             handoff.write_text(body.strip() + "\n", encoding="utf-8")
             logger.info(f"Reset checkpoint written to HANDOFF.md ({session_id})")
         except Exception as e:

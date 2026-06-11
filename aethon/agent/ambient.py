@@ -56,6 +56,7 @@ class AmbientModeManager:
         self._task: Optional[asyncio.Task] = None
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._interrupted = False
+        self._ignored_signals = 0  # consecutive signals ignored for open tasks
 
     def set_loop(self, loop) -> None:
         self._loop = loop
@@ -161,8 +162,12 @@ class AmbientModeManager:
         The free-text signal alone is trivially emittable (R12); when a task
         ledger is available, completion also requires that no open task
         remains, so 'done' is a verified state rather than a substring.
+        A blocked backlog must not trap the loop, though: after two
+        CONSECUTIVE ignored signals (the agent keeps saying 'nothing I can
+        do' while tasks stay open) the loop stops anyway, loudly.
         """
         if not (bool(text) and self.config.completion_signal in text):
+            self._ignored_signals = 0  # still working — reset the streak
             return False
         ledger = getattr(self.runtime, "_task_ledger", None)
         if ledger is None:
@@ -173,11 +178,21 @@ class AmbientModeManager:
             logger.warning(f"Ambient ledger check failed: {e}")
             return True
         if remaining:
+            self._ignored_signals += 1
+            if self._ignored_signals >= 2:
+                logger.warning(
+                    f"Ambient stopping with {len(remaining)} open ledger "
+                    f"task(s): the agent signalled completion twice in a row "
+                    f"without progressing them (blocked backlog?)."
+                )
+                self._ignored_signals = 0
+                return True
             logger.info(
                 f"Ambient completion signal ignored: {len(remaining)} open "
                 f"ledger task(s) remain"
             )
             return False
+        self._ignored_signals = 0
         return True
 
     async def _ambient_loop(self) -> None:

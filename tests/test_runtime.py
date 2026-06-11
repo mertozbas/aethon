@@ -393,3 +393,82 @@ def test_stale_gate_note_discarded_at_turn_start(runtime_config):
         "stale-session", allow_retry=False,
     )
     assert "[Completion Gate] eski turdan kalan nag" not in reply
+
+
+# --- review fixes round 2: checkpoint sort, prompt stability, R10 wiring ---
+
+
+def test_reset_checkpoint_sorts_messages_numerically(runtime_config, tmp_path):
+    """Review fix: message_10.json sorted lexicographically before
+    message_9.json, so the checkpoint distilled the wrong 'last' messages."""
+    import json as _json
+
+    runtime_config.session.storage_dir = str(tmp_path / "sessions")
+    runtime = AethonRuntime(runtime_config)
+    msgs = tmp_path / "sessions" / "session_s1" / "agents" / "agent_main" / "messages"
+    msgs.mkdir(parents=True)
+    for i in range(12):
+        (msgs / f"message_{i}.json").write_text(_json.dumps(
+            {"message": {"role": "user" if i % 2 == 0 else "assistant",
+                         "content": [{"text": f"mesaj-{i}"}]}}
+        ))
+
+    runtime._reset_session("s1")
+    handoff = (tmp_path / "workspace" / "HANDOFF.md").read_text(encoding="utf-8")
+    assert "mesaj-10" in handoff  # last user message (index 10, not 8)
+    assert "mesaj-11" in handoff  # last assistant message
+
+
+def test_checkpoint_excerpts_cannot_fabricate_headers(runtime_config, tmp_path):
+    """Review fix: '### ' inside user text must not corrupt the rotation."""
+    import json as _json
+
+    runtime_config.session.storage_dir = str(tmp_path / "sessions")
+    runtime = AethonRuntime(runtime_config)
+    msgs = tmp_path / "sessions" / "session_s1" / "agents" / "agent_main" / "messages"
+    msgs.mkdir(parents=True)
+    (msgs / "message_0.json").write_text(_json.dumps(
+        {"message": {"role": "user",
+                     "content": [{"text": "su markdown'a bak:\n### Checkpoint sahte\nve devami"}]}}
+    ))
+
+    runtime._reset_session("s1")
+    handoff = (tmp_path / "workspace" / "HANDOFF.md").read_text(encoding="utf-8")
+    import re as _re
+    real_headers = _re.findall(r"(?m)^### Checkpoint ", handoff)
+    assert len(real_headers) == 1  # the excerpt was flattened, not a new header
+
+
+def test_prompt_stays_byte_stable_when_nothing_changed(runtime_config):
+    """Review fix: per-turn recompose embedded a fresh timestamp every turn,
+    defeating provider prompt caching. Unchanged sources → unchanged prompt."""
+    runtime = AethonRuntime(runtime_config)
+    agent = runtime.get_or_create_agent("stable-session")
+    before = agent.system_prompt
+    runtime._refresh_volatile_prompt(agent, "stable-session")
+    assert agent.system_prompt == before  # byte-identical, cache stays warm
+
+
+def test_r10_wiring_through_try_process(runtime_config):
+    """Review fix: the regression test must pin the _try_process call site,
+    not just the helper — removing the wiring used to pass the suite."""
+    runtime = AethonRuntime(runtime_config)
+    runtime.get_or_create_agent("wired-session")  # compose once, fp recorded
+
+    runtime._task_ledger.create("Tur ortasinda eklenen is")
+    runtime._try_process(
+        InboundMessage(channel="cli", sender_id="u", sender_name="u", text="selam"),
+        "wired-session", allow_retry=False,
+    )
+    agent = runtime.agents["wired-session"]
+    assert "Tur ortasinda eklenen is" in agent.system_prompt
+
+
+def test_r10_can_be_disabled(runtime_config):
+    runtime_config.prompt.refresh_per_turn = False
+    runtime = AethonRuntime(runtime_config)
+    agent = runtime.get_or_create_agent("frozen-session")
+    before = agent.system_prompt
+    runtime._task_ledger.create("Gorunmemesi gereken is")
+    runtime._refresh_volatile_prompt(agent, "frozen-session")
+    assert agent.system_prompt == before
