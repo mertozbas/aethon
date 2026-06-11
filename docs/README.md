@@ -29,6 +29,11 @@
 | [PHASE-6-INFRASTRUCTURE.md](development/PHASE-6-INFRASTRUCTURE.md) | Phase 6 — Infrastructure Strengthening design |
 | [PHASE-7-INTELLIGENCE.md](development/PHASE-7-INTELLIGENCE.md) | Phase 7 — AI Capabilities Expansion design |
 | [PHASE-8-RELIABILITY.md](development/PHASE-8-RELIABILITY.md) | Phase 8 — Reliability Hardening (autonomous-engineer trustworthiness; from the hermes-strands audit) |
+| [PHASE-9A-SECURITY.md](development/PHASE-9A-SECURITY.md) | Phase 9A — Security Hardening (network surfaces, default-deny, answerable approval, sandbox; from the 2026-06-11 gap analysis) |
+| [PHASE-9B-ROBUSTNESS.md](development/PHASE-9B-ROBUSTNESS.md) | Phase 9B — Robustness, Liveness & Token Economy Tier 0-1 |
+| [PHASE-10-CORE-LOOP.md](development/PHASE-10-CORE-LOOP.md) | Phase 10 — The Core Loop (autonomous engineer: intake→plan→execute→prove); Tiny AI organs |
+| [TOKEN-ECONOMY.md](development/TOKEN-ECONOMY.md) | Token economy doctrine (cross-cutting; 5 tiers) |
+| [PROVIDER-STRATEGY.md](development/PROVIDER-STRATEGY.md) | Model backend & codex-proxy strategy (provider freedom; honest position) |
 | [ROADMAP.md](development/ROADMAP.md) | Project roadmap (Phase 1-7) |
 | [SECURITY.md](development/SECURITY.md) | Security model and threat analysis |
 
@@ -44,6 +49,9 @@
 | [PHASE-6-CHECKLIST.md](checklists/PHASE-6-CHECKLIST.md) | Phase 6 completion checklist (54 items) |
 | [PHASE-7-CHECKLIST.md](checklists/PHASE-7-CHECKLIST.md) | Phase 7 completion checklist (53 items) |
 | [PHASE-8-CHECKLIST.md](checklists/PHASE-8-CHECKLIST.md) | Phase 8 reliability checklist (R1-R18, 4 sprints) |
+| [PHASE-9A-CHECKLIST.md](checklists/PHASE-9A-CHECKLIST.md) | Phase 9A security checklist (S1-S10, 3 sprints) |
+| [PHASE-9B-CHECKLIST.md](checklists/PHASE-9B-CHECKLIST.md) | Phase 9B robustness/economy checklist (H1-H11, E0-E1) |
+| [PHASE-10-CHECKLIST.md](checklists/PHASE-10-CHECKLIST.md) | Phase 10 core-loop checklist (C1-C7, E2-E5) |
 
 ### References (`references/`)
 
@@ -77,6 +85,9 @@
 | Phase 6 — Infrastructure | ✅ v1 slice (Docker + CI + packaging + dashboard auth) | 421 tests | 54 items |
 | Phase 7 — AI Capabilities | ✅ Shipped in 0.2.0 (see [CAPABILITIES.md](CAPABILITIES.md)) | 421 tests | 53 items |
 | Phase 8 — Reliability Hardening | ✅ Implemented ([PHASE-8](development/PHASE-8-RELIABILITY.md)) | 616 tests | R1-R18 + 2 review rounds |
+| Phase 9A — Security Hardening | 📋 Planned — design complete ([PHASE-9A](development/PHASE-9A-SECURITY.md)) | — | S1-S10 |
+| Phase 9B — Robustness & Economy | 📋 Planned — design complete ([PHASE-9B](development/PHASE-9B-ROBUSTNESS.md)) | — | H1-H11, E0-E1 |
+| Phase 10 — The Core Loop | 📋 Vision — design in progress ([PHASE-10](development/PHASE-10-CORE-LOOP.md)) | — | C1-C7, E2-E5 |
 
 **Completed:** 616 tests, all passing.
 
