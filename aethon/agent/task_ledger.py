@@ -32,9 +32,28 @@ class TaskLedger:
             return []
         try:
             data = json.loads(self.tasks_file.read_text(encoding="utf-8"))
-            return data if isinstance(data, list) else []
+            if isinstance(data, list):
+                return data
+            raise ValueError(f"expected a JSON list, got {type(data).__name__}")
         except Exception as e:
-            logger.warning(f"Task ledger unreadable ({self.tasks_file}): {e}")
+            # Quarantine instead of returning [] — the next create() would
+            # otherwise silently overwrite the whole ledger with a fresh
+            # file and restart ids at T1 (silent data loss for the one
+            # component whose job is durability).
+            quarantine = self.tasks_file.with_name(
+                self.tasks_file.name + ".corrupt"
+            )
+            try:
+                self.tasks_file.replace(quarantine)
+                logger.error(
+                    f"Task ledger unreadable ({e}); quarantined to "
+                    f"{quarantine.name} and starting a fresh ledger."
+                )
+            except OSError as move_err:
+                logger.error(
+                    f"Task ledger unreadable ({e}) and quarantine failed "
+                    f"({move_err})."
+                )
             return []
 
     def _save(self, tasks: list[dict]) -> None:

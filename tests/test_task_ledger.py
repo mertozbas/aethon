@@ -120,3 +120,19 @@ def test_tool_invalid_status(ledger):
 def test_tool_unknown_action(ledger):
     tool = create_task_tool(ledger)
     assert "Unknown action" in tool._tool_func(action="explode")
+
+
+def test_corrupt_file_is_quarantined_not_clobbered(tmp_path):
+    """Review fix: a corrupt TASKS.json must be preserved (quarantined), not
+    silently overwritten by the next create() with ids restarting at T1."""
+    ledger = TaskLedger(str(tmp_path))
+    ledger.create("Onemli gorev", acceptance_criteria="kaybolmasin")
+    # Simulate hand-edit corruption (trailing comma).
+    raw = (tmp_path / "TASKS.json").read_text(encoding="utf-8")
+    (tmp_path / "TASKS.json").write_text(raw[:-2] + ",]", encoding="utf-8")
+
+    created = ledger.create("Yeni gorev")
+    assert created["id"] == "T1"  # fresh ledger, but...
+    quarantined = tmp_path / "TASKS.json.corrupt"
+    assert quarantined.exists()  # ...the old data is preserved
+    assert "Onemli gorev" in quarantined.read_text(encoding="utf-8")
