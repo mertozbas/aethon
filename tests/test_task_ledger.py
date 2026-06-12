@@ -159,6 +159,15 @@ def test_tool_depends_on_accepts_delimited_string(ledger):
     assert ledger.get("T3")["depends_on"] == ["T1", "T2"]
 
 
+def test_tool_depends_on_rejects_nested_json_elements(ledger):
+    """Review fix: a nested list/object inside the JSON depends_on must not
+    stringify to its repr and become a junk dependency."""
+    from aethon.tools.task_tool import _parse_depends_on
+
+    assert _parse_depends_on('["T1", ["T2"], {"x": 1}]') == ["T1"]
+    assert _parse_depends_on('[null, "T3"]') == ["T3"]
+
+
 def test_tool_rejects_unknown_dependency(ledger):
     tool = create_task_tool(ledger)
     out = tool._tool_func(action="create", title="Hayalet", depends_on="T999")

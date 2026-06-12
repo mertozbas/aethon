@@ -65,6 +65,37 @@ def test_persist_plan_drops_bad_edge_but_keeps_plan(ledger):
     assert ledger.get("T3")["title"] == "B"      # task itself preserved
 
 
+def test_persist_plan_survives_update_failure(ledger, monkeypatch):
+    """Review fix: if setting one child's dependencies blows up, the plan still
+    lands whole (the failure is isolated to that edge, not propagated to orphan
+    the half-plan and trigger a free-text fallback)."""
+    plan = PlanSchema(
+        project_title="X",
+        tasks=[
+            PlanTask(title="A"),
+            PlanTask(title="B", depends_on=["1"]),
+            PlanTask(title="C", depends_on=["1"]),
+        ],
+    )
+    real_update = ledger.update
+    calls = {"n": 0}
+
+    def flaky_update(task_id, **fields):
+        if "depends_on" in fields:
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise RuntimeError("transient ledger glitch")
+        return real_update(task_id, **fields)
+
+    monkeypatch.setattr(ledger, "update", flaky_update)
+    result = persist_plan(ledger, plan)
+
+    assert result is not None                       # did NOT raise
+    assert result["task_ids"] == ["T2", "T3", "T4"]  # all children persisted
+    # T3's edge was the one that failed (dropped); T4's still set.
+    assert ledger.get("T4")["depends_on"] == ["T2"]
+
+
 def test_persist_plan_approval_note_in_summary(ledger):
     plan = PlanSchema(project_title="X", tasks=[PlanTask(title="A")])
     out = persist_plan(ledger, plan, plan_approval=True)["summary"]

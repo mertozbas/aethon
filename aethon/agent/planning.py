@@ -72,7 +72,10 @@ def persist_plan(ledger, plan: PlanSchema, *, plan_approval: bool = False) -> di
         pos_to_id[str(i)] = child["id"]
         child_ids.append(child["id"])
 
-    # Pass 2 — map local refs to real ids and set validated dependencies.
+    # Pass 2 — map local refs to real ids and set validated dependencies. Each
+    # edge is isolated: a validation problem OR an unexpected update() failure on
+    # one child drops only that edge (logged) — the plan still lands whole, never
+    # an orphaned half-plan that then falls back to free text (review fix).
     for pt, cid in zip(tasks, child_ids):
         if not pt.depends_on:
             continue
@@ -80,14 +83,20 @@ def persist_plan(ledger, plan: PlanSchema, *, plan_approval: bool = False) -> di
         for ref in pt.depends_on:
             ref = str(ref).strip()
             real_deps.append(pos_to_id.get(ref, ref))  # position → id, else as-is
-        problems = ledger.dependency_problems(cid, real_deps)
-        if problems:
+        try:
+            problems = ledger.dependency_problems(cid, real_deps)
+            if problems:
+                logger.warning(
+                    "Dropping dependency on %s (%s) — plan still persisted.",
+                    cid, "; ".join(problems),
+                )
+                continue
+            ledger.update(cid, depends_on=real_deps)
+        except Exception as e:
             logger.warning(
-                "Dropping dependency on %s (%s) — plan still persisted.",
-                cid, "; ".join(problems),
+                "Failed to set dependencies on %s (%s: %s) — plan still persisted.",
+                cid, type(e).__name__, e,
             )
-            continue
-        ledger.update(cid, depends_on=real_deps)
 
     summary = _summarize(ledger, project_id, child_ids, plan_approval)
     return {"project_id": project_id, "task_ids": child_ids, "summary": summary}

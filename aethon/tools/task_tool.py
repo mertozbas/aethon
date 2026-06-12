@@ -25,7 +25,14 @@ def _parse_depends_on(raw: str) -> list[str]:
         try:
             data = json.loads(raw)
             if isinstance(data, list):
-                return [str(d).strip() for d in data if str(d).strip()]
+                # Keep only scalar ids — a nested list/object element would
+                # otherwise stringify to its repr (e.g. "['T1']") and reach the
+                # snapshot as a junk dependency (review fix).
+                return [
+                    str(d).strip()
+                    for d in data
+                    if isinstance(d, (str, int)) and str(d).strip()
+                ]
         except (json.JSONDecodeError, ValueError):
             pass  # fall through to delimiter parsing
     return [part.strip() for part in raw.replace("|", ",").split(",") if part.strip()]
