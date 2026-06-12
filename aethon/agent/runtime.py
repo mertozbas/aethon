@@ -827,7 +827,7 @@ class AethonRuntime:
             }
         return schemas
 
-    def get_or_create_agent(self, session_id: str) -> Agent:
+    def get_or_create_agent(self, session_id: str, hint: str = "") -> Agent:
         """Get or create agent for a session.
 
         Uses LRU cache: moves accessed session to end, evicts oldest when full.
@@ -835,6 +835,9 @@ class AethonRuntime:
         check-then-act is under the cache lock so concurrent distinct-session
         turns (run in parallel on executor threads) can't overflow the LRU or
         evict an agent another thread is mid-invocation on (review fix).
+
+        ``hint`` (the building message text) is used ONCE, when a fresh agent is
+        built, to choose the capability diet (C6); a cached agent ignores it.
         """
         with self._cache_lock:
             if session_id in self.agents:
@@ -850,7 +853,7 @@ class AethonRuntime:
                     self._session_locks.pop(evicted_id, None)
                 logger.debug(f"Session evicted from cache: {evicted_id}")
 
-            return self._build_agent(session_id)
+            return self._build_agent(session_id, hint)
 
     def _evict(self, session_id: str) -> None:
         """Drop a session's cached agent + gate under the cache lock (review fix)."""
@@ -858,7 +861,7 @@ class AethonRuntime:
             self.agents.pop(session_id, None)
         self._completion_gates.pop(session_id, None)
 
-    def _build_agent(self, session_id: str):
+    def _build_agent(self, session_id: str, hint: str = ""):
         """Construct and cache a fresh Agent (called under the cache lock)."""
         system_prompt = self.prompt_composer.compose(session_id)
 
@@ -875,10 +878,18 @@ class AethonRuntime:
         )
 
         hooks = self._get_hooks()
+        tools = self._get_tools(session_id)
+        # C6 capability diet: choose the heavy/domain tools once, from the message
+        # that builds this agent, and keep that set stable for its lifetime (a
+        # per-turn change would invalidate the provider's tool cache every turn).
+        if getattr(self.config.core_loop, "capability_diet", False):
+            from aethon.agent.capability_diet import select_tools
+
+            tools = select_tools(tools, hint)
         self.agents[session_id] = Agent(
             model=self.model,
             system_prompt=system_prompt,
-            tools=self._get_tools(session_id),
+            tools=tools,
             session_manager=session_mgr,
             conversation_manager=conv_mgr,
             hooks=hooks,
@@ -946,7 +957,7 @@ class AethonRuntime:
                     message.text
                 )
                 if is_sop:
-                    agent = self.get_or_create_agent(session_id)
+                    agent = self.get_or_create_agent(session_id, hint=message.text)
                     self._discard_stale_gate_note(session_id)
                     # R10 applies to SOP turns too — they were running
                     # against a stale system prompt on cached agents.
@@ -975,7 +986,7 @@ class AethonRuntime:
                 return intake_reply
 
             # Normal message processing
-            agent = self.get_or_create_agent(session_id)
+            agent = self.get_or_create_agent(session_id, hint=message.text)
             self._discard_stale_gate_note(session_id)
             self._refresh_volatile_prompt(agent, session_id)
             result = self._run_with_interrupts(agent, message, session_id, message.text)

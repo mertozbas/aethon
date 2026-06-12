@@ -223,6 +223,9 @@ class CoreLoopConfig(BaseModel):
     pulse_enabled: bool = True               # progress pulses while executing (silenceable)
     pulse_every_n_tasks: int = 3             # send a pulse every N newly-completed tasks
     receipt_enabled: bool = True             # deliver a proof-of-work receipt when a run ends
+    # C6 capability diet — load heavy/domain tools only when the session needs
+    # them (per-session, keyword-chosen; cache-safe). Off by default.
+    capability_diet: bool = False
     # C5 dynamic specialists — let the agent define + persist custom specialists.
     dynamic_specialists: bool = False        # opt-in; exposes the manage_specialists tool
     allow_powerful_specialists: bool = False  # may a dynamic specialist hold a powerful
