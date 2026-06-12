@@ -13,6 +13,10 @@ Makes AETHON feel alive and stop failing silently. Design doc:
 `docs/development/PHASE-9B-ROBUSTNESS.md`.
 
 ### Fixed
+- **Single-instance guard (H6)** — a second `aethon start` no longer silently
+  fights the first over `~/.aethon` (double writes, Telegram getUpdates
+  conflict): an exclusive `flock` on `~/.aethon/aethon.pid` makes it exit with
+  "already running (pid N)". No-op where `fcntl` is unavailable.
 - **Adapter supervision (H3)** — one channel crashing used to tear down the
   whole gateway, and the cause was never logged (`asyncio.wait` returned and
   `shutdown()` ran unconditionally, the `done` set ignored). Each adapter now

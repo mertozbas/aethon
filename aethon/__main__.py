@@ -268,11 +268,26 @@ def start(config: str, insecure_bind: bool):
 
     console.print()
 
+    # Single-instance guard (H6): two gateways on one ~/.aethon corrupt each
+    # other (double writes, Telegram getUpdates conflict).
+    from aethon.gateway.single_instance import SingleInstanceLock
+
+    instance_lock = SingleInstanceLock(Path("~/.aethon/aethon.pid"))
+    acquired, other_pid = instance_lock.acquire()
+    if not acquired:
+        console.print(
+            f"[red]AETHON is already running[/] (pid {other_pid}). "
+            "Stop the other instance first."
+        )
+        return
+
     gateway = AethonGateway(cfg, insecure_bind=insecure_bind)
     try:
         asyncio.run(gateway.start())
     except KeyboardInterrupt:
         pass  # Signal handler already triggered graceful shutdown
+    finally:
+        instance_lock.release()
 
 
 def _check_embedding_model(config: AethonConfig):
