@@ -167,6 +167,20 @@ class SOPConfig(BaseModel):
     builtin_sops_enabled: bool = True
 
 
+class LoggingConfig(BaseModel):
+    """File logging (Phase 9B / H9).
+
+    The rotating file handler is attached to the ROOT logger so third-party
+    errors (strands, uvicorn, aiogram, …) reach the log too — not only
+    ``aethon.*``. ``level`` is AETHON's own floor; libraries log at
+    ``third_party_level`` to keep the file readable.
+    """
+
+    enabled: bool = True
+    level: str = "INFO"             # AETHON loggers
+    third_party_level: str = "WARNING"  # strands/uvicorn/aiogram/discord/slack/…
+
+
 class ApprovalConfig(BaseModel):
     """Approval hook configuration (interrupt-based)."""
 
@@ -454,6 +468,7 @@ class AethonConfig(BaseModel):
     memory: MemoryConfig = MemoryConfig()
     multi_agent: MultiAgentConfig = MultiAgentConfig()
     sops: SOPConfig = SOPConfig()
+    logging: LoggingConfig = LoggingConfig()
     approval: ApprovalConfig = ApprovalConfig()
     telemetry: TelemetryConfig = TelemetryConfig()
     memory_guard: MemoryGuardConfig = MemoryGuardConfig()

@@ -340,18 +340,32 @@ def _print_channels(config: AethonConfig):
 
 
 def _setup_file_logging(config: AethonConfig) -> None:
-    """Attach a rotating file handler to the 'aethon' logger.
+    """Attach a rotating file handler to the ROOT logger (H9).
 
     Persists logs to <paths.logs>/aethon.log so the system prompt's recent-logs
-    layer and post-hoc debugging have a source. Console output is unaffected.
+    layer and post-hoc debugging have a source. Attached to root so third-party
+    errors (strands, uvicorn, aiogram, discord, slack) reach the file too — not
+    only ``aethon.*``. AETHON logs at ``logging.level``; libraries log at
+    ``logging.third_party_level`` to keep the file readable. Console is
+    unaffected.
     """
     import logging
     from logging.handlers import RotatingFileHandler
 
+    log_cfg = getattr(config, "logging", None)
+    if log_cfg is not None and not getattr(log_cfg, "enabled", True):
+        return
+
+    def _level(name: str, default: int) -> int:
+        return getattr(logging, str(name).upper(), default)
+
+    aethon_level = _level(getattr(log_cfg, "level", "INFO"), logging.INFO)
+    third_party = _level(getattr(log_cfg, "third_party_level", "WARNING"), logging.WARNING)
+
     try:
         logs_dir = Path(config.paths.logs).expanduser()
         logs_dir.mkdir(parents=True, exist_ok=True)
-        root = logging.getLogger("aethon")
+        root = logging.getLogger()  # ROOT — every logger propagates here
         for h in root.handlers:
             if getattr(h, "_aethon_file", False):
                 return  # already configured
@@ -359,13 +373,14 @@ def _setup_file_logging(config: AethonConfig) -> None:
             logs_dir / "aethon.log", maxBytes=2_000_000, backupCount=3, encoding="utf-8"
         )
         handler._aethon_file = True
-        handler.setLevel(logging.INFO)
+        handler.setLevel(logging.NOTSET)  # emit whatever the loggers pass through
         handler.setFormatter(
             logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
         )
         root.addHandler(handler)
-        if root.level == logging.NOTSET:
-            root.setLevel(logging.INFO)
+        # Third-party floor at root; AETHON's own loggers at their configured level.
+        root.setLevel(third_party)
+        logging.getLogger("aethon").setLevel(aethon_level)
     except Exception:
         pass
 

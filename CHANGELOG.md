@@ -13,6 +13,11 @@ Makes AETHON feel alive and stop failing silently. Design doc:
 `docs/development/PHASE-9B-ROBUSTNESS.md`.
 
 ### Fixed
+- **Root file logging (H9)** — the rotating `aethon.log` handler now attaches to
+  the root logger, so third-party errors (strands, uvicorn, aiogram, discord,
+  slack) reach the file instead of only `aethon.*`. New `logging` config:
+  `level` (AETHON loggers, default INFO) and `third_party_level` (library floor,
+  default WARNING). Model errors already log with `exc_info=True` (H2/H3).
 - **Single-instance guard (H6)** — a second `aethon start` no longer silently
   fights the first over `~/.aethon` (double writes, Telegram getUpdates
   conflict): an exclusive `flock` on `~/.aethon/aethon.pid` makes it exit with

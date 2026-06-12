@@ -583,6 +583,14 @@ channels:
 | `enabled` | bool | `true` | Enable SOP execution. |
 | `builtin_sops_enabled` | bool | `true` | Enable built-in SOPs. |
 
+#### `logging`
+
+| Field | Type | Default | Meaning |
+|---|---|---|---|
+| `enabled` | bool | `true` | Write a rotating log to `<paths.logs>/aethon.log`. Attached to the root logger, so third-party errors (strands, uvicorn, aiogram, …) are captured too. |
+| `level` | str | `"INFO"` | Log level for AETHON's own loggers. |
+| `third_party_level` | str | `"WARNING"` | Floor for library loggers (keeps the file readable). |
+
 #### `approval`
 
 | Field | Type | Default | Meaning |
