@@ -476,9 +476,19 @@ class AethonConfig(BaseModel):
 
     @staticmethod
     def write(data: dict, config_path: str = "~/.aethon/config.yaml") -> Path:
-        """Write a config dict to a YAML file, creating parent dirs. Returns the path."""
+        """Write a config dict to a YAML file, creating parent dirs. Returns the path.
+
+        Secrets hygiene (S8): the file is chmod 0600 and its parent dir 0700, so
+        a config that may carry plaintext keys is never world-/group-readable.
+        """
         path = Path(config_path).expanduser()
         path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
             yaml.safe_dump(data, f, sort_keys=False, allow_unicode=True)
+        # Best-effort: chmod is a no-op on filesystems that don't support it.
+        try:
+            os.chmod(path, 0o600)
+            os.chmod(path.parent, 0o700)
+        except OSError:
+            pass
         return path

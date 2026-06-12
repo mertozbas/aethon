@@ -69,6 +69,16 @@ def test_config_env_resolve_nested():
     del os.environ["TEST_NESTED"]
 
 
+def test_config_write_is_owner_only(tmp_path):
+    """S8: a written config (may carry plaintext keys) is 0600, its dir 0700."""
+    import stat
+
+    path = tmp_path / "nest" / "config.yaml"
+    AethonConfig.write({"model": {"api_key": "sk-secret"}}, str(path))
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    assert stat.S_IMODE(path.parent.stat().st_mode) == 0o700
+
+
 def test_config_load_from_yaml(tmp_path):
     """Config loads from YAML file."""
     config_file = tmp_path / "config.yaml"

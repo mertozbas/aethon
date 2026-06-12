@@ -976,7 +976,7 @@ AETHON is **local-first** and ships safe defaults:
 - **Secret masking:** the dashboard `GET /api/config` dump masks sensitive keys (`api_key`, `token`, `bot_token`, `app_token`, `secret`, `password`) to `***`.
 - **Memory guard:** the memory guard hook blocks secrets from being written to long-term memory.
 - **Webhook verification:** set `webhook.secret` to require an HMAC-SHA256 `X-Aethon-Signature` on incoming webhooks. Webhooks **fail closed**: an empty secret on a non-loopback bind disables the `/webhook/*` routes (Docker: set `AETHON_WEBHOOK_SECRET`).
-- **Credential isolation:** keep tokens out of the config file by referencing `${ENV_VAR}`s and storing secrets under `~/.aethon/credentials/`.
+- **Credential isolation:** the config file is written `0600` and `~/.aethon` is `0700`, so neither is group/world-readable. Prefer keeping tokens out of the file entirely by referencing `${ENV_VAR}`s; `aethon doctor` reports world-readable paths and literally-stored keys.
 
 ---
 

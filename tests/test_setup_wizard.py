@@ -78,6 +78,44 @@ def test_cli_doctor_no_config(tmp_path):
     assert "aethon init" in result.output
 
 
+def test_cli_doctor_flags_world_readable_config(tmp_path):
+    """S8: doctor reports a group/world-readable config.
+
+    (doctor runs the provider check but never exits early on it, so no
+    monkeypatch is needed — the ollama check just prints a red line.)
+    """
+    import os
+
+    cfg = tmp_path / "config.yaml"
+    AethonConfig.write({"model": {"provider": "ollama"}}, str(cfg))
+    os.chmod(cfg, 0o644)  # make it world-readable (the bad state)
+
+    result = CliRunner().invoke(main, ["doctor", "-c", str(cfg)])
+    assert result.exit_code == 0, result.output
+    assert "group/world-readable" in result.output
+
+
+def test_cli_doctor_flags_literal_api_key(tmp_path):
+    """S8: doctor nudges away from a literally-stored API key."""
+    cfg = tmp_path / "config.yaml"
+    AethonConfig.write(
+        {"model": {"provider": "ollama", "api_key": "sk-literal-123"}}, str(cfg)
+    )
+    result = CliRunner().invoke(main, ["doctor", "-c", str(cfg)])
+    assert "stored literally" in result.output
+
+
+def test_cli_doctor_accepts_env_ref_key(tmp_path, monkeypatch):
+    """An ${ENV_VAR} reference is not flagged as a literal key."""
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    cfg = tmp_path / "config.yaml"
+    AethonConfig.write(
+        {"model": {"provider": "ollama", "api_key": "${OPENAI_API_KEY}"}}, str(cfg)
+    )
+    result = CliRunner().invoke(main, ["doctor", "-c", str(cfg)])
+    assert "stored literally" not in result.output
+
+
 def test_cli_init_writes_openai_config(tmp_path, monkeypatch):
     import aethon.setup_wizard as wiz
 
@@ -98,6 +136,8 @@ def test_cli_init_writes_openai_config(tmp_path, monkeypatch):
     assert loaded.model.provider == "openai"
     assert loaded.model.model_id == "gpt-4o"
     assert loaded.memory.enabled is False
+    # S8: a prompted (literal) key prints the env-reference nudge.
+    assert "OPENAI_API_KEY" in result.output and "environment" in result.output
 
 
 def test_cli_start_refuses_nonloopback_bind_without_token(tmp_path):

@@ -55,7 +55,46 @@ def doctor(config: str):
         f"{'enabled' if cfg.memory.enabled else 'disabled'}[/]"
         f" ({cfg.memory.embedding_provider} embeddings)"
     )
+
+    _report_secrets_hygiene(cfg, cfg_path)
     console.print()
+
+
+def _report_secrets_hygiene(cfg: AethonConfig, cfg_path: Path) -> None:
+    """Flag world-/group-readable config and credential paths (S8)."""
+    import stat
+
+    def _check(label: str, p: Path) -> None:
+        if not p.exists():
+            return
+        mode = stat.S_IMODE(p.stat().st_mode)
+        if mode & 0o077:
+            console.print(
+                f"  [red]{label} is group/world-readable[/] "
+                f"(0{mode:03o}) — chmod {'700' if p.is_dir() else '600'} {p}"
+            )
+        else:
+            console.print(f"  {label}: [green]0{mode:03o}[/]")
+
+    console.print("  [bold]Secrets hygiene:[/]")
+    _check("config.yaml", cfg_path)
+    _check("~/.aethon", cfg_path.parent)
+    _check("credentials/", Path(cfg.paths.credentials).expanduser())
+
+    # Check the RAW file (loaded cfg already resolved ${ENV_VAR} to its value).
+    import yaml
+
+    try:
+        with open(cfg_path) as f:
+            raw = yaml.safe_load(f) or {}
+    except OSError:
+        raw = {}
+    raw_key = ((raw.get("model") or {}).get("api_key") or "")
+    if raw_key and not (raw_key.startswith("${") and raw_key.endswith("}")):
+        console.print(
+            "  [yellow]model.api_key is stored literally[/] — prefer a "
+            "${ENV_VAR} reference (see `aethon init`)."
+        )
 
 
 @main.command()
@@ -291,10 +330,25 @@ def _setup_file_logging(config: AethonConfig) -> None:
         pass
 
 
+def _secure_aethon_home() -> None:
+    """Restrict ~/.aethon to the owner (S8) — it holds sessions, logs, and the
+    config (which may carry plaintext keys). Best-effort; chmod no-ops where
+    unsupported."""
+    import os
+
+    home = Path("~/.aethon").expanduser()
+    try:
+        if home.exists():
+            os.chmod(home, 0o700)
+    except OSError:
+        pass
+
+
 def _ensure_workspace(config: AethonConfig):
     """Create workspace directory with default files if not exists."""
     workspace = Path(config.paths.workspace).expanduser()
     workspace.mkdir(parents=True, exist_ok=True)
+    _secure_aethon_home()
 
     # Default SOUL.md
     soul = workspace / "SOUL.md"

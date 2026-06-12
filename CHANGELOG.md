@@ -14,6 +14,12 @@ deny by default on every network surface, fail closed at startup. Design doc:
 `docs/development/PHASE-9A-SECURITY.md`.
 
 ### Added
+- **Secrets hygiene (S8)** — `AethonConfig.write` now `chmod 0600`s the config
+  file and `0700`s `~/.aethon` (the documented "0600 credential isolation" was
+  never implemented). `aethon start` re-restricts `~/.aethon`; `aethon doctor`
+  reports group/world-readable config/credential paths and a literally-stored
+  `model.api_key`. The wizard nudges toward a `${ENV_VAR}` reference when a key
+  is typed in.
 - **Answerable approval (S6)** — the interrupt-based approval hook is no longer
   half-wired: a gated tool (`shell`/`file_write`/`manage_tools` by default) now
   pauses the turn and asks for a yes/no answer on the originating channel — CLI

@@ -279,6 +279,15 @@ def run_wizard(config_path: str = "~/.aethon/config.yaml", *, force: bool = Fals
             api_key = "${" + (api_key_env or "") + "}"  # resolved at load time
         else:
             api_key = click.prompt(f"{provider} API key", hide_input=True, default="").strip()
+            # Secrets hygiene (S8): a literal key lands in the 0600 config, but an
+            # env reference keeps it out of the file entirely. Nudge, don't force.
+            if api_key and not api_key.startswith("${") and api_key_env:
+                console.print(
+                    f"[yellow]Note:[/] the key is stored in the config file (0600). "
+                    f"To keep it out of the file, set [bold]{api_key_env}[/] in your "
+                    f"environment and re-run — AETHON will reference it as "
+                    f"[bold]${{{api_key_env}}}[/] instead."
+                )
 
     model = build_model_config(provider, model_id=model_id, api_key=api_key, host=host)
 

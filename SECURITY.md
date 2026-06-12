@@ -76,6 +76,10 @@ provider.
   returns the full configuration with sensitive fields masked to `***`. The
   masked field names are `api_key`, `token`, `bot_token`, `app_token`,
   `secret`, and `password`. Empty values are left empty rather than masked.
+- **File permissions.** `config.yaml` is written `0600` and `~/.aethon` is
+  `0700`, so a config that carries plaintext keys is never group/world-readable.
+  `aethon doctor` reports any path that is readable beyond the owner and nudges
+  away from a literally-stored `model.api_key`.
 - Do not commit real secrets to `config.yaml`. Keep credentials in the
   environment or under `~/.aethon/credentials/`.
 
