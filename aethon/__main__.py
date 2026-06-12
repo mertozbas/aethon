@@ -1,6 +1,7 @@
 """AETHON CLI entry point."""
 
 import asyncio
+import sys
 from pathlib import Path
 
 import click
@@ -464,8 +465,15 @@ def _setup_file_logging(config: AethonConfig) -> None:
         # Third-party floor at root; AETHON's own loggers at their configured level.
         root.setLevel(third_party)
         logging.getLogger("aethon").setLevel(aethon_level)
-    except Exception:
-        pass
+    except Exception as e:
+        # Fail loud (project rule): if file logging can't be attached (e.g. the
+        # logs dir isn't writable), say so on stderr instead of swallowing it —
+        # otherwise every later log silently never reaches disk.
+        print(
+            f"WARNING: file logging disabled — could not attach the log handler: "
+            f"{type(e).__name__}: {e}",
+            file=sys.stderr,
+        )
 
 
 def _secure_aethon_home() -> None:

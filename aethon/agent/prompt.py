@@ -1,9 +1,15 @@
 """System prompt composer.
 
-Builds layered system prompts from workspace files plus optional awareness
-layers (environment, learnings, shell history, recent logs):
-SOUL.md + [environment] + TOOLS.md + CONTEXT.md + [LEARNINGS.md] +
-[shell history] + [recent logs] + SOP list + delegation + session + timestamp.
+Builds layered system prompts in two bands so a provider can cache the long,
+unchanging prefix (E1): a STABLE prefix followed by a VOLATILE suffix.
+
+Stable prefix (identical turn-to-turn): SOUL.md + [environment] + TOOLS.md +
+[shell history] + [self-awareness] + SOP list + [Operating Rules] +
+delegation + [session].
+
+Volatile suffix (changes between turns, so it goes last and never poisons the
+cached prefix): CONTEXT.md + [Open Tasks] + [Handoff] + [LEARNINGS.md] +
+[recent logs, opt-in] + timestamp.
 """
 
 import os

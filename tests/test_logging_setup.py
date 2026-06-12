@@ -66,3 +66,23 @@ def test_disabled_skips_setup(tmp_path, _clean_root):
 def test_level_knob_controls_aethon_level(tmp_path, _clean_root):
     _setup_file_logging(_cfg(tmp_path, level="DEBUG"))
     assert logging.getLogger("aethon").level == logging.DEBUG
+
+
+def test_setup_failure_warns_loudly_on_stderr(tmp_path, _clean_root, capsys):
+    """Fail loud (review fix): if the log dir can't be created the setup must
+    warn on stderr, not silently swallow — otherwise logs never reach disk and
+    nobody knows why. Point logs at a path under a regular file so mkdir fails."""
+    blocker = tmp_path / "afile"
+    blocker.write_text("x")
+    cfg = AethonConfig(
+        paths=PathsConfig(logs=str(blocker / "logs")),  # parent is a file → mkdir raises
+        logging=LoggingConfig(),
+    )
+    _setup_file_logging(cfg)
+
+    err = capsys.readouterr().err
+    assert "file logging disabled" in err
+    # No file handler was attached (setup genuinely failed).
+    assert not any(
+        getattr(h, "_aethon_file", False) for h in logging.getLogger().handlers
+    )

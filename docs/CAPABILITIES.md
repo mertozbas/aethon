@@ -85,7 +85,7 @@ Optional, individually-gated layers folded into the system prompt:
 
 - `include_environment` (on) — OS/arch/Python/cwd/home/shell/host.
 - `include_learnings` (on) — `LEARNINGS.md`, written by the `record_learning` tool.
-- `include_recent_logs` (on) — tail of `<paths.logs>/aethon.log` (a rotating file handler feeds it).
+- `include_recent_logs` (**off**, opt-in) — tail of `<paths.logs>/aethon.log` (a rotating file handler feeds it). Off by default: the log tail changes every turn, so injecting it would defeat provider prompt caching for little orientation value (E1).
 - `include_shell_history` (**off**, privacy) — recent bash/zsh history.
 - `include_self_awareness` (**off**) — embeds key source files (heavy; slows turns).
 
