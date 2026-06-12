@@ -146,7 +146,8 @@ def test_specialists_receive_hooks_from_factory(model):
     factory = SpecialistFactory(model, hooks_factory=fake_hooks)
     factory.get("coder")
     factory.get("planner")
-    assert len(calls) == 2  # fresh hooks per specialist
+    factory.get("scout")    # E4: the scout must not bypass the security layer
+    assert len(calls) == 3  # fresh hooks per specialist
 
 
 def test_runtime_wires_specialist_hooks(tmp_path):

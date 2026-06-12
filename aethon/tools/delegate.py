@@ -68,10 +68,12 @@ def ask_researcher(query: str) -> str:
 def ask_scout(query: str) -> str:
     """Delegate a "read many, return little" investigation to the scout.
 
-    The scout reads the sources you point it at (files, code, logs) and returns
-    a CONCISE conclusion — keeping the raw dumps out of your context. Use it for
-    "read these files and tell me X" / "where is Y handled?": the bulk stays with
-    the scout, and only the answer enters your turn.
+    The scout reads/searches the sources you point it at (files, code, logs) and
+    is instructed to return only a CONCISE conclusion — so the raw material stays
+    in its context, not yours. Use it for "read these files and tell me X" /
+    "where is Y handled?": the bulk stays with the scout, only the answer enters
+    your turn. (Isolation is advisory — it depends on the scout following its
+    brief; the standard tool-output cap is the structural backstop.)
 
     Args:
         query: What to find out, and which sources/paths to look at

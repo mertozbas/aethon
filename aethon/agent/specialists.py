@@ -73,6 +73,11 @@ SPECIALIST_CONFIGS = {
             "with you, out of their context). Be brief, specific, and honest "
             "about what you could not determine."
         ),
+        # shell is for SEARCH (grep/find across many files) — the scout has no
+        # file_write/editor, so it's read-leaning, not read-PROOF: shell can
+        # still mutate, contained by the same layer every specialist's shell gets
+        # (sandbox in docker mode + the command blocklist tripwire). Its value is
+        # context isolation, not write protection.
         "tools": [file_read, shell, think],
     },
 }
