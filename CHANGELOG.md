@@ -7,11 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Phase 10 — The Core Loop (C1 intake; C2 plan→ledger; C3 executor; C4 receipt)
+### Phase 10 — The Core Loop (C1-C4 stitches; E2 token economy)
 
 The autonomous core loop's four stitches: a clear unit of work is recognized,
 opened as a planned dependency-ordered project, worked to completion by a bounded
-executor, and delivered with proof.
+executor, and delivered with proof. Plus the first token-economy tier that makes
+long-horizon work affordable.
+
+#### Added — E2 history compaction
+- **Old tool outputs no longer ride along forever.** A long session's dominant
+  variable cost is finished tool outputs (a 400-line file read five turns ago)
+  re-sent in the model's input every turn. A new `BeforeModelCallEvent` hook
+  replaces old, large tool-result *texts* with a compact marker — keeping the
+  toolUse/toolResult structure intact, so the model still knows the tool ran but
+  doesn't carry its bulk. Cache-aware (so it doesn't fight prompt caching): it
+  compacts in batches (only once enough old bulk has piled up) and is
+  compact-once-stable (a marked result is never re-touched), so the provider
+  message cache is disturbed rarely, not every turn. Invariants: the recent N
+  turns (incl. the active one) are never touched, pairing is preserved (text
+  rewritten, never removed), thinking blocks stay bit-for-bit; it is in-memory
+  only (the disk keeps the full output as an audit trail). Off by default
+  (opt-in) via `session.compact_*`.
 
 #### Added — C4 pulse + proof-of-work receipt
 - **"Done, here's the proof."** As the executor works a project it sends a
