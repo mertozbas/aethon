@@ -195,6 +195,25 @@ class AmbientModeManager:
         self._ignored_signals = 0
         return True
 
+    async def _maybe_run_executor(self) -> dict | None:
+        """C3: promote ambient to a project executor. When the executor is
+        enabled and a project is active, work it to completion via the bounded
+        ProjectExecutor (its own iteration cap + budget + verified stop apply),
+        and return the run summary. Returns ``None`` when the executor is off or
+        no project is active, so the loop falls back to generic ambient work.
+        Defensive against a runtime without ``config``/``_task_ledger``."""
+        cfg_root = getattr(self.runtime, "config", None)
+        core = getattr(cfg_root, "core_loop", None)
+        if core is None or not getattr(core, "executor_enabled", False):
+            return None
+        led = getattr(self.runtime, "_task_ledger", None)
+        pid = led.active_project() if led is not None else None
+        if pid is None:
+            return None
+        from aethon.agent.executor import ProjectExecutor
+
+        return await ProjectExecutor(self.runtime).run(pid)
+
     async def _ambient_loop(self) -> None:
         try:
             while self.running:
@@ -212,6 +231,33 @@ class AmbientModeManager:
                     logger.info("Ambient mode reached its iteration cap; stopping")
                     self.running = False
                     break
+                # C3: if a project is active and the executor is on, this tick
+                # works that project to completion (bounded) instead of doing
+                # generic idle work; next tick re-checks for the next project.
+                executor_result = await self._maybe_run_executor()
+                if executor_result is not None:
+                    self.ambient_iterations += 1
+                    entry = {
+                        "iteration": self.ambient_iterations,
+                        "result": (
+                            f"[executor] proje {executor_result['project_id']}: "
+                            f"{executor_result['reason']} — "
+                            f"{len(executor_result['done'])} bitti, "
+                            f"{len(executor_result['remaining'])} kaldı"
+                        ),
+                        "timestamp": time.time(),
+                    }
+                    self.ambient_results_history.append(entry)
+                    if len(self.ambient_results_history) > _MAX_RESULTS_HISTORY:
+                        self.ambient_results_history = self.ambient_results_history[
+                            -_MAX_RESULTS_HISTORY:
+                        ]
+                    if self.event_bus:
+                        try:
+                            self.event_bus.emit("ambient", {**entry, "status": "running"})
+                        except Exception:
+                            pass
+                    continue
                 self.ambient_iterations += 1
                 try:
                     msg = InboundMessage(

@@ -123,3 +123,61 @@ async def test_executor_blocked_when_no_task_available(tmp_path):
     assert result["reason"] == "blocked"
     assert "T2" in result["remaining"]
     assert result["iterations"] == 0
+
+
+@pytest.mark.asyncio
+async def test_executor_resumes_after_restart(tmp_path):
+    """Checkpoint + resume: the ledger IS the durable checkpoint. A run capped
+    mid-project finishes only some tasks; a fresh ledger + executor (a restart)
+    reads the persisted state and completes the rest."""
+    led, pid = _project(tmp_path)
+    led.create("A", parent_id=pid)                       # T2
+    led.create("B", parent_id=pid, depends_on=["T2"])    # T3
+
+    cfg1 = _config()
+    cfg1.core_loop.executor_max_iterations = 1           # only one task this run
+    r1 = await ProjectExecutor(_FakeRuntime(led, cfg1, _complete_current)).run(pid)
+    assert r1["reason"] == "cap"
+    assert r1["done"] == ["T2"]
+
+    # "Restart": a brand-new ledger instance on the same file + a new executor.
+    led2 = TaskLedger(str(tmp_path))
+    r2 = await ProjectExecutor(_FakeRuntime(led2, _config(), _complete_current)).run(pid)
+    assert r2["reason"] == "complete"
+    assert "T3" in r2["done"]
+    assert led2.is_project_complete(pid)
+
+
+# --- ambient promotion (C3 integration) ---
+
+
+@pytest.mark.asyncio
+async def test_ambient_delegates_to_executor_when_enabled(tmp_path):
+    from aethon.agent.ambient import AmbientModeManager
+
+    led, pid = _project(tmp_path)
+    led.create("A", parent_id=pid)
+    config = _config()
+    config.core_loop.executor_enabled = True
+    rt = _FakeRuntime(led, config, _complete_current)
+
+    mgr = AmbientModeManager(rt, config)
+    result = await mgr._maybe_run_executor()
+    assert result is not None
+    assert result["reason"] == "complete"
+    assert "T2" in result["done"]
+
+
+@pytest.mark.asyncio
+async def test_ambient_executor_noop_when_disabled(tmp_path):
+    from aethon.agent.ambient import AmbientModeManager
+
+    led, pid = _project(tmp_path)
+    led.create("A", parent_id=pid)
+    config = _config()  # executor_enabled is False by default
+    rt = _FakeRuntime(led, config, _complete_current)
+
+    mgr = AmbientModeManager(rt, config)
+    assert await mgr._maybe_run_executor() is None
+    # The project was not touched.
+    assert led.get("T2")["status"] == "open"
