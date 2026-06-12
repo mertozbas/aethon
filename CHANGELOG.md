@@ -7,11 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Phase 10 — The Core Loop (C2: plan → ledger pipeline; C1: intake)
+### Phase 10 — The Core Loop (C1 intake; C2 plan→ledger; C3 executor)
 
-First stitches of the autonomous core loop: a clear unit of work is recognized,
-opened as a planned, dependency-ordered project in the ledger, and acknowledged.
-Design doc: `docs/development/PHASE-10-CORE-LOOP.md`.
+The autonomous core loop takes shape: a clear unit of work is recognized, opened
+as a planned dependency-ordered project, and — when enabled — worked to
+completion by a bounded executor. Design doc: `docs/development/PHASE-10-CORE-LOOP.md`.
+
+#### Added — C3 execution loop (ambient promoted)
+- **Bounded project executor** — `ProjectExecutor` works a planned project to
+  completion: pick the most-urgent dependency-satisfied task, drive one agent
+  turn, advance when the LEDGER shows it done (never on the agent's prose — done
+  requires evidence). Promotes ambient mode: when `core_loop.executor_enabled`
+  is on and a project is active, an ambient tick works it via the executor;
+  otherwise ambient is unchanged. Off by default. Resume is free — the ledger is
+  the durable checkpoint, so a restart picks up where it left off. Runaway
+  prevention is the design point and is enforced on every axis: an iteration cap,
+  the E0 budget ceiling re-checked between tasks, and a DURABLE per-task attempt
+  limit (`executor_attempts` in the ledger) — a task that exhausts it is dropped
+  for good, so it can't be retried past its limit across ticks or restarts.
 
 #### Added — C1 intake (chat vs. work)
 - **Advisory work intake** — when `core_loop.intake_enabled` is on, a clear unit
@@ -62,6 +75,17 @@ now requires a verb *and* a project noun. (2) Budget bypass: intake returns
 early, so the planner's tokens went unmetered — they are now captured against the
 E0 budget. The rest were by-design (one shared single-user ledger) or pre-existing
 (specialist timeouts/metering, tracked for a later E0 pass).
+
+#### Fixed (C3 adversarial review — round 1, runaway-focused)
+End-of-stitch review (15 findings → 12 confirmed/partial); the runaway root cause
+fixed with a regression test. ~7 findings converged on one hole: the per-task
+attempt counter was in-memory and per-run, and a "stuck" task was never persisted
+as such, so every ambient tick / restart reset the counter and re-attempted it
+past its limit. Now the count is a durable ledger field and a task that exhausts
+it is dropped — the limit is global across re-invocations and restarts. Also
+fixed a concurrency revert (a user-completed task is no longer reset to
+in_progress). The Turkish executor prompt (agent-facing) and config-bound guards
+were reviewed and left as-is.
 
 ### Phase 9B — Robustness, Liveness & Token Economy (H1-H11, E0-E1)
 
