@@ -21,32 +21,45 @@ import re
 # ordinary turns the agent handles directly.
 MIN_WORK_CHARS = 40
 
-# Strong project/creation signals (TR + EN). A work verb is necessary but not
-# sufficient — it must pair with length and a non-question to clear the bar.
+# A message is heuristically "work" only when it pairs a creation/build VERB
+# with a project/artifact NOUN — a far higher bar than a verb alone. "build a
+# stronger relationship" or "create a memory" carry a generic verb but no
+# project object, so they stay chat; "build a CLI tool" / "blog API geliştir"
+# clear the bar. The explicit override covers anything the heuristic misses.
 #
-# Single tokens are matched as WHOLE WORDS (both boundaries): Turkish is
-# agglutinative, so a prefix match would fire "yap" on "yaptım" (past tense) or
-# "yaz" on "yazık". Deliberately conservative — the most ambiguous bare stems
-# ("yaz" = write/summer) are left out; the explicit override covers the misses.
-_WORD_SIGNALS = (
+# Single tokens match as WHOLE WORDS (both Unicode boundaries): Turkish is
+# agglutinative, so a prefix match would fire "yap" on "yaptım" or "api" on
+# "kapı". The most ambiguous bare stems ("yaz" = write/summer) are left out.
+_WORK_VERBS = (
     "yap", "oluştur", "olustur", "geliştir", "gelistir", "kur", "inşa", "insa",
-    "uygula", "tasarla", "kodla", "hazırla", "hazirla", "entegre",
+    "uygula", "tasarla", "kodla", "hazırla", "hazirla", "entegre", "set up",
     "build", "implement", "create", "develop", "design", "refactor",
     "migrate", "integrate", "scaffold",
 )
-# Multiword signals matched as plain substrings.
-_PHRASE_SIGNALS = ("set up", "write a", "write an", "build a", "create a")
-
-# Pre-compiled whole-word matcher (Unicode \b is Turkish-letter aware).
-_WORD_RE = re.compile(
-    r"\b(?:" + "|".join(re.escape(s) for s in _WORD_SIGNALS) + r")\b"
+_PROJECT_NOUNS = (
+    "api", "servis", "service", "uygulama", "app", "application", "sistem",
+    "system", "tool", "araç", "arac", "site", "website", "web", "bot",
+    "script", "betik", "cli", "kütüphane", "kutuphane", "library", "modül",
+    "modul", "module", "endpoint", "veritabanı", "veritabani", "database",
+    "pipeline", "entegrasyon", "integration", "dashboard", "panel", "arayüz",
+    "arayuz", "interface", "test", "sayfa", "page", "fonksiyon", "function",
+    "komut", "command", "proje", "project", "sunucu", "server", "özellik",
+    "ozellik", "feature",
 )
 
 
+def _word_re(words):
+    return re.compile(r"\b(?:" + "|".join(re.escape(w) for w in words) + r")\b")
+
+
+# Pre-compiled whole-word matchers (Unicode \b is Turkish-letter aware).
+_VERB_RE = _word_re(_WORK_VERBS)
+_NOUN_RE = _word_re(_PROJECT_NOUNS)
+
+
 def _has_work_signal(low: str) -> bool:
-    if any(sig in low for sig in _PHRASE_SIGNALS):
-        return True
-    return _WORD_RE.search(low) is not None
+    """A creation/build verb AND a project/artifact noun — both, by whole word."""
+    return _VERB_RE.search(low) is not None and _NOUN_RE.search(low) is not None
 
 
 def classify_intake(
@@ -59,7 +72,8 @@ def classify_intake(
 
     Order: explicit overrides win (chat first, so "just a question, but build…"
     stays chat); then a high bar — a question or a short message is chat; only a
-    substantial message carrying a project/creation signal is work.
+    substantial message that pairs a project/creation verb with a project noun
+    is work.
     """
     t = (text or "").strip()
     low = t.lower()
