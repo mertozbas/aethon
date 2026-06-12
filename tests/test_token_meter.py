@@ -118,3 +118,34 @@ async def test_runtime_blocks_turn_turkish(tmp_path, monkeypatch):
         "cli:u",
     )
     assert "bütçesi aşıldı" in out
+
+
+def test_capture_usage_meters_sop_turn_without_result(tmp_path):
+    """SOP turns hand _capture_usage no AgentResult (result=None); usage must
+    still be metered off the agent's own event_loop_metrics, and the per-agent
+    baseline advanced so the NEXT turn only diffs the new tokens (review fix).
+    Without it, SOP tokens go uncounted and inflate the next normal turn."""
+
+    class _Metrics:
+        def __init__(self, usage):
+            self.accumulated_usage = usage
+
+    class _Agent:
+        def __init__(self, usage):
+            self.event_loop_metrics = _Metrics(usage)
+
+    rt = _runtime(tmp_path)
+    agent = _Agent({"inputTokens": 1000, "outputTokens": 500})
+
+    # First SOP turn — result=None like the SOP branch of _try_process.
+    rt._capture_usage(agent, None, "scheduler:cron")
+    sess = rt.token_meter._session["scheduler:cron"]
+    assert (sess["input"], sess["output"]) == (1000, 500)
+    assert rt.token_meter._turns == 1
+
+    # Second SOP turn — accumulated_usage grows; only the delta is charged.
+    agent.event_loop_metrics.accumulated_usage = {"inputTokens": 1500, "outputTokens": 700}
+    rt._capture_usage(agent, None, "scheduler:cron")
+    sess = rt.token_meter._session["scheduler:cron"]
+    assert (sess["input"], sess["output"]) == (1500, 700)  # 1000+500, not 2500+1200
+    assert rt.token_meter._turns == 2

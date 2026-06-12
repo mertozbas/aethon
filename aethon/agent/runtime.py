@@ -910,6 +910,8 @@ class AethonRuntime:
                             a, message, session_id, p
                         ),
                     )
+                    # Meter SOP turns too (E0) — their usage accrued on the agent.
+                    self._capture_usage(agent, None, session_id)
                     # Gate SOP replies too — otherwise a pending DoD note
                     # would leak into the next unrelated turn.
                     return self._apply_completion_gate(agent, session_id, sop_reply)
@@ -1054,7 +1056,13 @@ class AethonRuntime:
         """Record the turn's token usage (E0). strands accumulates usage on the
         agent across its lifetime, so we diff against the last-seen total."""
         try:
-            metrics = getattr(result, "metrics", None)
+            # SOP turns hand us no AgentResult, but usage accumulates on the
+            # agent itself (result.metrics IS agent.event_loop_metrics), so fall
+            # back to the agent's own metrics — otherwise SOP turns go unmetered
+            # and their tokens silently inflate the next normal turn's diff.
+            metrics = getattr(result, "metrics", None) or getattr(
+                agent, "event_loop_metrics", None
+            )
             usage = getattr(metrics, "accumulated_usage", None) if metrics else None
             if not usage:
                 return
