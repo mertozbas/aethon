@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Phase 10 — The Core Loop (C2: plan → ledger pipeline)
+
+First stitch of the autonomous core loop: work becomes a planned, dependency-
+ordered project in the ledger. Design doc: `docs/development/PHASE-10-CORE-LOOP.md`.
+
+#### Added
+- **Task hierarchy + dependency ordering (C2)** — the flat task schema gains four
+  optional, migration-safe fields: `parent_id` (the project a task belongs to),
+  `depends_on` (ids that must be done first), `priority`
+  (critical|high|medium|low), and `due`. `available_tasks(parent_id)` returns the
+  open tasks whose dependencies are satisfied, most-urgent-first — the resolver
+  the C3 executor will pull from. A `dropped` dependency satisfies the edge (a
+  cancelled task can't block the project); a broken/typo'd `depends_on` fails
+  safe (the task stays blocked, never runs out of order). `manage_tasks` gains
+  the matching params with validation (unknown ref/parent, invalid priority,
+  self-dependency, and cycle rejection).
+- **Structured plan → ledger (C2)** — `ask_planner` asks the planner specialist
+  for structured output (`PlanSchema`: a project + ordered child tasks with
+  acceptance criteria, priority, and dependency refs) and writes it into the
+  ledger as a dependency-ordered project tree; the plan becomes a visible ledger
+  diff (priority + dependencies now show in the prompt snapshot) instead of free
+  text. Falls back to a free-text plan when a provider can't force structured
+  output. New `core_loop.plan_approval` flag (recorded + surfaced now; the C3
+  executor will enforce it).
+
+#### Fixed (C2 adversarial review — round 1)
+End-of-stitch review (19 findings → 13 confirmed); each fix ships a regression
+test. Highlights: a `dropped` dependency no longer deadlocks dependents;
+non-dict / explicit-null entries in a hand-edited `TASKS.json` normalize on read
+instead of crashing; `persist_plan` isolates each dependency edge so one failure
+can't orphan a half-plan; the planner→ledger wiring can't null an already-active
+ledger; unknown-dependency errors are length-bounded; and `ask_planner` moved off
+the deprecated structured-output API.
+
 ### Phase 9B — Robustness, Liveness & Token Economy (H1-H11, E0-E1)
 
 Makes AETHON feel alive, survive always-on use, and measure + cache its token
