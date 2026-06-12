@@ -13,6 +13,10 @@ Makes AETHON feel alive and stop failing silently. Design doc:
 `docs/development/PHASE-9B-ROBUSTNESS.md`.
 
 ### Added
+- **Progress indicators (H5)** — long turns no longer look identical to a crash:
+  Telegram shows `typing…` (refreshed every ~4s) and Discord shows its typing
+  indicator while a turn runs, stopping on completion. Wired via a
+  `typing_context` the base no-ops and each adapter overrides.
 - **User-facing error replies (H2)** — a model/runtime failure no longer leaves
   a bot silent: every channel now sends a short, localized last-resort reply
   (classifies auth/quota/timeout/model errors, falls back to naming the

@@ -5,6 +5,7 @@ Standard Markdown from the model is converted to Telegram-compatible HTML.
 """
 
 import asyncio
+import contextlib
 import html
 import logging
 import re
@@ -353,6 +354,33 @@ class TelegramAdapter(ChannelAdapter):
         if fut is not None and not fut.done():
             fut.set_result(decision)
         return (True, decision)
+
+    def typing_context(self, message: InboundMessage):
+        """Show Telegram's 'typing…' while a turn runs (H5)."""
+        chat_id = (message.raw or {}).get("chat_id")
+        if not self.bot or chat_id is None:
+            return contextlib.nullcontext()
+        return self._typing(chat_id)
+
+    @contextlib.asynccontextmanager
+    async def _typing(self, chat_id):
+        async def _loop():
+            try:
+                while True:
+                    await self.bot.send_chat_action(chat_id=chat_id, action="typing")
+                    await asyncio.sleep(4)  # Telegram clears 'typing' after ~5s
+            except asyncio.CancelledError:
+                pass
+            except Exception as e:
+                logger.debug(f"Telegram typing error: {e}")
+
+        task = asyncio.create_task(_loop())
+        try:
+            yield
+        finally:
+            task.cancel()
+            with contextlib.suppress(Exception):
+                await task
 
     def resolve_recipient(self, message: OutboundMessage):
         return self._resolve_chat_id(message)

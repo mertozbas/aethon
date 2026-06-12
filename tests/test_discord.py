@@ -149,3 +149,43 @@ def test_send_chunks_long_messages():
     msg.text = "x" * 4500
     asyncio.run(adapter.send(msg))
     assert channel.send.await_count == 3
+
+
+def test_discord_typing_context_uses_channel_typing():
+    """H5: typing_context returns the resolved channel's typing() manager."""
+    from unittest.mock import MagicMock
+    from aethon.channels.discord_adapter import DiscordAdapter
+    from aethon.channels.base import InboundMessage
+
+    config = AethonConfig(
+        channels=ChannelsConfig(discord=DiscordChannelConfig(enabled=True, token="t")),
+    )
+    adapter = DiscordAdapter(config, router=None)
+    sentinel = object()
+    channel = MagicMock()
+    channel.typing = MagicMock(return_value=sentinel)
+    adapter.client = MagicMock()
+    adapter.client.get_channel = MagicMock(return_value=channel)
+
+    inbound = InboundMessage(
+        channel="discord", sender_id="1", sender_name="U", text="hi",
+        raw={"channel_id": 99},
+    )
+    assert adapter.typing_context(inbound) is sentinel
+    adapter.client.get_channel.assert_called_once_with(99)
+
+
+def test_discord_typing_noop_without_channel():
+    import contextlib
+    from unittest.mock import MagicMock
+    from aethon.channels.discord_adapter import DiscordAdapter
+    from aethon.channels.base import InboundMessage
+
+    config = AethonConfig(
+        channels=ChannelsConfig(discord=DiscordChannelConfig(enabled=True, token="t")),
+    )
+    adapter = DiscordAdapter(config, router=None)
+    adapter.client = MagicMock()
+    adapter.client.get_channel = MagicMock(return_value=None)
+    inbound = InboundMessage(channel="discord", sender_id="1", sender_name="U", text="hi")
+    assert isinstance(adapter.typing_context(inbound), contextlib.nullcontext)

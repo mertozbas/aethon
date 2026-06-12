@@ -3,6 +3,7 @@
 Responds to DMs and @mentions. Uses channel.id for thread-based sessions.
 """
 
+import contextlib
 import logging
 
 from aethon.channels.base import ChannelAdapter, InboundMessage, OutboundMessage
@@ -98,6 +99,14 @@ class DiscordAdapter(ChannelAdapter):
                 await channel.send(chunk)
         else:
             await channel.send(text)
+
+    def typing_context(self, message: InboundMessage):
+        """Show Discord's typing indicator while a turn runs (H5)."""
+        cid = (message.raw or {}).get("channel_id")
+        channel = self.client.get_channel(cid) if (self.client and cid) else None
+        if channel is None:
+            return contextlib.nullcontext()
+        return channel.typing()  # discord.py async context manager
 
     def resolve_recipient(self, message: OutboundMessage):
         return self._resolve_channel_id(message)

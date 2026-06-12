@@ -258,6 +258,40 @@ async def test_ask_approval_no_destination_fails_closed():
     assert await adapter.ask_approval(_approval_request("default")) is None
 
 
+# --- H5: typing indicator -------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_typing_sent_during_turn_and_stopped():
+    """A 'typing' chat action is sent while the turn runs, then cancelled."""
+    from aethon.channels.base import InboundMessage
+
+    adapter = _adapter()
+    adapter.bot = AsyncMock()
+    inbound = InboundMessage(
+        channel="telegram", sender_id="1", sender_name="U", text="hi",
+        raw={"chat_id": 42},
+    )
+    async with adapter.typing_context(inbound):
+        await asyncio.sleep(0)  # let the typing loop run once
+    adapter.bot.send_chat_action.assert_awaited()
+    kwargs = adapter.bot.send_chat_action.await_args.kwargs
+    assert kwargs["chat_id"] == 42 and kwargs["action"] == "typing"
+
+
+@pytest.mark.asyncio
+async def test_typing_noop_without_chat_id():
+    import contextlib
+
+    adapter = _adapter()
+    adapter.bot = AsyncMock()
+    from aethon.channels.base import InboundMessage
+
+    inbound = InboundMessage(channel="telegram", sender_id="1", sender_name="U", text="hi")
+    ctx = adapter.typing_context(inbound)
+    assert isinstance(ctx, contextlib.nullcontext)
+
+
 def test_code_block_content_escaped():
     """HTML inside code blocks is escaped."""
     text = "```\n<script>alert('xss')</script>\n```"
