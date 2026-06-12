@@ -610,7 +610,7 @@ channels:
 |---|---|---|---|
 | `enabled` | bool | `true` | Enable the web dashboard. |
 | `pixel_agents` | bool | `true` | Enable the pixel-agents visualization. |
-| `auth_token` | str | `""` | Optional shared token; empty = no auth. Gates `/dashboard` and protected `/api/*` + `/ws/dashboard` via `?token=`, `Authorization: Bearer`, or the `aethon_dash` cookie. |
+| `auth_token` | str | `""` | Shared token; empty = no auth (loopback only — a non-loopback bind **requires** it). When set, **all** routes are gated by default (deny-by-default), including `/ws/chat`, `/ws/dashboard`, every `/api/*`, and the FastAPI docs; public exceptions: `/`, `/health`, `/dashboard/static/*`, and the self-authenticating `/webhook/*`. Supplied via `?token=`, `Authorization: Bearer`, or the `aethon_dash` cookie. |
 
 #### `webhook`
 
@@ -746,7 +746,7 @@ Open **http://127.0.0.1:18790/dashboard**. The dashboard is a single-page app (s
 
 The dashboard mounts on the WebChat app and is only available when **WebChat is enabled** and `dashboard.enabled` is true.
 
-**Authentication (`dashboard.auth_token`):** empty = no auth (fine for the default localhost bind). When set, an HTTP middleware gates `/dashboard` and the protected `/api/*` prefixes (`/api/sessions`, `/api/memory`, `/api/config`, `/api/scheduler`, `/api/telemetry`, `/api/sops`, `/api/agents`) and `/ws/dashboard`. Note `/api/status` and `/health` stay open. The token is accepted (in precedence order) via the `aethon_dash` cookie, an `Authorization: Bearer <token>` header, or a `?token=<token>` query param.
+**Authentication (`dashboard.auth_token`):** empty = no auth — acceptable only on the default loopback bind (a non-loopback bind refuses to start without a token). When set, a **deny-by-default** middleware gates *everything* on the shared app — every `/api/*` route (including `/api/status`), `/dashboard`, the FastAPI docs (`/docs`, `/openapi.json`), and unknown paths (401, no route disclosure). Enumerated public exceptions: `/` (the chat page; its WebSocket is gated separately), `/health` (container/LB probes), `/dashboard/static/*` (SPA assets), and `/webhook/*` (self-authenticating HMAC, fail-closed per `webhook.secret`). Both WebSockets (`/ws/chat`, `/ws/dashboard`) check the token before accepting the upgrade and close with `1008` otherwise; the WebChat page prompts for the token on first connect and keeps it in `sessionStorage`. The token is accepted (in precedence order) via the `aethon_dash` cookie, an `Authorization: Bearer <token>` header, or a `?token=<token>` query param.
 
 The usual flow when a token is set:
 
@@ -966,7 +966,7 @@ Also installed with the `launcher-macos` extra: **`aethon-menubar`** — a macOS
 AETHON is **local-first** and ships safe defaults:
 
 - **Loopback binding:** WebChat (and the dashboard/webhooks mounted on it) bind to `127.0.0.1` by default. To expose beyond localhost, set `channels.webchat.host: 0.0.0.0` **and** a `dashboard.auth_token` — without the token AETHON **refuses to start** (fail closed; `--insecure-bind` overrides only behind your own authenticating proxy).
-- **Dashboard auth token:** when `dashboard.auth_token` is set, `/dashboard`, the protected `/api/*` prefixes, and `/ws/dashboard` require the token (via `aethon_dash` cookie, `Authorization: Bearer`, or `?token=`). `/api/status` and `/health` stay open for probes.
+- **Shared auth token (deny by default):** when `dashboard.auth_token` is set, **all** routes require the token — `/ws/chat`, `/ws/dashboard`, every `/api/*`, `/dashboard`, the FastAPI docs, and unknown paths. Public exceptions: `/`, `/health`, `/dashboard/static/*`, and the HMAC-authenticated `/webhook/*`. Token via `aethon_dash` cookie, `Authorization: Bearer`, or `?token=`.
 - **File-access sandbox:** by default, file tools may read/write anywhere under your home directory **except** a blocklist of system and credential paths (`/etc`, `/usr`, `/bin`, `~/.ssh`, `~/.gnupg`, `~/.aethon/credentials`, …). Set `security.workspace_only: true` to confine file tools strictly to `~/.aethon/workspace`.
 - **Blocked commands:** the security hook refuses shell commands containing any `security.blocked_commands` entry (default `rm -rf /`, `sudo`, `mkfs`, plus a built-in danger list).
 - **Approval gating:** an optional interrupt-based hook can require approval for the actions in `approval.requires_approval` (default `shell`, `file_write`) — it is **off by default** (`approval.enabled: false`). *(The `security.require_approval` field is reserved and not currently enforced.)*

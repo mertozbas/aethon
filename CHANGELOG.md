@@ -14,6 +14,11 @@ deny by default on every network surface, fail closed at startup. Design doc:
 `docs/development/PHASE-9A-SECURITY.md`.
 
 ### Added
+- **`/ws/chat` authentication (S1)** — the chat WebSocket requires the shared
+  `dashboard.auth_token` when one is set, rejected before `accept()` (close
+  1008). Token sources: `?token=`, `Authorization: Bearer`, `aethon_dash`
+  cookie. The chat page prompts for the token on first connect
+  (sessionStorage) and now builds a proto-aware URL (`wss:` behind TLS).
 - **`--insecure-bind` flag (S4)** — `aethon start` refuses a non-loopback
   `channels.webchat.host` when `dashboard.auth_token` is empty (gateway raises
   the same refusal as defense-in-depth). The flag opts out, intended only for
@@ -22,6 +27,13 @@ deny by default on every network surface, fail closed at startup. Design doc:
   `0.0.0.0`); README documents a reverse-proxy/TLS recipe.
 
 ### Changed
+- **HTTP auth middleware inverted to deny-by-default (S1)** — with a token set,
+  ALL routes on the shared app are protected (including `/api/status`, the
+  FastAPI `/docs`/`/openapi.json`, and unknown paths → 401); the old
+  `_protected` prefix allowlist is gone. Enumerated public exceptions: `/`,
+  `/health`, `/dashboard/static/*`, and the self-authenticating `/webhook/*`.
+  The middleware now installs at app construction, so it also applies when the
+  dashboard is disabled.
 - **Startup output prints the real bind host (S4)** — `aethon start` and the
   gateway no longer print hardcoded `http://127.0.0.1:…` URLs when bound
   elsewhere.

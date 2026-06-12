@@ -10,15 +10,40 @@ from fastapi.responses import HTMLResponse
 
 from aethon import __version__
 from aethon.channels.base import ChannelAdapter, InboundMessage, OutboundMessage
+from aethon.gateway.netsec import install_auth_gate, token_ok
 
 
 # JavaScript is in a raw string so Python does NOT process escape sequences.
 # This means \s, \n, \*, \x00 etc. pass through to the browser exactly as written.
 _CHAT_SCRIPT = r"""
 <script>
-const ws = new WebSocket(`ws://${location.host}/ws/chat`);
 const msgs = document.getElementById('msgs');
 const inp = document.getElementById('inp');
+let ws = null;
+let wsOpened = false;
+
+function wsUrl() {
+  // Proto-aware (wss: behind TLS) + optional auth token from sessionStorage.
+  var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  var tok = sessionStorage.getItem('aethon_token');
+  return proto + '//' + location.host + '/ws/chat' + (tok ? '?token=' + encodeURIComponent(tok) : '');
+}
+
+function connect() {
+  wsOpened = false;
+  ws = new WebSocket(wsUrl());
+  ws.onopen = function() { wsOpened = true; };
+  ws.onmessage = function(e) { addMsg(e.data, 'bot'); };
+  ws.onclose = function() {
+    // Auth rejection closes the socket before it ever opens. (Browsers can't
+    // see the 1008 close code on a pre-accept rejection — they report 1006 —
+    // so we key off "never opened" instead.)
+    if (!wsOpened) {
+      var t = prompt("AETHON erişim token'ı:");
+      if (t) { sessionStorage.setItem('aethon_token', t.trim()); connect(); }
+    }
+  };
+}
 
 function esc(s) {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -92,17 +117,16 @@ function addMsg(text, cls) {
   msgs.scrollTop = msgs.scrollHeight;
 }
 
-ws.onmessage = function(e) { addMsg(e.data, 'bot'); };
-
 function send() {
   var t = inp.value.trim();
-  if (!t) return;
+  if (!t || !ws || ws.readyState !== WebSocket.OPEN) return;
   addMsg(t, 'user');
   ws.send(t);
   inp.value = '';
 }
 
 inp.addEventListener('keydown', function(e) { if (e.key === 'Enter') send(); });
+connect();
 </script>
 """
 
@@ -115,6 +139,10 @@ class WebChatAdapter(ChannelAdapter):
         self.app = FastAPI(title="AETHON")
         self.port = config.channels.webchat.port
         self.host = config.channels.webchat.host
+        # Shared token (dashboard.auth_token). Installed at app construction so
+        # the deny-by-default gate exists even when the dashboard is disabled.
+        self._auth_token = config.dashboard.auth_token
+        install_auth_gate(self.app, self._auth_token)
         self._server = None
         self._setup_routes()
 
@@ -125,6 +153,11 @@ class WebChatAdapter(ChannelAdapter):
 
         @self.app.websocket("/ws/chat")
         async def ws_chat(websocket: WebSocket):
+            # Reject BEFORE accept(): HTTP middleware never sees WS upgrades,
+            # so the websocket gates itself (same pattern as /ws/dashboard).
+            if not token_ok(websocket, self._auth_token):
+                await websocket.close(code=1008)
+                return
             await websocket.accept()
             try:
                 while True:

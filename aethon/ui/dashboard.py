@@ -13,7 +13,7 @@ import logging
 import os
 from pathlib import Path
 
-from fastapi import Request, WebSocket, WebSocketDisconnect, Query
+from fastapi import WebSocket, WebSocketDisconnect, Query
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -42,45 +42,12 @@ def setup_dashboard(app, runtime, config, event_bus=None):
             logger.warning(f"Log forwarding setup failed: {e}")
 
     # --- Authentication (optional shared token) ---
-    # Empty token = no auth (fine for the default localhost bind). When set, all
-    # /api/* and /ws/dashboard access requires the token.
+    # The deny-by-default HTTP gate is installed at app construction
+    # (WebChatAdapter -> netsec.install_auth_gate); HTTP routes need nothing
+    # here. The token is still needed for /ws/dashboard below: Starlette
+    # "http" middleware never sees WebSocket upgrades.
     _raw_token = getattr(config.dashboard, "auth_token", "")
     auth_token = _raw_token.strip() if isinstance(_raw_token, str) else ""
-
-    def _provided_token(request: Request) -> str:
-        header = request.headers.get("authorization", "")
-        bearer = header[7:] if header[:7].lower() == "bearer " else ""
-        return request.cookies.get("aethon_dash") or bearer or request.query_params.get("token", "")
-
-    if auth_token:
-        _protected = (
-            "/api/sessions",
-            "/api/memory",
-            "/api/config",
-            "/api/scheduler",
-            "/api/telemetry",
-            "/api/sops",
-            "/api/agents",
-        )
-
-        @app.middleware("http")
-        async def _dashboard_auth(request: Request, call_next):
-            path = request.url.path
-            if path == "/dashboard" or path.startswith(_protected):
-                if _provided_token(request) != auth_token:
-                    if path == "/dashboard":
-                        return HTMLResponse(
-                            "<html><body><h3>AETHON dashboard</h3><p>This dashboard is "
-                            "protected. Open <code>/dashboard?token=YOUR_TOKEN</code>.</p>"
-                            "</body></html>",
-                            status_code=401,
-                        )
-                    return JSONResponse({"detail": "Dashboard authentication required"}, status_code=401)
-                response = await call_next(request)
-                if path == "/dashboard":
-                    response.set_cookie("aethon_dash", auth_token, httponly=True, samesite="strict")
-                return response
-            return await call_next(request)
 
     # --- Static file serving ---
 
@@ -492,11 +459,13 @@ def setup_dashboard(app, runtime, config, event_bus=None):
           Client -> {"channel":"subscribe","topics":["messages","logs","telemetry","agents"]}
           Server -> {"channel":"<topic>","data":{...}}
         """
-        if auth_token:
-            provided = websocket.cookies.get("aethon_dash") or websocket.query_params.get("token", "")
-            if provided != auth_token:
-                await websocket.close(code=1008)
-                return
+        # Reject BEFORE accept() — same shared-token sources as the HTTP gate
+        # (aethon_dash cookie / Authorization: Bearer / ?token=).
+        from aethon.gateway.netsec import token_ok
+
+        if not token_ok(websocket, auth_token):
+            await websocket.close(code=1008)
+            return
         await websocket.accept()
 
         # Subscribe to event bus if available
