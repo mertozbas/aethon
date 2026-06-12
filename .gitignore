@@ -28,6 +28,13 @@ Users/
 # Local development notes/plans — never pushed
 _dev/
 
+# Development-process docs — design docs, checklists, SDK references we use while
+# building AETHON. Local-only (like _dev/); the published docs/ describe AETHON,
+# not how it was built. Kept on disk, never pushed.
+docs/development/
+docs/checklists/
+docs/references/
+
 # Claude Code workspace config — local dev guidance, never published.
 # Root-anchored so it doesn't touch codex-proxy's own tracked .claude/.
 /CLAUDE.md

@@ -1071,8 +1071,7 @@ For deeper reference, see the documentation under [`docs/`](https://github.com/m
 - [`docs/product/GETTING-STARTED.md`](https://github.com/mertozbas/aethon/blob/main/docs/product/GETTING-STARTED.md) — getting started.
 - [`docs/product/CONFIGURATION.md`](https://github.com/mertozbas/aethon/blob/main/docs/product/CONFIGURATION.md) — configuration guide.
 - [`docs/product/API-REFERENCE.md`](https://github.com/mertozbas/aethon/blob/main/docs/product/API-REFERENCE.md) — HTTP/WebSocket API reference.
-- [`docs/development/SECURITY.md`](https://github.com/mertozbas/aethon/blob/main/docs/development/SECURITY.md) — security model & threat analysis.
-- [`docs/development/ROADMAP.md`](https://github.com/mertozbas/aethon/blob/main/docs/development/ROADMAP.md) — roadmap.
+- [`SECURITY.md`](https://github.com/mertozbas/aethon/blob/main/SECURITY.md) — security policy & hardening guidance.
 
 ---
 
@@ -1129,8 +1128,6 @@ Contributions follow the same noncommercial terms; see [CONTRIBUTING.md](CONTRIB
 - **Team / pipeline orchestration** (Swarm/Graph) wired into the runtime and exposed as a command/tool.
 - **Per-specialist multi-model** configuration.
 - Real-time **voice** (STT/TTS).
-
-See [`docs/development/ROADMAP.md`](https://github.com/mertozbas/aethon/blob/main/docs/development/ROADMAP.md) for details.
 
 ---
 

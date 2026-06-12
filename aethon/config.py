@@ -384,7 +384,7 @@ class ReliabilityConfig(BaseModel):
 
     All gates are ADVISORY by default (they append feedback, mirroring the
     LSP diagnostics pattern) so they add no friction; ``strict`` flips them
-    to hard gates. See docs/development/PHASE-8-RELIABILITY.md.
+    to hard gates.
     """
 
     # Escalate findings from advisory feedback to hard gates (failed verify

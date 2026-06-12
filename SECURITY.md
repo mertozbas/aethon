@@ -111,6 +111,3 @@ Tool execution is governed by the `security` configuration section:
 - Store all tokens and API keys as `${ENV_VAR}` references, not literals.
 - Place AETHON behind a TLS-terminating reverse proxy if it must be reachable
   off-host; the built-in server speaks plain HTTP.
-
-For the full threat model, layered architecture, and security checklist, see
-[docs/development/SECURITY.md](docs/development/SECURITY.md).

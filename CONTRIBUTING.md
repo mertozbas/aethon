@@ -256,7 +256,7 @@ else is added conditionally.
   of `CHANGELOG.md`.
 - **Respect the security model.** All listening services bind to `127.0.0.1` by
   default; never default a port to `0.0.0.0`. Don't commit secrets. See
-  [`docs/development/SECURITY.md`](docs/development/SECURITY.md).
+  [`SECURITY.md`](SECURITY.md).
 - **Make CI green before requesting review.** Every PR runs three jobs:
   - **test** — the matrix on **Python 3.10, 3.11, and 3.12**: `pip install -e ".[dev]"`,
     `ruff check --select E9,F63,F7,F82 aethon`, then `pytest -q`.

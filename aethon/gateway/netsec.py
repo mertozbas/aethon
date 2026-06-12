@@ -3,7 +3,6 @@
 Pure, unit-testable check functions shared by the CLI (`aethon start`) and
 ``AethonGateway``. Doctrine: deny by default, fail closed at startup — a
 misconfigured network surface is refused at boot, not discovered at attack time.
-See docs/development/PHASE-9A-SECURITY.md.
 """
 
 import ipaddress

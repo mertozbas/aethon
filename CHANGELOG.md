@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 The autonomous core loop takes shape: a clear unit of work is recognized, opened
 as a planned dependency-ordered project, and — when enabled — worked to
-completion by a bounded executor. Design doc: `docs/development/PHASE-10-CORE-LOOP.md`.
+completion by a bounded executor.
 
 #### Added — C3 execution loop (ambient promoted)
 - **Bounded project executor** — `ProjectExecutor` works a planned project to
@@ -90,7 +90,7 @@ were reviewed and left as-is.
 ### Phase 9B — Robustness, Liveness & Token Economy (H1-H11, E0-E1)
 
 Makes AETHON feel alive, survive always-on use, and measure + cache its token
-spend. Design doc: `docs/development/PHASE-9B-ROBUSTNESS.md`.
+spend.
 
 ### Changed
 - **Prompt cache architecture (E1)** — `compose()` now orders layers by
@@ -204,8 +204,7 @@ refuted before fixing, each fix shipped with a regression test.
 ### Phase 9A Sprint 1 — Network security (S1-S5)
 
 Closes the remote-RCE-grade network findings of the seven-lens gap analysis:
-deny by default on every network surface, fail closed at startup. Design doc:
-`docs/development/PHASE-9A-SECURITY.md`.
+deny by default on every network surface, fail closed at startup.
 
 ### Added
 - **Execution sandbox foundation (S7, staged)** — new `security.sandbox`:
@@ -260,7 +259,7 @@ deny by default on every network surface, fail closed at startup. Design doc:
   `0.0.0.0`); README documents a reverse-proxy/TLS recipe.
 
 ### Changed
-- **SECURITY.md truth pass (S10)** — `docs/development/SECURITY.md` rewritten to
+- **Security model truth pass (S10)** — the security-model doc rewritten to
   match the code: the phantom "Layer 5: Content Filtering" (a hook that never
   existed) is removed, the real layers (S1-S9 + Phase 8 hooks) are documented,
   and the **explicit non-goals** are stated plainly (no injection detection;
@@ -297,8 +296,7 @@ deny by default on every network surface, fail closed at startup. Design doc:
 ### Phase 8 — Reliability Hardening (R1-R18)
 
 Derived from the hermes-strands autonomous-development audit: moves AETHON
-from *trusting* the agent's word to *verifying* it. Design doc:
-`docs/development/PHASE-8-RELIABILITY.md`.
+from *trusting* the agent's word to *verifying* it.
 
 ### Fixed
 - **`update_context` double-path bug (R1)** — every write raised
