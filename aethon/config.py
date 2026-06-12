@@ -217,6 +217,10 @@ class CoreLoopConfig(BaseModel):
     executor_max_iterations: int = 20        # hard cap on task turns per project run
     executor_max_task_attempts: int = 3      # give up on a task after N no-progress turns
     executor_stop_on_budget: bool = True     # halt between tasks once the E0 ceiling is breached
+    # C4 pulse + proof-of-work receipt (delivered to the project's origin channel).
+    pulse_enabled: bool = True               # progress pulses while executing (silenceable)
+    pulse_every_n_tasks: int = 3             # send a pulse every N newly-completed tasks
+    receipt_enabled: bool = True             # deliver a proof-of-work receipt when a run ends
     intake_enabled: bool = False
     intake_work_phrases: list[str] = Field(
         default_factory=lambda: [

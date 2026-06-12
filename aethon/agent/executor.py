@@ -16,10 +16,17 @@ limit so a task the agent can't finish can't spin forever.
 from __future__ import annotations
 
 import logging
+import re
 
 from aethon.channels.base import InboundMessage
 
 logger = logging.getLogger("aethon.executor")
+
+
+def _flat(value) -> str:
+    """Collapse whitespace — receipt/pulse text reaches a channel, and embedded
+    newlines from tool output could fabricate message structure."""
+    return re.sub(r"\s+", " ", str(value)).strip()
 
 
 class ProjectExecutor:
@@ -53,18 +60,35 @@ class ProjectExecutor:
         max_iter = max(1, int(getattr(cfg, "executor_max_iterations", 20)))
         max_attempts = max(1, int(getattr(cfg, "executor_max_task_attempts", 3)))
         stop_on_budget = getattr(cfg, "executor_stop_on_budget", True)
+        pulse_enabled = getattr(cfg, "pulse_enabled", True)
+        pulse_n = max(1, int(getattr(cfg, "pulse_every_n_tasks", 3)))
         session_id = f"executor:{parent_id}"
 
         iterations = 0
+        reason = None
+        # Tasks already done when the run starts (e.g. a resume) must not pulse.
+        seen_done = {
+            k["id"] for k in led.children(parent_id) if k.get("status") == "done"
+        }
+        pulse_pending = 0
 
         while iterations < max_iter:
             # Budget gate BETWEEN tasks — the per-turn gate in process() can't
             # bound a whole multi-task run, so re-check here before each pick.
             if stop_on_budget and meter is not None and meter.over_budget():
-                return self._summary(led, parent_id, "budget", iterations)
+                reason = "budget"
+                break
 
             available = led.available_tasks(parent_id)
             if not available:
+                # Decide why from the durable ledger state.
+                kids = led.children(parent_id)
+                if any(k.get("status") in ("open", "in_progress") for k in kids):
+                    reason = "blocked"     # open tasks with unsatisfiable deps
+                elif any(k.get("status") == "dropped" for k in kids):
+                    reason = "partial"     # finished, but some tasks were dropped
+                else:
+                    reason = "complete"
                 break
 
             task = available[0]
@@ -108,18 +132,23 @@ class ProjectExecutor:
             # agent didn't actually mark done (with evidence) stays available and
             # burns a durable attempt — it cannot be silently counted as complete.
 
-        if iterations >= max_iter:
-            return self._summary(led, parent_id, "cap", iterations)
+            # C4 pulse: count NEW completions; pulse every N (silenceable).
+            if pulse_enabled:
+                done_now = {
+                    k["id"] for k in led.children(parent_id)
+                    if k.get("status") == "done"
+                }
+                pulse_pending += len(done_now - seen_done)
+                seen_done = done_now
+                if pulse_pending >= pulse_n:
+                    pulse_pending = 0
+                    await self._deliver_pulse(led, parent_id)
 
-        # available is empty — decide why from the durable ledger state.
-        kids = led.children(parent_id)
-        if any(k.get("status") in ("open", "in_progress") for k in kids):
-            reason = "blocked"             # open tasks with unsatisfiable deps
-        elif any(k.get("status") == "dropped" for k in kids):
-            reason = "partial"            # finished, but some tasks were dropped
-        else:
-            reason = "complete"
-        return self._summary(led, parent_id, reason, iterations)
+        if reason is None:           # exited via the iteration cap
+            reason = "cap"
+        summary = self._summary(led, parent_id, reason, iterations)
+        await self._deliver_receipt(led, parent_id, summary)
+        return summary
 
     def _summary(self, led, parent_id, reason, iterations) -> dict:
         kids = led.children(parent_id)
@@ -140,3 +169,82 @@ class ProjectExecutor:
             f"remaining, {iterations} iterations)."
         )
         return summary
+
+    # ---- C4: pulse + proof-of-work receipt ----
+
+    def _build_pulse(self, led, parent_id) -> str:
+        kids = led.children(parent_id)
+        total = len(kids)
+        done = sum(1 for k in kids if k.get("status") == "done")
+        line = f"⏳ {done}/{total} görev bitti"
+        cur = next((k for k in kids if k.get("status") == "in_progress"), None)
+        if cur:
+            line += f" · şu an: {_flat(cur.get('title', ''))}"
+        return line
+
+    def _build_receipt(self, led, parent_id, summary) -> str:
+        """An HONEST proof-of-work receipt: per-task status with the real
+        evidence the ledger captured (never a bare 'done', never fabricated)."""
+        parent = led.get(parent_id) or {}
+        title = _flat(parent.get("title", "")) or parent_id
+        kids = led.children(parent_id)
+        done = [k for k in kids if k.get("status") == "done"]
+        dropped = [k for k in kids if k.get("status") == "dropped"]
+        headers = {
+            "complete": f"✅ Bitti — '{title}'. İşte kanıtı:",
+            "partial": f"⚠️ Kısmen bitti — '{title}' ({len(dropped)} görev tamamlanamadı):",
+            "blocked": f"⛔ Takıldı — '{title}' (bağımlılıklar çözülemedi):",
+            "cap": f"⏸️ Durduruldu — '{title}' (iterasyon sınırı):",
+            "budget": f"⏸️ Durduruldu — '{title}' (token bütçesi aşıldı):",
+        }
+        lines = [headers.get(summary["reason"], f"'{title}':")]
+        for k in done:
+            ev = _flat(k.get("evidence", ""))[:300] or "(kanıt yok)"
+            lines.append(f"- ✓ [{k['id']}] {_flat(k.get('title', ''))} — kanıt: {ev}")
+        for k in dropped:
+            lines.append(f"- ✗ [{k['id']}] {_flat(k.get('title', ''))} (tamamlanamadı)")
+        return "\n".join(lines)
+
+    async def _deliver_pulse(self, led, parent_id) -> None:
+        parent = led.get(parent_id) or {}
+        channel = parent.get("origin_channel", "")
+        if channel:
+            await self._deliver(
+                channel, parent.get("origin_recipient", ""),
+                self._build_pulse(led, parent_id),
+            )
+
+    async def _deliver_receipt(self, led, parent_id, summary) -> None:
+        if not getattr(self.runtime.config.core_loop, "receipt_enabled", True):
+            return
+        parent = led.get(parent_id) or {}
+        channel = parent.get("origin_channel", "")
+        if channel:
+            await self._deliver(
+                channel, parent.get("origin_recipient", ""),
+                self._build_receipt(led, parent_id, summary),
+            )
+
+    async def _deliver(self, channel: str, recipient: str, text: str) -> None:
+        """Best-effort delivery to a user channel via the gateway. Fail loud
+        (warn) rather than silently dropping when no gateway/adapter is up."""
+        from aethon.channels.base import OutboundMessage
+        from aethon.tools.messaging import get_gateway
+
+        gw = get_gateway()
+        if not gw or channel not in getattr(gw, "adapters", {}):
+            logger.warning(
+                f"Executor could not deliver to {channel!r} "
+                f"(no gateway/adapter up); message dropped."
+            )
+            return
+        try:
+            await gw.adapters[channel].send(
+                OutboundMessage(
+                    channel=channel, recipient_id=recipient or "default", text=text
+                )
+            )
+        except Exception as e:
+            logger.warning(
+                f"Executor delivery to {channel} failed: {type(e).__name__}: {e}"
+            )

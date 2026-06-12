@@ -52,6 +52,24 @@ def _project(tmp_path):
     return led, proj["id"]
 
 
+def _project_with_origin(tmp_path, channel="telegram", recipient="123"):
+    led = TaskLedger(str(tmp_path))
+    proj = led.create("Web API")
+    led.update(proj["id"], origin_channel=channel, origin_recipient=recipient)
+    return led, proj["id"]
+
+
+def _capture(ex):
+    """Monkeypatch the executor's delivery to record (channel, recipient, text)."""
+    sent = []
+
+    async def _deliver(channel, recipient, text):
+        sent.append((channel, recipient, text))
+
+    ex._deliver = _deliver
+    return sent
+
+
 @pytest.mark.asyncio
 async def test_executor_runs_project_to_completion(tmp_path):
     led, pid = _project(tmp_path)
@@ -221,6 +239,75 @@ async def test_ambient_delegates_to_executor_when_enabled(tmp_path):
     assert result is not None
     assert result["reason"] == "complete"
     assert "T2" in result["done"]
+
+
+# --- C4: pulse + proof-of-work receipt ---
+
+
+@pytest.mark.asyncio
+async def test_executor_delivers_receipt_with_real_evidence(tmp_path):
+    """The receipt is the product's signature: not a bare 'done' but the real
+    per-task evidence the ledger captured, delivered to the origin channel."""
+    led, pid = _project_with_origin(tmp_path)
+    led.create("A", parent_id=pid)
+    led.create("B", parent_id=pid)
+
+    ex = ProjectExecutor(_FakeRuntime(led, _config(), _complete_current))
+    sent = _capture(ex)
+    await ex.run(pid)
+
+    receipts = [s for s in sent if "Bitti" in s[2]]
+    assert receipts                                   # a receipt was delivered
+    channel, recipient, text = receipts[-1]
+    assert channel == "telegram" and recipient == "123"   # back to the origin
+    assert "done by fake agent" in text               # REAL evidence, not "done"
+    assert "✓ [T2]" in text and "✓ [T3]" in text
+
+
+@pytest.mark.asyncio
+async def test_executor_pulses_every_n_completions(tmp_path):
+    led, pid = _project_with_origin(tmp_path)
+    led.create("A", parent_id=pid)
+    led.create("B", parent_id=pid)
+    config = _config()
+    config.core_loop.pulse_every_n_tasks = 1          # pulse on every completion
+
+    ex = ProjectExecutor(_FakeRuntime(led, config, _complete_current))
+    sent = _capture(ex)
+    await ex.run(pid)
+
+    pulses = [s for s in sent if "görev bitti" in s[2]]
+    assert len(pulses) == 2                            # one per completed task
+
+
+@pytest.mark.asyncio
+async def test_executor_receipt_is_silenceable(tmp_path):
+    led, pid = _project_with_origin(tmp_path)
+    led.create("A", parent_id=pid)
+    config = _config()
+    config.core_loop.receipt_enabled = False
+    config.core_loop.pulse_enabled = False
+
+    ex = ProjectExecutor(_FakeRuntime(led, config, _complete_current))
+    sent = _capture(ex)
+    await ex.run(pid)
+
+    assert sent == []                                 # nothing delivered
+
+
+@pytest.mark.asyncio
+async def test_executor_no_origin_skips_delivery(tmp_path):
+    """A project with no origin (e.g. agent-initiated) delivers nothing and does
+    not crash."""
+    led, pid = _project(tmp_path)                     # no origin stamped
+    led.create("A", parent_id=pid)
+
+    ex = ProjectExecutor(_FakeRuntime(led, _config(), _complete_current))
+    sent = _capture(ex)
+    result = await ex.run(pid)
+
+    assert sent == []
+    assert result["reason"] == "complete"
 
 
 @pytest.mark.asyncio
