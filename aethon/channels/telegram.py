@@ -4,11 +4,14 @@ Supports text messages, photo/document media, and HTML-formatted responses.
 Standard Markdown from the model is converted to Telegram-compatible HTML.
 """
 
+import asyncio
 import html
 import logging
 import re
+import secrets
 
 from aethon.channels.base import (
+    ApprovalRequest,
     ChannelAdapter,
     InboundMessage,
     MediaAttachment,
@@ -130,12 +133,31 @@ class TelegramAdapter(ChannelAdapter):
             )
         self.bot = None
         self.dp = None
+        # S6 approval: pending futures keyed by a SHORT token (Telegram caps
+        # callback_data at 64 bytes; the strands interrupt id is far longer).
+        self._pending: dict[str, asyncio.Future] = {}
 
     async def start(self) -> None:
         from aiogram import Bot, Dispatcher, types, F
 
         self.bot = Bot(token=self.token)
         self.dp = Dispatcher()
+
+        @self.dp.callback_query(F.data.startswith("apr:"))
+        async def handle_approval_cb(cb: types.CallbackQuery):
+            authorized, decision = self._approval_decision_from_callback(
+                cb.data, cb.from_user.id
+            )
+            if not authorized:
+                await cb.answer("Yetkisiz.", show_alert=True)
+                return
+            await cb.answer("Onaylandı." if decision else "Reddedildi.")
+            try:
+                await cb.message.edit_text(
+                    "✅ Onaylandı." if decision else "❌ Reddedildi."
+                )
+            except Exception:
+                pass  # message edit is best-effort
 
         @self.dp.message(F.text)
         async def handle_text(tg_msg: types.Message):
@@ -262,6 +284,65 @@ class TelegramAdapter(ChannelAdapter):
                     chat_id=chat_id,
                     text=message.text,
                 )
+
+    async def ask_approval(self, request: ApprovalRequest):
+        """Send an inline-keyboard approval and await the callback (S6).
+
+        Returns True/False, or None when the bot or destination can't be
+        resolved (fail closed). Timeout/cancel is handled by the runtime; a late
+        button press after timeout simply finds no pending future.
+        """
+        if not self.bot:
+            return None
+        from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+
+        chat_id = self._resolve_chat_id(
+            OutboundMessage(
+                channel="telegram", recipient_id=request.recipient_id, text=""
+            )
+        )
+        if chat_id is None:
+            return None
+
+        token = secrets.token_hex(4)
+        loop = asyncio.get_running_loop()
+        fut: asyncio.Future = loop.create_future()
+        self._pending[token] = fut
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[[
+                InlineKeyboardButton(text="✅ Onayla", callback_data=f"apr:{token}:1"),
+                InlineKeyboardButton(text="❌ Reddet", callback_data=f"apr:{token}:0"),
+            ]]
+        )
+        try:
+            await self.bot.send_message(
+                chat_id=chat_id,
+                text=f"🔐 Onay gerekiyor\n{request.message}",
+                reply_markup=keyboard,
+            )
+            return await fut
+        finally:
+            self._pending.pop(token, None)
+
+    def _approval_decision_from_callback(self, data: str, presser_id):
+        """Resolve a pending approval from a callback query.
+
+        Re-authorizes the presser against ``allowed_senders.telegram`` (a
+        different user must not approve someone else's turn). Returns
+        ``(authorized, decision)``; ``decision`` is None when nothing matched.
+        """
+        parts = (data or "").split(":")
+        if len(parts) != 3 or parts[0] != "apr":
+            return (True, None)
+        token, dec = parts[1], parts[2]
+        allowed = self.config.security.allowed_senders.get("telegram") or []
+        if allowed and str(presser_id) not in allowed:
+            return (False, None)
+        decision = dec == "1"
+        fut = self._pending.get(token)
+        if fut is not None and not fut.done():
+            fut.set_result(decision)
+        return (True, decision)
 
     def resolve_recipient(self, message: OutboundMessage):
         return self._resolve_chat_id(message)

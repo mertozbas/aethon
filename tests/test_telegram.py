@@ -1,8 +1,12 @@
 """Tests for TelegramAdapter."""
 
+import asyncio
+
 import pytest
+from unittest.mock import AsyncMock
 
 from aethon.config import AethonConfig, TelegramChannelConfig, ChannelsConfig
+from aethon.channels.base import ApprovalRequest
 from aethon.channels.telegram import (
     _markdown_to_telegram_html,
     _inline_markdown_to_html,
@@ -163,6 +167,79 @@ def test_html_entities_escaped():
     assert "&lt;" in result
     assert "&gt;" in result
     assert "&amp;" in result
+
+
+# --- S6: answerable approval (inline keyboard + callback) -------------------
+
+
+def _approval_request(recipient_id="42", iid="i1"):
+    return ApprovalRequest(
+        interrupt_id=iid,
+        tool="shell",
+        parameters={"command": "ls"},
+        message="'shell' calistirilmak isteniyor. Onayla?",
+        session_id="telegram:42",
+        recipient_id=recipient_id,
+    )
+
+
+def test_callback_resolves_pending_future():
+    """A matching callback resolves the parked approval future to its decision."""
+    adapter = _adapter(allowed=["42"])
+    loop = asyncio.new_event_loop()
+    fut = loop.create_future()
+    adapter._pending["tok1"] = fut
+    authorized, decision = adapter._approval_decision_from_callback("apr:tok1:1", 42)
+    assert authorized is True and decision is True
+    assert fut.result() is True
+    loop.close()
+
+
+def test_callback_denies():
+    adapter = _adapter(allowed=["42"])
+    loop = asyncio.new_event_loop()
+    fut = loop.create_future()
+    adapter._pending["tok2"] = fut
+    authorized, decision = adapter._approval_decision_from_callback("apr:tok2:0", 42)
+    assert authorized is True and decision is False
+    assert fut.result() is False
+    loop.close()
+
+
+def test_callback_rejects_unauthorized_presser():
+    """A user not on the allowlist can't answer someone else's approval."""
+    adapter = _adapter(allowed=["42"])
+    loop = asyncio.new_event_loop()
+    fut = loop.create_future()
+    adapter._pending["tok3"] = fut
+    authorized, decision = adapter._approval_decision_from_callback("apr:tok3:1", 999)
+    assert authorized is False
+    assert not fut.done()  # future untouched — stranger can't approve
+    loop.close()
+
+
+@pytest.mark.asyncio
+async def test_ask_approval_sends_keyboard_and_awaits():
+    """ask_approval sends an inline keyboard and resolves on the callback."""
+    adapter = _adapter(allowed=["42"])
+    adapter.bot = AsyncMock()
+    task = asyncio.ensure_future(adapter.ask_approval(_approval_request("42")))
+    await asyncio.sleep(0)  # let the message send + the future register
+    adapter.bot.send_message.assert_awaited_once()
+    kwargs = adapter.bot.send_message.await_args.kwargs
+    assert kwargs["chat_id"] == 42
+    # Extract the callback token from the keyboard and resolve it.
+    kb = kwargs["reply_markup"]
+    token = kb.inline_keyboard[0][0].callback_data.split(":")[1]
+    adapter._approval_decision_from_callback(f"apr:{token}:1", 42)
+    assert await task is True
+
+
+@pytest.mark.asyncio
+async def test_ask_approval_no_destination_fails_closed():
+    adapter = _adapter()  # no chat_id, no allowlist → no destination
+    adapter.bot = AsyncMock()
+    assert await adapter.ask_approval(_approval_request("default")) is None
 
 
 def test_code_block_content_escaped():
