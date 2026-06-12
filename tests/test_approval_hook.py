@@ -62,6 +62,23 @@ def test_register_hooks(approval_hook):
     # Should not raise
 
 
+def test_manage_specialists_only_create_is_gated(agent, approval_hook):
+    """C5 review: defining a specialist (create) needs approval; list/remove
+    are safe and must not interrupt."""
+    assert "manage_specialists" in approval_hook.requires_approval
+    with pytest.raises(InterruptException):
+        approval_hook.check_approval(
+            _make_event(agent, "manage_specialists", {"action": "create", "name": "x"})
+        )
+    # list / remove auto-approve (no interrupt).
+    approval_hook.check_approval(
+        _make_event(agent, "manage_specialists", {"action": "list"})
+    )
+    approval_hook.check_approval(
+        _make_event(agent, "manage_specialists", {"action": "remove", "name": "x"})
+    )
+
+
 def test_shell_triggers_interrupt(agent, approval_hook):
     """Shell tool triggers InterruptException."""
     event = _make_event(agent, "shell", {"command": "ls"})

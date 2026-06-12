@@ -32,7 +32,8 @@ class ApprovalHookProvider(HookProvider):
 
     def __init__(self, requires_approval: list[str] | None = None, macos=None, computer=None):
         self.requires_approval = set(
-            requires_approval or ["shell", "file_write", "manage_tools"]
+            requires_approval
+            or ["shell", "file_write", "manage_tools", "manage_specialists"]
         )
         # Optional MacOSConfig — narrows use_mac approval to its sensitive actions.
         self.macos = macos
@@ -79,6 +80,13 @@ class ApprovalHookProvider(HookProvider):
             tool_name == "manage_tools"
             and str(tool_input.get("action", "")).strip().lower()
             not in self.MANAGE_TOOLS_DANGEROUS
+        ):
+            return
+        # manage_specialists: only create (defining a new agent) needs approval;
+        # list/remove are safe.
+        if (
+            tool_name == "manage_specialists"
+            and str(tool_input.get("action", "")).strip().lower() != "create"
         ):
             return
         # use_computer: only mouse/keyboard/app actions need approval; read-only

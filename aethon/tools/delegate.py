@@ -78,7 +78,7 @@ def ask_specialist(specialist_name: str, task: str) -> str:
     try:
         specialist = _specialist_factory.get(specialist_name)
     except ValueError:
-        known = ", ".join(getattr(_specialist_factory, "list_specialists", dict)())
+        known = ", ".join(_specialist_factory.list_specialists())
         return f"Error: unknown specialist {specialist_name!r}. Available: {known}"
     return _extract_text(specialist(task))
 

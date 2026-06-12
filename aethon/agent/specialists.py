@@ -203,15 +203,20 @@ class SpecialistFactory:
             self._cache.pop(key, None)
             if persist and self._workspace:
                 self._spec_dir().mkdir(parents=True, exist_ok=True)
-                # Persist the requested tool NAMES (strings), re-resolved on load.
+                # Persist the requested tool NAMES (strings), re-resolved (and
+                # re-gated) on load. Atomic write (tmp + replace) so a crash
+                # mid-write can't leave a corrupt file behind.
                 allowed = [n for n in (tool_names or []) if str(n) in DYNAMIC_TOOL_ALLOWLIST]
-                (self._spec_dir() / f"{key}.json").write_text(
+                target = self._spec_dir() / f"{key}.json"
+                tmp = target.with_name(f".{key}.{threading.get_ident()}.tmp")
+                tmp.write_text(
                     json.dumps(
                         {"name": key, "system_prompt": cfg["system_prompt"], "tools": allowed},
                         ensure_ascii=False, indent=2,
                     ),
                     encoding="utf-8",
                 )
+                tmp.replace(target)
         return key
 
     def remove_specialist(self, name) -> bool:
