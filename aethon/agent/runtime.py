@@ -331,9 +331,24 @@ class AethonRuntime:
         if self.specialist_factory:
             from aethon.tools.delegate import (
                 ask_coder, ask_researcher, ask_analyst, ask_planner, ask_scout,
+                ask_specialist,
             )
 
-            tools.extend([ask_coder, ask_researcher, ask_analyst, ask_planner, ask_scout])
+            tools.extend([
+                ask_coder, ask_researcher, ask_analyst, ask_planner, ask_scout,
+                ask_specialist,
+            ])
+            # C5: dynamic specialist management (opt-in). ask_specialist (above)
+            # can already reach any custom specialist; this tool creates them.
+            if getattr(self.config.core_loop, "dynamic_specialists", False):
+                from aethon.tools.specialist_tool import create_manage_specialists_tool
+
+                tools.append(
+                    create_manage_specialists_tool(
+                        self.specialist_factory,
+                        allow_shell=self.config.core_loop.allow_shell_specialists,
+                    )
+                )
         if self._context_updater:
             from aethon.tools.context_tool import create_context_tool
 

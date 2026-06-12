@@ -65,6 +65,25 @@ def ask_researcher(query: str) -> str:
 
 
 @tool
+def ask_specialist(specialist_name: str, task: str) -> str:
+    """Delegate a task to a specialist by name — built-in or a custom one you
+    created with manage_specialists (Phase 10 C5).
+
+    Args:
+        specialist_name: The specialist's key (e.g. "coder", or a custom name)
+        task: What you want it to do
+    """
+    if not _specialist_factory:
+        return "Error: Specialist factory not started."
+    try:
+        specialist = _specialist_factory.get(specialist_name)
+    except ValueError:
+        known = ", ".join(getattr(_specialist_factory, "list_specialists", dict)())
+        return f"Error: unknown specialist {specialist_name!r}. Available: {known}"
+    return _extract_text(specialist(task))
+
+
+@tool
 def ask_scout(query: str) -> str:
     """Delegate a "read many, return little" investigation to the scout.
 

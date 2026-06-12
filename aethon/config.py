@@ -186,7 +186,9 @@ class ApprovalConfig(BaseModel):
 
     enabled: bool = False
     requires_approval: list[str] = Field(
-        default_factory=lambda: ["shell", "file_write", "manage_tools"]
+        default_factory=lambda: [
+            "shell", "file_write", "manage_tools", "manage_specialists",
+        ]
     )
     # Seconds to wait for a human approval answer before denying (S6). Generous
     # by default — the prompt is local (CLI/WebChat) or push (Telegram).
@@ -221,6 +223,9 @@ class CoreLoopConfig(BaseModel):
     pulse_enabled: bool = True               # progress pulses while executing (silenceable)
     pulse_every_n_tasks: int = 3             # send a pulse every N newly-completed tasks
     receipt_enabled: bool = True             # deliver a proof-of-work receipt when a run ends
+    # C5 dynamic specialists — let the agent define + persist custom specialists.
+    dynamic_specialists: bool = False        # opt-in; exposes the manage_specialists tool
+    allow_shell_specialists: bool = False    # may a dynamic specialist be granted `shell`?
     intake_enabled: bool = False
     intake_work_phrases: list[str] = Field(
         default_factory=lambda: [

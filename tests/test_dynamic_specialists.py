@@ -84,6 +84,99 @@ def test_builtins_still_present(tmp_path):
         assert listing[name] == "built-in"
 
 
+# --- manage_specialists tool ---
+
+
+def test_manage_specialists_create_and_list(tmp_path):
+    from aethon.tools.specialist_tool import create_manage_specialists_tool
+
+    f = _factory(tmp_path)
+    tool = create_manage_specialists_tool(f, allow_shell=False)
+    out = tool._tool_func(action="create", name="DB Guru", system_prompt="dbs",
+                          tools="file_read, think")
+    assert "dbguru" in out
+    assert "dbguru" in f.list_specialists()
+    listed = tool._tool_func(action="list")
+    assert "dbguru (custom)" in listed
+    assert "coder (built-in)" in listed
+
+
+def test_manage_specialists_rejects_unknown_tool(tmp_path):
+    from aethon.tools.specialist_tool import create_manage_specialists_tool
+
+    tool = create_manage_specialists_tool(_factory(tmp_path), allow_shell=False)
+    out = tool._tool_func(action="create", name="x", system_prompt="p",
+                          tools="file_read, os.system")
+    assert "not allowed" in out and "os.system" in out
+
+
+def test_manage_specialists_shell_gated(tmp_path):
+    from aethon.tools.specialist_tool import create_manage_specialists_tool
+
+    f = _factory(tmp_path)
+    blocked = create_manage_specialists_tool(f, allow_shell=False)
+    out = blocked._tool_func(action="create", name="sh1", system_prompt="p", tools="shell")
+    assert "shell-bearing" in out and "sh1" not in f.list_specialists()
+
+    allowed = create_manage_specialists_tool(f, allow_shell=True)
+    out = allowed._tool_func(action="create", name="sh2", system_prompt="p", tools="shell")
+    assert "sh2" in f.list_specialists()
+
+
+def test_manage_specialists_remove(tmp_path):
+    from aethon.tools.specialist_tool import create_manage_specialists_tool
+
+    f = _factory(tmp_path)
+    tool = create_manage_specialists_tool(f)
+    tool._tool_func(action="create", name="tmp", system_prompt="p", tools="think")
+    assert "removed" in tool._tool_func(action="remove", name="tmp").lower()
+    assert "tmp" not in f.list_specialists()
+
+
+# --- ask_specialist dispatcher ---
+
+
+def test_ask_specialist_dispatches_to_custom():
+    from aethon.tools import delegate
+
+    class _Spec:
+        def __call__(self, task):
+            return "özel uzmanın sonucu"
+
+    class _Factory:
+        def get(self, name):
+            assert name == "dbexpert"
+            return _Spec()
+
+        def list_specialists(self):
+            return {"dbexpert": "custom"}
+
+    delegate.set_specialist_factory(_Factory())
+    try:
+        out = delegate.ask_specialist._tool_func(specialist_name="dbexpert", task="x")
+        assert "özel uzmanın sonucu" in out
+    finally:
+        delegate.set_specialist_factory(None)
+
+
+def test_ask_specialist_unknown_returns_error():
+    from aethon.tools import delegate
+
+    class _Factory:
+        def get(self, name):
+            raise ValueError("Unknown specialist")
+
+        def list_specialists(self):
+            return {"coder": "built-in"}
+
+    delegate.set_specialist_factory(_Factory())
+    try:
+        out = delegate.ask_specialist._tool_func(specialist_name="ghost", task="x")
+        assert "unknown specialist" in out.lower() and "coder" in out
+    finally:
+        delegate.set_specialist_factory(None)
+
+
 def test_corrupt_specialist_file_skipped_not_crash(tmp_path):
     d = tmp_path / "specialists"
     d.mkdir()
