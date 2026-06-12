@@ -4,13 +4,17 @@ FastAPI + WebSocket based web chat interface with Markdown rendering.
 """
 
 import asyncio
+import logging
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 
 from aethon import __version__
 from aethon.channels.base import ChannelAdapter, InboundMessage, OutboundMessage
-from aethon.gateway.netsec import install_auth_gate, token_ok
+from aethon.gateway.netsec import install_auth_gate, origin_allowed, token_ok
+
+
+logger = logging.getLogger("aethon.webchat")
 
 
 # JavaScript is in a raw string so Python does NOT process escape sequences.
@@ -142,6 +146,7 @@ class WebChatAdapter(ChannelAdapter):
         # Shared token (dashboard.auth_token). Installed at app construction so
         # the deny-by-default gate exists even when the dashboard is disabled.
         self._auth_token = config.dashboard.auth_token
+        self._allowed_origins = config.channels.webchat.allowed_origins
         install_auth_gate(self.app, self._auth_token)
         self._server = None
         self._setup_routes()
@@ -155,6 +160,15 @@ class WebChatAdapter(ChannelAdapter):
         async def ws_chat(websocket: WebSocket):
             # Reject BEFORE accept(): HTTP middleware never sees WS upgrades,
             # so the websocket gates itself (same pattern as /ws/dashboard).
+            # Origin first — a cross-site page must be rejected even if it
+            # somehow holds the token (drive-by/CSWSH posture).
+            origin = websocket.headers.get("origin")
+            if not origin_allowed(
+                origin, websocket.headers.get("host", ""), self._allowed_origins
+            ):
+                logger.warning(f"WS /ws/chat rejected: origin {origin!r} not allowed")
+                await websocket.close(code=1008)
+                return
             if not token_ok(websocket, self._auth_token):
                 await websocket.close(code=1008)
                 return

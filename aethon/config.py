@@ -38,6 +38,11 @@ class WebChatChannelConfig(BaseModel):
     # Set to "0.0.0.0" to expose on the network or inside a container (e.g. Docker
     # port mapping). When binding beyond loopback, also set dashboard.auth_token.
     host: str = "127.0.0.1"
+    # Extra browser Origins accepted on the WebSocket upgrades (/ws/chat and
+    # /ws/dashboard) — full origins, e.g. "https://chat.example.com". Empty =
+    # same-host origins only. Clients without an Origin header (curl, Python)
+    # always pass; the token is their gate.
+    allowed_origins: list[str] = Field(default_factory=list)
 
 
 class CLIChannelConfig(BaseModel):

@@ -138,6 +138,58 @@ def test_status_gated_with_token():
     assert ok.status_code == 200
 
 
+def test_ws_chat_rejects_cross_origin():
+    """A foreign browser Origin is rejected pre-accept even with no token set
+    (WebSockets bypass same-origin policy — drive-by protection, S2)."""
+    client = TestClient(_app())
+    with pytest.raises(WebSocketDisconnect) as exc:
+        with client.websocket_connect(
+            "/ws/chat", headers={"Origin": "http://evil.example"}
+        ):
+            pass
+    assert exc.value.code == 1008
+
+
+def test_ws_chat_allows_same_host_origin():
+    client = TestClient(_app())
+    with client.websocket_connect(
+        "/ws/chat", headers={"Origin": "http://testserver"}
+    ) as ws:
+        ws.send_text("hi")
+        assert "Echo: hi" in ws.receive_text()
+
+
+def test_ws_chat_allows_configured_origin():
+    config = AethonConfig()
+    config.channels.webchat.allowed_origins = ["https://chat.example.com"]
+    client = TestClient(WebChatAdapter(config, FakeRouter()).app)
+    with client.websocket_connect(
+        "/ws/chat", headers={"Origin": "https://chat.example.com"}
+    ) as ws:
+        ws.send_text("hi")
+        assert "Echo: hi" in ws.receive_text()
+
+
+def test_ws_chat_no_origin_header_passes():
+    """Header-less clients (curl/Python) pass the origin check by design (§6)."""
+    client = TestClient(_app())
+    with client.websocket_connect("/ws/chat") as ws:
+        ws.send_text("hi")
+        assert "Echo: hi" in ws.receive_text()
+
+
+def test_ws_chat_cross_origin_rejected_even_with_token():
+    """Origin is checked before the token: a cross-site page holding the token
+    is still rejected (CSWSH posture)."""
+    client = TestClient(_app(token="secret"))
+    with pytest.raises(WebSocketDisconnect) as exc:
+        with client.websocket_connect(
+            "/ws/chat?token=secret", headers={"Origin": "http://evil.example"}
+        ):
+            pass
+    assert exc.value.code == 1008
+
+
 def test_chat_html_ws_url_is_proto_aware():
     """The inline JS must pick wss: under https (TLS reverse proxy)."""
     client = TestClient(_app())

@@ -19,6 +19,12 @@ deny by default on every network surface, fail closed at startup. Design doc:
   1008). Token sources: `?token=`, `Authorization: Bearer`, `aethon_dash`
   cookie. The chat page prompts for the token on first connect
   (sessionStorage) and now builds a proto-aware URL (`wss:` behind TLS).
+- **WebSocket Origin validation (S2)** — `/ws/chat` and `/ws/dashboard`
+  validate the browser `Origin` header before the upgrade (WebSockets bypass
+  same-origin policy, so any web page could otherwise drive a loopback bind).
+  Default: same-host origins; extend via `channels.webchat.allowed_origins`.
+  Mismatch (including `Origin: null`) closes `1008` and logs the origin;
+  clients without an Origin header pass — the token is their gate.
 - **`--insecure-bind` flag (S4)** — `aethon start` refuses a non-loopback
   `channels.webchat.host` when `dashboard.auth_token` is empty (gateway raises
   the same refusal as defense-in-depth). The flag opts out, intended only for

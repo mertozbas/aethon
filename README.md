@@ -501,6 +501,7 @@ channels:
 | `enabled` | bool | `true` | Enable the web chat channel. |
 | `port` | int | `18790` | Web chat listen port. |
 | `host` | str | `"127.0.0.1"` | Bind address; loopback only by default. Set `0.0.0.0` to expose — `dashboard.auth_token` is then **required** (startup refuses otherwise; `--insecure-bind` to override behind your own auth proxy). |
+| `allowed_origins` | list | `[]` | Extra browser `Origin`s accepted on the WebSocket upgrades (`/ws/chat`, `/ws/dashboard`), e.g. `["https://chat.example.com"]`. Empty = same-host origins only. Mismatch closes `1008`; clients without an Origin header (curl, Python) always pass — the token is their gate. |
 
 **`channels.telegram`**
 

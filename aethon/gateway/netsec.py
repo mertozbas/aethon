@@ -8,6 +8,7 @@ See docs/development/PHASE-9A-SECURITY.md.
 
 import ipaddress
 import secrets
+from urllib.parse import urlsplit
 
 from fastapi.responses import HTMLResponse, JSONResponse
 
@@ -73,6 +74,26 @@ def install_auth_gate(app, auth_token: str) -> None:
         if path == "/dashboard":
             response.set_cookie("aethon_dash", token, httponly=True, samesite="strict")
         return response
+
+
+def origin_allowed(origin: str | None, host_header: str, allowed_origins: list[str]) -> bool:
+    """Validate a WebSocket upgrade's Origin header (S2 — anti drive-by).
+
+    WebSockets bypass the same-origin policy: any web page can open a socket to
+    127.0.0.1, so even a loopback bind needs this check. Rules:
+    - No Origin header (curl, Python clients): pass — the token is their gate.
+    - Origin on the configured allowlist: pass.
+    - Otherwise the Origin's host:port must equal the request's own Host header
+      (covers direct use and TLS proxies, where both omit the default port).
+    - ``Origin: null`` (sandboxed iframe, file://) has no netloc -> rejected.
+    """
+    if not origin:
+        return True
+    normalized = {o.strip().rstrip("/").lower() for o in allowed_origins}
+    if origin.strip().rstrip("/").lower() in normalized:
+        return True
+    netloc = urlsplit(origin).netloc.lower()
+    return bool(netloc) and netloc == (host_header or "").strip().lower()
 
 
 def is_loopback_host(host: str) -> bool:

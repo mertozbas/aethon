@@ -48,6 +48,12 @@ def setup_dashboard(app, runtime, config, event_bus=None):
     # "http" middleware never sees WebSocket upgrades.
     _raw_token = getattr(config.dashboard, "auth_token", "")
     auth_token = _raw_token.strip() if isinstance(_raw_token, str) else ""
+    # Origins accepted on the WS upgrade (S2); same isinstance guard as the
+    # token — tests pass MagicMock configs.
+    _raw_origins = getattr(
+        getattr(config.channels, "webchat", None), "allowed_origins", []
+    )
+    ws_allowed_origins = _raw_origins if isinstance(_raw_origins, list) else []
 
     # --- Static file serving ---
 
@@ -459,10 +465,18 @@ def setup_dashboard(app, runtime, config, event_bus=None):
           Client -> {"channel":"subscribe","topics":["messages","logs","telemetry","agents"]}
           Server -> {"channel":"<topic>","data":{...}}
         """
-        # Reject BEFORE accept() — same shared-token sources as the HTTP gate
-        # (aethon_dash cookie / Authorization: Bearer / ?token=).
-        from aethon.gateway.netsec import token_ok
+        # Reject BEFORE accept() — Origin first (drive-by/CSWSH posture), then
+        # the same shared-token sources as the HTTP gate (aethon_dash cookie /
+        # Authorization: Bearer / ?token=).
+        from aethon.gateway.netsec import origin_allowed, token_ok
 
+        origin = websocket.headers.get("origin")
+        if not origin_allowed(
+            origin, websocket.headers.get("host", ""), ws_allowed_origins
+        ):
+            logger.warning(f"WS /ws/dashboard rejected: origin {origin!r} not allowed")
+            await websocket.close(code=1008)
+            return
         if not token_ok(websocket, auth_token):
             await websocket.close(code=1008)
             return

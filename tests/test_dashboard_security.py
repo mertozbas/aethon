@@ -168,6 +168,28 @@ def test_ws_dashboard_accepts_bearer_header():
         ws.send_json({"channel": "subscribe", "topics": ["messages"]})
 
 
+# --- /ws/dashboard Origin validation (S2) ------------------------------------
+
+
+def test_ws_dashboard_rejects_cross_origin():
+    """Cross-site Origin rejected pre-accept — even with the right token."""
+    client = TestClient(_dashboard_app(token="secret"))
+    with pytest.raises(WebSocketDisconnect) as exc:
+        with client.websocket_connect(
+            "/ws/dashboard?token=secret", headers={"Origin": "http://evil.example"}
+        ):
+            pass
+    assert exc.value.code == 1008
+
+
+def test_ws_dashboard_allows_same_host_origin():
+    client = TestClient(_dashboard_app(token="secret"))
+    with client.websocket_connect(
+        "/ws/dashboard?token=secret", headers={"Origin": "http://testserver"}
+    ) as ws:
+        ws.send_json({"channel": "subscribe", "topics": ["messages"]})
+
+
 # --- Thread-safe event delivery -------------------------------------------
 
 
