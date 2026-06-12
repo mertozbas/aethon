@@ -166,6 +166,76 @@ def test_concurrent_creates_no_duplicate_ids(tmp_path):
     assert len(set(ids)) == 40  # no duplicate ids
 
 
+# --- Phase 10 C2: schema expansion + dependency-ordered query ---
+
+
+def test_c2_fields_persist_and_reload(ledger, tmp_path):
+    """parent_id/depends_on/priority/due survive a save+reload (new session)."""
+    ledger.create("Proje")
+    ledger.create(
+        "Alt gorev",
+        parent_id="T1",
+        depends_on=["T1"],
+        priority="high",
+        due="2026-06-20",
+    )
+    fresh = TaskLedger(str(tmp_path))
+    t2 = fresh.get("T2")
+    assert t2["parent_id"] == "T1"
+    assert t2["depends_on"] == ["T1"]
+    assert t2["priority"] == "high"
+    assert t2["due"] == "2026-06-20"
+
+
+def test_c2_invalid_priority_falls_back_to_medium(ledger):
+    """A bad priority is advisory — it coerces to 'medium', never blocks create."""
+    t = ledger.create("Is", priority="ÇOKACİL")
+    assert t["priority"] == "medium"
+    ledger.update("T1", priority="critical")
+    assert ledger.get("T1")["priority"] == "critical"
+
+
+def test_c2_old_ledger_normalizes_on_read(tmp_path):
+    """A pre-Phase-10 TASKS.json (flat schema) loads without KeyErrors — the new
+    fields are backfilled with safe defaults on read."""
+    legacy = [{
+        "id": "T1", "title": "Eski gorev", "acceptance_criteria": "",
+        "status": "open", "evidence": "", "plan_origin": "",
+        "created": "2026-01-01T00:00:00", "updated": "2026-01-01T00:00:00",
+    }]
+    (tmp_path / "TASKS.json").write_text(json.dumps(legacy), encoding="utf-8")
+    ledger = TaskLedger(str(tmp_path))
+    t = ledger.get("T1")
+    assert t["depends_on"] == []
+    assert t["priority"] == "medium"
+    assert t["parent_id"] == "" and t["due"] == ""
+
+
+def test_c2_available_tasks_respects_dependencies_and_priority(ledger):
+    """available_tasks returns only dependency-satisfied open tasks, most urgent
+    first — the C3 executor picks the head."""
+    ledger.create("Proje", priority="medium")                       # T1 (parent)
+    ledger.create("Setup", parent_id="T1", priority="high")         # T2, no deps
+    ledger.create("Build", parent_id="T1", depends_on=["T2"], priority="critical")  # T3 blocked
+    ledger.create("Docs", parent_id="T1", priority="low")           # T4, no deps
+
+    avail = [t["id"] for t in ledger.available_tasks(parent_id="T1")]
+    # T3 is blocked on T2 (still open); T2 (high) before T4 (low).
+    assert avail == ["T2", "T4"]
+
+    # Finish T2 → T3 (critical) unblocks and leads.
+    ledger.complete("T2", evidence="ok")
+    avail = [t["id"] for t in ledger.available_tasks(parent_id="T1")]
+    assert avail == ["T3", "T4"]
+
+
+def test_c2_broken_dependency_keeps_task_blocked(ledger):
+    """A depends_on referencing a missing/typo'd id fails safe: the task simply
+    never becomes available (no out-of-order run)."""
+    ledger.create("Hayalet bagimlilik", depends_on=["T999"])
+    assert ledger.available_tasks() == []
+
+
 def test_ledger_text_is_flattened_against_prompt_injection(tmp_path):
     """Review fix: ledger text reaches the system prompt — embedded newlines
     must not be able to fabricate prompt layers or operating rules."""

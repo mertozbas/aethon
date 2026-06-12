@@ -19,6 +19,20 @@ from pathlib import Path
 logger = logging.getLogger("aethon.tasks")
 
 VALID_STATUSES = ("open", "in_progress", "done", "dropped")
+# Priority ordering for the execution loop (Phase 10 C2/C3). Lower index = more
+# urgent; the dependency resolver picks the most urgent *available* task.
+VALID_PRIORITIES = ("critical", "high", "medium", "low")
+_PRIORITY_RANK = {p: i for i, p in enumerate(VALID_PRIORITIES)}
+
+# Optional Phase 10 C2 fields. Kept separate from the original flat schema so the
+# additive (migration-safe) expansion stays auditable. Defaults are filled in on
+# read by _normalize(), so a pre-Phase-10 TASKS.json loads without KeyErrors.
+_C2_DEFAULTS = {
+    "parent_id": "",      # the project (parent task) this task belongs to
+    "depends_on": [],     # ids that must be 'done' before this task is available
+    "priority": "medium",
+    "due": "",            # optional ISO timestamp/free-text deadline note
+}
 
 
 class TaskLedger:
@@ -39,7 +53,8 @@ class TaskLedger:
         try:
             data = json.loads(self.tasks_file.read_text(encoding="utf-8"))
             if isinstance(data, list):
-                return data
+                # Backfill C2 fields on read so old ledgers load seamlessly.
+                return [self._normalize(t) if isinstance(t, dict) else t for t in data]
             raise ValueError(f"expected a JSON list, got {type(data).__name__}")
         except Exception as e:
             # Quarantine instead of returning [] — the next create() would
@@ -81,11 +96,52 @@ class TaskLedger:
         prompt, and embedded newlines could fabricate prompt layers."""
         return re.sub(r"\s+", " ", value).strip()
 
+    @classmethod
+    def _clean_priority(cls, priority: str) -> str:
+        """Coerce to a valid priority; unknown values fall back to 'medium'
+        (advisory — a bad priority must not block task creation)."""
+        p = cls._flatten(str(priority or "")).lower()
+        return p if p in VALID_PRIORITIES else "medium"
+
+    @classmethod
+    def _clean_depends_on(cls, depends_on) -> list[str]:
+        """Normalize depends_on to a flat list of clean id strings. Accepts a
+        list or a single value; non-strings are coerced and flattened so a
+        stray title or newline can't smuggle a prompt layer through the id."""
+        if depends_on is None:
+            return []
+        if isinstance(depends_on, str):
+            depends_on = [depends_on]
+        cleaned = []
+        for dep in depends_on:
+            dep = cls._flatten(str(dep))
+            if dep:
+                cleaned.append(dep)
+        return cleaned
+
+    @classmethod
+    def _normalize(cls, task: dict) -> dict:
+        """Fill in any missing Phase 10 C2 fields with safe defaults so a
+        pre-Phase-10 TASKS.json (or a hand edit) never KeyErrors downstream."""
+        for key, default in _C2_DEFAULTS.items():
+            if key not in task:
+                task[key] = list(default) if isinstance(default, list) else default
+        return task
+
     # ---- operations ----
 
     def create(
-        self, title: str, acceptance_criteria: str = "", plan_origin: str = ""
+        self,
+        title: str,
+        acceptance_criteria: str = "",
+        plan_origin: str = "",
+        *,
+        parent_id: str = "",
+        depends_on: list[str] | None = None,
+        priority: str = "medium",
+        due: str = "",
     ) -> dict:
+        priority = self._clean_priority(priority)
         with self._lock:
             tasks = self._load()
             next_num = 1 + max(
@@ -103,6 +159,11 @@ class TaskLedger:
                 "status": "open",
                 "evidence": "",
                 "plan_origin": self._flatten(plan_origin),
+                # Phase 10 C2 fields (additive, migration-safe).
+                "parent_id": self._flatten(str(parent_id or "")),
+                "depends_on": self._clean_depends_on(depends_on),
+                "priority": priority,
+                "due": self._flatten(str(due or "")),
                 "created": self._now(),
                 "updated": self._now(),
             }
@@ -116,8 +177,14 @@ class TaskLedger:
                 return task
         return None
 
+    # Fields the original flat schema allowed update() to set.
+    _UPDATABLE = ("title", "acceptance_criteria", "status", "evidence", "plan_origin")
+    # Phase 10 C2 additions (separate tuple so the expansion stays auditable).
+    _UPDATABLE_C2 = ("parent_id", "priority", "due")
+
     def update(self, task_id: str, **fields) -> dict | None:
-        """Update title/acceptance_criteria/status/evidence/plan_origin."""
+        """Update title/acceptance_criteria/status/evidence/plan_origin and the
+        Phase 10 C2 fields parent_id/depends_on/priority/due."""
         status = fields.get("status")
         if status is not None and status not in VALID_STATUSES:
             raise ValueError(
@@ -127,17 +194,21 @@ class TaskLedger:
             tasks = self._load()
             for task in tasks:
                 if task.get("id") == task_id:
-                    for key in (
-                        "title", "acceptance_criteria", "status", "evidence",
-                        "plan_origin",
-                    ):
+                    for key in (*self._UPDATABLE, *self._UPDATABLE_C2):
                         value = fields.get(key)
                         if value is not None:
+                            if key == "priority":
+                                value = self._clean_priority(value)
                             task[key] = (
                                 self._flatten(value)
                                 if isinstance(value, str)
                                 else value
                             )
+                    # depends_on is a list — normalize separately.
+                    if fields.get("depends_on") is not None:
+                        task["depends_on"] = self._clean_depends_on(
+                            fields["depends_on"]
+                        )
                     task["updated"] = self._now()
                     self._save(tasks)
                     return task
@@ -157,6 +228,36 @@ class TaskLedger:
         return [
             t for t in self._load() if t.get("status") in ("open", "in_progress")
         ]
+
+    def children(self, parent_id: str) -> list[dict]:
+        """Tasks belonging to a project (parent task)."""
+        return [t for t in self._load() if t.get("parent_id") == parent_id]
+
+    def available_tasks(self, parent_id: str | None = None) -> list[dict]:
+        """Open tasks whose dependencies are all satisfied (status 'done'),
+        ordered most-urgent-first (Phase 10 C2; the C3 executor picks the head).
+
+        A dependency on an id that is missing or not yet done keeps the task
+        blocked — so a broken/typo'd ``depends_on`` fails safe (the task simply
+        never becomes available) rather than running out of order. Computed from
+        a single ``_load()`` snapshot so the read is internally consistent.
+        """
+        tasks = self._load()
+        done = {t.get("id") for t in tasks if t.get("status") == "done"}
+        available = []
+        for t in tasks:
+            if t.get("status") not in ("open", "in_progress"):
+                continue
+            if parent_id is not None and t.get("parent_id") != parent_id:
+                continue
+            deps = t.get("depends_on") or []
+            if all(dep in done for dep in deps):
+                available.append(t)
+        # Most urgent first; ties broken by ledger order (creation sequence).
+        available.sort(
+            key=lambda t: _PRIORITY_RANK.get(t.get("priority"), _PRIORITY_RANK["medium"])
+        )
+        return available
 
     # ---- prompt layer ----
 
