@@ -48,6 +48,14 @@ Makes AETHON feel alive and stop failing silently. Design doc:
   Phase 9A.
 
 ### Added
+- **Token measurement + budget ceiling (E0)** — every turn's token usage is now
+  measured (diffed from the agent's accumulated usage) and costed via a
+  config-overridable pricing table (`budget.pricing`; built-in rates as of
+  2026-06). With `budget.daily_usd` set, turns are warned near the ceiling and
+  blocked once it's breached (which also stops ambient/scheduler turns, since
+  they run through the same path) with a localized message. The real antidote to
+  the "an API will burn hundreds of dollars" fear. `TokenMeter.summary()` exposes
+  the data (a dashboard cost panel can consume it).
 - **`aethon backup` + run-at-boot service (H10/H11)** — `aethon backup` archives
   `~/.aethon` to a `.tar.gz` (SQLite copied live-safe, `logs/` skipped);
   `aethon service install` writes a launchd agent (macOS) or systemd user unit

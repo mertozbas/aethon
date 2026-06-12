@@ -200,6 +200,21 @@ class TelemetryConfig(BaseModel):
     max_history: int = 10000
 
 
+class BudgetConfig(BaseModel):
+    """Token measurement + spend ceiling (Phase 9B / E0).
+
+    The real antidote to the "an API will burn hundreds of dollars" fear. Token
+    usage is measured per turn; with ``daily_usd`` set, turns are warned near the
+    ceiling and blocked once it is breached (this also stops ambient/scheduler
+    turns, which run through the same path). ``pricing`` overrides the built-in
+    table (USD per 1M tokens, ``{model_substring: {"input": x, "output": y}}``).
+    """
+
+    daily_usd: float = 0.0   # 0 = unlimited (measure only)
+    warn_ratio: float = 0.8  # warn once spend crosses this fraction of the ceiling
+    pricing: dict = Field(default_factory=dict)
+
+
 class MemoryGuardConfig(BaseModel):
     """Memory guard hook configuration."""
 
@@ -507,6 +522,7 @@ class AethonConfig(BaseModel):
     logging: LoggingConfig = LoggingConfig()
     approval: ApprovalConfig = ApprovalConfig()
     telemetry: TelemetryConfig = TelemetryConfig()
+    budget: BudgetConfig = BudgetConfig()
     memory_guard: MemoryGuardConfig = MemoryGuardConfig()
     scheduler: SchedulerConfig = SchedulerConfig()
     dashboard: DashboardConfig = DashboardConfig()

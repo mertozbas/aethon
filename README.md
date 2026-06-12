@@ -600,6 +600,14 @@ channels:
 | `recordings_keep` | int | `20` | Keep the newest N recording archives. |
 | `recordings_max_age_days` | int | `0` | Also drop recordings older than this (0 = no age cap). |
 
+#### `budget`
+
+| Field | Type | Default | Meaning |
+|---|---|---|---|
+| `daily_usd` | float | `0.0` | Daily spend ceiling in USD. `0` = unlimited (measure only). Once breached, turns (including ambient/scheduler) are blocked until tomorrow. |
+| `warn_ratio` | float | `0.8` | Warn once the day's spend crosses this fraction of `daily_usd`. |
+| `pricing` | dict | `{}` | Override the built-in per-1M-token rates: `{model_substring: {"input": x, "output": y}}`. |
+
 #### `approval`
 
 | Field | Type | Default | Meaning |

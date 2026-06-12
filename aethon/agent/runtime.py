@@ -85,6 +85,10 @@ class AethonRuntime:
         # corrupt its session file. Different sessions stay parallel. Created
         # lazily on the event loop; pruned (when unheld) as sessions are evicted.
         self._session_locks: dict[str, "asyncio.Lock"] = {}
+        # Token measurement + budget ceiling (E0).
+        from aethon.token_meter import TokenMeter
+
+        self.token_meter = TokenMeter(getattr(config, "budget", None))
 
         # VectorMemory
         if getattr(config, "memory", None) and config.memory.enabled:
@@ -899,6 +903,7 @@ class AethonRuntime:
             self._discard_stale_gate_note(session_id)
             self._refresh_volatile_prompt(agent, session_id)
             result = self._run_with_interrupts(agent, message, session_id, message.text)
+            self._capture_usage(agent, result, session_id)
             response = self._extract_text(result)
             return self._apply_completion_gate(agent, session_id, response)
 
@@ -1028,6 +1033,31 @@ class AethonRuntime:
         if decision:
             return {"approved": True, "reason": ""}
         return {"approved": False, "reason": "kullanıcı reddetti."}
+
+    def _capture_usage(self, agent, result, session_id: str) -> None:
+        """Record the turn's token usage (E0). strands accumulates usage on the
+        agent across its lifetime, so we diff against the last-seen total."""
+        try:
+            metrics = getattr(result, "metrics", None)
+            usage = getattr(metrics, "accumulated_usage", None) if metrics else None
+            if not usage:
+                return
+            cur_in = int(usage.get("inputTokens", 0) or 0)
+            cur_out = int(usage.get("outputTokens", 0) or 0)
+            prev_in, prev_out = getattr(agent, "__aethon_usage__", (0, 0))
+            d_in = max(0, cur_in - prev_in)
+            d_out = max(0, cur_out - prev_out)
+            agent.__aethon_usage__ = (cur_in, cur_out)
+            self.token_meter.record(
+                d_in, d_out, model=self.config.model.model_id, session_id=session_id
+            )
+            if self.token_meter.near_budget() and not self.token_meter.over_budget():
+                logger.warning(
+                    f"Token budget at {self.token_meter.daily_cost():.2f} USD "
+                    f"(ceiling {self.token_meter._ceiling:.2f}) — approaching limit."
+                )
+        except Exception as e:
+            logger.debug(f"Usage capture skipped: {e}")
 
     def _discard_stale_gate_note(self, session_id: str) -> None:
         """Drop a gate note left over from an earlier turn.
@@ -1260,6 +1290,16 @@ class AethonRuntime:
         turns for one session_id — concurrent same-session messages can't race the
         shared Agent / session file — while different sessions run in parallel.
         """
+        # Budget ceiling (E0): once the daily spend is breached, block turns —
+        # including ambient/scheduler turns, which run through here too.
+        if self.token_meter.over_budget():
+            logger.error(
+                f"Daily token budget exceeded "
+                f"({self.token_meter.daily_cost():.2f} USD ≥ "
+                f"{self.token_meter._ceiling:.2f}) — turn blocked."
+            )
+            return self._budget_blocked_message(message)
+
         lock = self._session_locks.get(session_id)
         if lock is None:
             lock = asyncio.Lock()
@@ -1269,3 +1309,20 @@ class AethonRuntime:
             return await loop.run_in_executor(
                 None, self._process_sync, message, session_id
             )
+
+    def _budget_blocked_message(self, message: InboundMessage) -> str:
+        """Localized 'budget exceeded' reply (E0)."""
+        import re
+
+        tr = bool(re.search(r"[çğışüöÇĞİŞÜÖ]", message.text or ""))
+        spend = self.token_meter.daily_cost()
+        ceiling = self.token_meter._ceiling
+        if tr:
+            return (
+                f"Günlük token bütçesi aşıldı ({spend:.2f}$ ≥ {ceiling:.2f}$). "
+                "Yarın sıfırlanır; acilse budget.daily_usd değerini artırın."
+            )
+        return (
+            f"Daily token budget exceeded (${spend:.2f} ≥ ${ceiling:.2f}). "
+            "It resets tomorrow; raise budget.daily_usd if you need more now."
+        )
