@@ -131,6 +131,7 @@ class AethonRuntime:
                     session_config=config.session,
                     hooks_factory=self._get_specialist_hooks,
                     sandbox=self._sandbox,
+                    workspace=config.paths.workspace,
                 )
                 set_specialist_factory(self.specialist_factory)
                 logger.info("Multi-agent: active")
