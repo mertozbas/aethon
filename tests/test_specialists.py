@@ -60,16 +60,14 @@ def test_cache_returns_same_agent(factory):
 
 
 def test_get_all(factory):
-    """get_all returns all 4 specialists."""
+    """get_all returns all specialists (incl. the E4 scout)."""
     all_agents = factory.get_all()
-    assert len(all_agents) == 4
-    assert set(all_agents.keys()) == {"coder", "researcher", "analyst", "planner"}
+    assert set(all_agents.keys()) == {"coder", "researcher", "analyst", "planner", "scout"}
 
 
 def test_specialist_configs_complete():
-    """All 4 specialist configs are defined."""
-    assert len(SPECIALIST_CONFIGS) == 4
-    for name in ["coder", "researcher", "analyst", "planner"]:
+    """All specialist configs are defined (incl. the E4 scout)."""
+    for name in ["coder", "researcher", "analyst", "planner", "scout"]:
         config = SPECIALIST_CONFIGS[name]
         assert "name" in config
         assert "system_prompt" in config

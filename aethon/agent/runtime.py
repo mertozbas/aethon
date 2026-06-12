@@ -329,10 +329,10 @@ class AethonRuntime:
             tools.append(create_memory_tool(self.memory))
         if self.specialist_factory:
             from aethon.tools.delegate import (
-                ask_coder, ask_researcher, ask_analyst, ask_planner,
+                ask_coder, ask_researcher, ask_analyst, ask_planner, ask_scout,
             )
 
-            tools.extend([ask_coder, ask_researcher, ask_analyst, ask_planner])
+            tools.extend([ask_coder, ask_researcher, ask_analyst, ask_planner, ask_scout])
         if self._context_updater:
             from aethon.tools.context_tool import create_context_tool
 

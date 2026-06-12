@@ -65,6 +65,25 @@ def ask_researcher(query: str) -> str:
 
 
 @tool
+def ask_scout(query: str) -> str:
+    """Delegate a "read many, return little" investigation to the scout.
+
+    The scout reads the sources you point it at (files, code, logs) and returns
+    a CONCISE conclusion — keeping the raw dumps out of your context. Use it for
+    "read these files and tell me X" / "where is Y handled?": the bulk stays with
+    the scout, and only the answer enters your turn.
+
+    Args:
+        query: What to find out, and which sources/paths to look at
+    """
+    if not _specialist_factory:
+        return "Error: Specialist factory not started."
+    scout = _specialist_factory.get("scout")
+    result = scout(query)
+    return _extract_text(result)
+
+
+@tool
 def ask_analyst(data_task: str) -> str:
     """Delegate a data analysis task to the analyst specialist.
     The analyst performs data analysis, computation, chart generation, and report writing.

@@ -61,6 +61,20 @@ SPECIALIST_CONFIGS = {
         ),
         "tools": [file_read, file_write, think],
     },
+    "scout": {
+        "name": "Scout",
+        "system_prompt": (
+            "You are a scout. The caller points you at sources (files, code, "
+            "logs) and asks a question; you read what you need and return ONLY a "
+            "concise conclusion — the answer plus the few file:line references "
+            "that matter.\n"
+            "NEVER paste raw file contents, long excerpts, or full dumps back: "
+            "the caller wants the conclusion, not the material (the bulk stays "
+            "with you, out of their context). Be brief, specific, and honest "
+            "about what you could not determine."
+        ),
+        "tools": [file_read, shell, think],
+    },
 }
 
 

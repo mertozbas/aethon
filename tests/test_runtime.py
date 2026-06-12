@@ -42,6 +42,16 @@ def test_runtime_creation(runtime_config):
     assert runtime.agents == {}
 
 
+def test_ask_scout_registered_as_tool(runtime_config):
+    """E4: the scout delegate tool is available when multi-agent is on."""
+    runtime = AethonRuntime(runtime_config)
+    names = {
+        getattr(t, "tool_name", getattr(t, "name", "?"))
+        for t in runtime._get_tools("cli:u")
+    }
+    assert "ask_scout" in names
+
+
 # --- Phase 10 C1: intake (chat vs work) ---
 
 
