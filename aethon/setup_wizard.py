@@ -241,6 +241,22 @@ def _ensure_embedding_model(memory_cfg: dict) -> None:
             console.print(f"[yellow]Pull failed ({e}). Run it yourself: ollama pull {model}[/]")
 
 
+def _backup_existing_config(path: Path) -> Optional[Path]:
+    """Copy an existing config to a timestamped .bak before overwrite (H8)."""
+    if not path.exists():
+        return None
+    import shutil
+    from datetime import datetime
+
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    backup = path.with_name(f"{path.name}.bak-{stamp}")
+    try:
+        shutil.copy2(path, backup)
+        return backup
+    except OSError:
+        return None
+
+
 def run_wizard(config_path: str = "~/.aethon/config.yaml", *, force: bool = False) -> Optional[Path]:
     """Run the interactive setup. Returns the written path, or None if aborted."""
     path = Path(config_path).expanduser()
@@ -308,13 +324,20 @@ def run_wizard(config_path: str = "~/.aethon/config.yaml", *, force: bool = Fals
     channels_cfg, allowed_senders = _wizard_channels()
     webhook_cfg = _wizard_webhooks()
 
-    data: dict = {"model": model, "memory": memory_cfg}
+    data: dict = {"config_version": 1, "model": model, "memory": memory_cfg}
     if channels_cfg:
         data["channels"] = channels_cfg
     if allowed_senders:
         data["security"] = {"allowed_senders": allowed_senders}
     if webhook_cfg:
         data["webhook"] = webhook_cfg
+
+    # Back up an existing config before overwriting it (H8) — never silently
+    # destroy hand-edited settings.
+    backup = _backup_existing_config(path)
+    if backup:
+        console.print(f"[dim]Backed up your previous config to {backup}[/]")
+
     written = AethonConfig.write(data, config_path)
 
     console.print(f"\n[green]✓ Wrote config to {written}[/]")

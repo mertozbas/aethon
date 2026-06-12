@@ -13,6 +13,12 @@ Makes AETHON feel alive and stop failing silently. Design doc:
 `docs/development/PHASE-9B-ROBUSTNESS.md`.
 
 ### Fixed
+- **Config safety (H8)** — a typo'd or removed config key used to be silently
+  ignored. `AethonConfig.load` now warns and lists unknown keys (walking nested
+  sections, leaving free-form dicts like `scheduler.jobs` alone), and
+  `aethon doctor` reports them. `aethon init` backs up an existing config to
+  `config.yaml.bak-<timestamp>` before overwriting. New `config_version` field
+  for future migrations.
 - **Root file logging (H9)** — the rotating `aethon.log` handler now attaches to
   the root logger, so third-party errors (strands, uvicorn, aiogram, discord,
   slack) reach the file instead of only `aethon.*`. New `logging` config:

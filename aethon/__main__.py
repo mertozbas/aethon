@@ -69,7 +69,27 @@ def doctor(config: str):
     )
 
     _report_secrets_hygiene(cfg, cfg_path)
+    _report_unknown_keys(cfg_path)
     console.print()
+
+
+def _report_unknown_keys(cfg_path: Path) -> None:
+    """Flag config keys the schema doesn't recognize (typos, removed keys) — H8."""
+    import yaml
+
+    from aethon.config import unknown_config_keys
+
+    try:
+        with open(cfg_path) as f:
+            raw = yaml.safe_load(f) or {}
+    except (OSError, yaml.YAMLError):
+        return
+    unknown = unknown_config_keys(raw)
+    if unknown:
+        console.print(
+            "  [yellow]Unknown config keys[/] (typo or removed?): "
+            + ", ".join(unknown)
+        )
 
 
 def _report_path_permissions(cfg_path: Path, credentials: Path | None = None) -> None:

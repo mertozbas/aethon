@@ -458,9 +458,32 @@ class PathsConfig(BaseModel):
     recordings: str = "~/.aethon/recordings"
 
 
+def unknown_config_keys(raw: dict, model_cls=None, prefix: str = "") -> list[str]:
+    """Dotted paths of keys in ``raw`` that the config model doesn't declare (H8).
+
+    Walks declared nested BaseModel sections; stops at free-form ``dict`` fields
+    (e.g. ``scheduler.jobs``, ``security.allowed_senders``) where arbitrary keys
+    are intentional. Pydantic silently ignores unknown keys, so a typo'd key
+    would otherwise vanish without a trace.
+    """
+    model_cls = model_cls or AethonConfig
+    fields = model_cls.model_fields
+    unknown: list[str] = []
+    for key, val in (raw or {}).items():
+        if key not in fields:
+            unknown.append(f"{prefix}{key}")
+            continue
+        ann = fields[key].annotation
+        if isinstance(val, dict) and isinstance(ann, type) and issubclass(ann, BaseModel):
+            unknown.extend(unknown_config_keys(val, ann, prefix=f"{prefix}{key}."))
+    return unknown
+
+
 class AethonConfig(BaseModel):
     """Root configuration model."""
 
+    # Bumped when the config schema changes in a way migrations care about (H8).
+    config_version: int = 1
     model: ModelConfig = ModelConfig()
     channels: ChannelsConfig = ChannelsConfig()
     security: SecurityConfig = SecurityConfig()
@@ -494,6 +517,14 @@ class AethonConfig(BaseModel):
         if path.exists():
             with open(path) as f:
                 raw = yaml.safe_load(f) or {}
+            unknown = unknown_config_keys(raw)
+            if unknown:
+                import logging
+
+                logging.getLogger("aethon.config").warning(
+                    "Ignoring unknown config keys (typo or removed?): %s",
+                    ", ".join(unknown),
+                )
             raw = cls._resolve_env_vars(raw)
             return cls(**raw)
         return cls()

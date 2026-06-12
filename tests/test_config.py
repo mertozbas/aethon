@@ -79,6 +79,41 @@ def test_config_write_is_owner_only(tmp_path):
     assert stat.S_IMODE(path.parent.stat().st_mode) == 0o700
 
 
+def test_unknown_config_keys_detected():
+    from aethon.config import unknown_config_keys
+
+    raw = {
+        "model": {"provider": "openai", "temprature": 1.0},  # typo
+        "channels": {"telegram": {"enabled": True, "tokn": "x"}},  # typo
+        "bogus_section": {"a": 1},
+        "security": {"allowed_senders": {"telegram": ["1"]}},  # free-form dict: OK
+    }
+    found = set(unknown_config_keys(raw))
+    assert "model.temprature" in found
+    assert "channels.telegram.tokn" in found
+    assert "bogus_section" in found
+    # allowed_senders is a free-form dict — its keys are NOT flagged.
+    assert not any(k.startswith("security.allowed_senders.") for k in found)
+
+
+def test_known_config_keys_not_flagged():
+    from aethon.config import unknown_config_keys
+
+    raw = {"model": {"provider": "ollama"}, "logging": {"level": "DEBUG"},
+           "config_version": 1}
+    assert unknown_config_keys(raw) == []
+
+
+def test_load_warns_on_unknown_keys(tmp_path, caplog):
+    import logging
+
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text("model:\n  provider: ollama\nwrongkey: 1\n")
+    with caplog.at_level(logging.WARNING, logger="aethon.config"):
+        AethonConfig.load(str(cfg))
+    assert any("wrongkey" in r.message for r in caplog.records)
+
+
 def test_config_write_does_not_clobber_existing_dir_perms(tmp_path):
     """S8: writing into a PRE-EXISTING (possibly shared) dir must not chmod it."""
     import os

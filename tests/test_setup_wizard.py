@@ -116,6 +116,37 @@ def test_cli_doctor_accepts_env_ref_key(tmp_path, monkeypatch):
     assert "stored literally" not in result.output
 
 
+def test_cli_doctor_reports_unknown_keys(tmp_path):
+    """H8: doctor flags config keys the schema doesn't recognize."""
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text("model:\n  provider: ollama\nbananas: 3\n")
+    result = CliRunner().invoke(main, ["doctor", "-c", str(cfg)])
+    assert "Unknown config keys" in result.output
+    assert "bananas" in result.output
+
+
+def test_wizard_backs_up_existing_config(tmp_path, monkeypatch):
+    """H8: re-running init backs up the previous config before overwriting."""
+    import aethon.setup_wizard as wiz
+
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setattr(wiz, "check_model_availability", lambda mc: (True, "OK (test)"))
+
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text("model:\n  provider: openai\n  api_key: OLD-KEY\n")
+
+    # init with --force to skip the overwrite confirm; provider 1, defaults, no key,
+    # memory no, channels no x4, webhook no.
+    result = CliRunner().invoke(
+        main, ["init", "-c", str(cfg), "--force"],
+        input="1\n\n\nsk-new\nn\nn\nn\nn\nn\nn\n",
+    )
+    assert result.exit_code == 0, result.output
+    backups = list(tmp_path.glob("config.yaml.bak-*"))
+    assert len(backups) == 1
+    assert "OLD-KEY" in backups[0].read_text()  # the previous config preserved
+
+
 def test_cli_doctor_survives_malformed_yaml(tmp_path):
     """S8 review: a malformed config must not crash doctor (YAMLError caught)."""
     cfg = tmp_path / "config.yaml"
