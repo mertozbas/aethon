@@ -7,12 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Phase 10 — The Core Loop (C1-C4 stitches; E2 token economy)
+### Phase 10 — The Core Loop (C1-C4 stitches; E2/E4 token economy)
 
 The autonomous core loop's four stitches: a clear unit of work is recognized,
 opened as a planned dependency-ordered project, worked to completion by a bounded
-executor, and delivered with proof. Plus the first token-economy tier that makes
+executor, and delivered with proof. Plus the token-economy tier that makes
 long-horizon work affordable.
+
+#### Added — E4 scout specialist
+- **Read many, return little.** A new `scout` specialist + `ask_scout` tool: the
+  caller points it at sources (files, code, logs) and it reads/searches what it
+  needs, returning only a concise conclusion — so the raw dumps stay in the
+  scout's context, not the main agent's turn (and its persisted history). The
+  development-time "Explore agent" pattern, native. Read-leaning (file_read +
+  shell for search + think, no file_write/editor) and inside the same security +
+  sandbox + untrusted-marking layer every specialist gets. Isolation is advisory
+  (scout follows its brief) with the standard tool-output cap as the structural
+  backstop.
 
 #### Added — E2 history compaction
 - **Old tool outputs no longer ride along forever.** A long session's dominant
