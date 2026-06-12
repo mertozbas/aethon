@@ -216,6 +216,9 @@ class AethonGateway:
                         job_cfg.get("channel", ""),
                         job_cfg.get("recipient", ""),
                     )
+                # Restore runtime-added jobs persisted to SCHEDULE.json (H4),
+                # recovering any one-shots missed while AETHON was down.
+                self._scheduler.load_persisted()
                 set_scheduler(self._scheduler)
                 self._scheduler.start()
                 logger.info("Scheduler: active")

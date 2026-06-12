@@ -32,6 +32,13 @@ Makes AETHON feel alive and stop failing silently. Design doc:
   Phase 9A.
 
 ### Added
+- **Scheduler persistence + one-shot reminders + free-text (H4)** — runtime
+  `schedule_task` jobs no longer vanish on restart: they persist to
+  `workspace/SCHEDULE.json` and reload at boot, recovering one-shots missed
+  while AETHON was down. `schedule_task` now also takes `run_at` (an ISO
+  timestamp → a one-shot DateTrigger, so "remind me tomorrow at 15:30" works)
+  and a free-text `prompt` payload that runs through the agent — not only named
+  SOPs. Config-defined jobs stay declarative (not persisted).
 - **Progress indicators (H5)** — long turns no longer look identical to a crash:
   Telegram shows `typing…` (refreshed every ~4s) and Discord shows its typing
   indicator while a turn runs, stopping on completion. Wired via a
