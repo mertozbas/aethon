@@ -210,12 +210,13 @@ class AethonGateway:
             try:
                 from aethon.gateway.webhooks import setup_webhooks
 
-                setup_webhooks(
+                if setup_webhooks(
                     self.adapters["webchat"].app,
                     self.router,
                     self.config.webhook.secret,
-                )
-                logger.info("Webhook: active")
+                    host=self.config.channels.webchat.host,
+                ):
+                    logger.info("Webhook: active")
             except Exception as e:
                 logger.warning(f"Webhook error: {e}")
 

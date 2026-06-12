@@ -46,3 +46,11 @@ memory:
 dashboard:
   enabled: true
   auth_token: ${AETHON_DASHBOARD_TOKEN}
+
+# Webhooks fail closed on a non-loopback bind: leave AETHON_WEBHOOK_SECRET unset
+# and the /webhook/* endpoints are simply not registered (the rest keeps running).
+# Set it to enable webhooks; callers sign the body with HMAC-SHA256
+# (header: X-Aethon-Signature).
+webhook:
+  enabled: true
+  secret: ${AETHON_WEBHOOK_SECRET}

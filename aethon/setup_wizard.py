@@ -158,6 +158,31 @@ def _wizard_channels() -> tuple[dict, dict]:
     return channels, allowed
 
 
+def _wizard_webhooks() -> dict:
+    """Offer to protect the /webhook/* endpoints with an HMAC secret.
+
+    Webhooks are enabled by default; without a secret they fail closed on any
+    non-loopback bind (Phase 9A / S3), so a secret is the path to keeping them
+    usable when AETHON is exposed.
+    """
+    console.print("\n[bold]Webhooks[/] (optional)")
+    if not click.confirm(
+        "  Protect webhook endpoints with a secret? "
+        "(recommended — required when exposing beyond localhost)",
+        default=True,
+    ):
+        return {}
+    import secrets
+
+    secret = secrets.token_hex(16)
+    console.print(
+        f"    Webhook secret: [bold]{secret}[/]\n"
+        "    Callers must sign the request body with HMAC-SHA256 using this "
+        "secret (header: X-Aethon-Signature)."
+    )
+    return {"secret": secret}
+
+
 def _ensure_embedding_model(memory_cfg: dict) -> None:
     """If using Ollama embeddings, make sure the model is available — offer to install
     Ollama and/or pull the model. Optional and non-fatal."""
@@ -254,12 +279,15 @@ def run_wizard(config_path: str = "~/.aethon/config.yaml", *, force: bool = Fals
     _ensure_embedding_model(memory_cfg)
 
     channels_cfg, allowed_senders = _wizard_channels()
+    webhook_cfg = _wizard_webhooks()
 
     data: dict = {"model": model, "memory": memory_cfg}
     if channels_cfg:
         data["channels"] = channels_cfg
     if allowed_senders:
         data["security"] = {"allowed_senders": allowed_senders}
+    if webhook_cfg:
+        data["webhook"] = webhook_cfg
     written = AethonConfig.write(data, config_path)
 
     console.print(f"\n[green]✓ Wrote config to {written}[/]")

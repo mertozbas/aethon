@@ -17,14 +17,38 @@ from aethon.channels.base import InboundMessage
 logger = logging.getLogger("aethon.webhooks")
 
 
-def setup_webhooks(app, router, secret: str = ""):
+def setup_webhooks(app, router, secret: str = "", host: str = "127.0.0.1") -> bool:
     """Register webhook endpoints on the FastAPI app.
+
+    Fails closed (Phase 9A / S3): with an empty secret on a non-loopback bind
+    the routes are NOT registered — an exposed, unauthenticated trigger surface
+    must never come up. Loopback without a secret stays allowed for local dev,
+    but loudly.
 
     Args:
         app: FastAPI application instance.
         router: MessageRouter for handling messages.
         secret: Optional HMAC-SHA256 secret for verification.
+        host: The bind address of the serving app (loopback decides fail mode).
+
+    Returns:
+        True when the routes were registered.
     """
+    from aethon.gateway.netsec import is_loopback_host
+
+    secret = (secret or "").strip()
+    if not secret:
+        if not is_loopback_host(host):
+            logger.error(
+                "Webhooks DISABLED: webhook.secret is empty and the server binds "
+                f"beyond loopback (channels.webchat.host={host!r}). Set "
+                "webhook.secret to re-enable the /webhook/* endpoints."
+            )
+            return False
+        logger.warning(
+            "Webhooks accept UNAUTHENTICATED requests (webhook.secret is empty) — "
+            "allowed only because the bind is loopback."
+        )
 
     def _verify_secret(request: Request, body: bytes) -> bool:
         if not secret:
@@ -104,3 +128,5 @@ def setup_webhooks(app, router, secret: str = ""):
             "status": "ok",
             "response": response.text if response else None,
         }
+
+    return True

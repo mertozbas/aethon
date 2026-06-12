@@ -86,9 +86,10 @@ def test_cli_init_writes_openai_config(tmp_path, monkeypatch):
 
     cfg = tmp_path / "config.yaml"
     # provider 1 (openai), default model, blank base URL, api key, memory no,
-    # then the three channel prompts (Telegram/Discord/Slack): no/no/no
+    # the three channel prompts (Telegram/Discord/Slack): no/no/no,
+    # webhook secret: no
     result = CliRunner().invoke(
-        main, ["init", "-c", str(cfg)], input="1\n\n\nsk-test\nn\nn\nn\nn\n"
+        main, ["init", "-c", str(cfg)], input="1\n\n\nsk-test\nn\nn\nn\nn\nn\n"
     )
     assert result.exit_code == 0, result.output
     assert cfg.exists()
@@ -147,12 +148,13 @@ def test_cli_init_enables_telegram_channel(tmp_path, monkeypatch):
 
     cfg = tmp_path / "config.yaml"
     # openai, default model, blank base URL, api key, memory no,
-    # Telegram YES + token + chat id + lock-down yes, Discord no, Slack no.
+    # Telegram YES + token + chat id + lock-down yes, Discord no, Slack no,
+    # webhook secret no.
     # CliRunner has no TTY, so chat-id auto-detect is skipped (manual prompt only).
     result = CliRunner().invoke(
         main,
         ["init", "-c", str(cfg)],
-        input="1\n\n\nsk-test\nn\ny\nMYTOKEN\n123456\ny\nn\nn\n",
+        input="1\n\n\nsk-test\nn\ny\nMYTOKEN\n123456\ny\nn\nn\nn\n",
     )
     assert result.exit_code == 0, result.output
 
@@ -162,3 +164,25 @@ def test_cli_init_enables_telegram_channel(tmp_path, monkeypatch):
     assert loaded.channels.telegram.chat_id == "123456"
     assert loaded.security.allowed_senders.get("telegram") == ["123456"]
     assert loaded.channels.discord.enabled is False
+
+
+def test_cli_init_writes_webhook_secret(tmp_path, monkeypatch):
+    """Accepting the webhook prompt writes a generated HMAC secret (S3)."""
+    import aethon.setup_wizard as wiz
+
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setattr(wiz, "check_model_availability", lambda mc: (True, "OK (test)"))
+
+    cfg = tmp_path / "config.yaml"
+    # openai, default model, blank base URL, api key, memory no,
+    # Telegram/Discord/Slack no, webhook secret YES (generated).
+    result = CliRunner().invoke(
+        main, ["init", "-c", str(cfg)], input="1\n\n\nsk-test\nn\nn\nn\nn\ny\n"
+    )
+    assert result.exit_code == 0, result.output
+
+    loaded = AethonConfig.load(str(cfg))
+    secret = loaded.webhook.secret
+    assert len(secret) == 32  # secrets.token_hex(16)
+    int(secret, 16)  # hex-parsable
+    assert secret in result.output  # shown once so the user can copy it

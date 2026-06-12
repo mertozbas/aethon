@@ -617,7 +617,7 @@ channels:
 | Field | Type | Default | Meaning |
 |---|---|---|---|
 | `enabled` | bool | `true` | Enable the webhook endpoint. |
-| `secret` | str | `""` | Shared secret to validate incoming webhooks (HMAC-SHA256). |
+| `secret` | str | `""` | Shared secret to validate incoming webhooks (HMAC-SHA256). **Fail-closed:** empty secret on a non-loopback bind disables the `/webhook/*` routes entirely (loopback: allowed, with a warning). |
 
 #### `mcp`
 
@@ -805,7 +805,7 @@ channels:
 
 ### Webhooks
 
-Webhooks mount on the WebChat app and require `webhook.enabled` (default true) with WebChat enabled. Both endpoints respond `{"status":"ok","response": <agent reply text or null>}`. If `webhook.secret` is set, requests must include `X-Aethon-Signature: <hex hmac-sha256 of the raw body>` or they're rejected with `403`.
+Webhooks mount on the WebChat app and require `webhook.enabled` (default true) with WebChat enabled. Both endpoints respond `{"status":"ok","response": <agent reply text or null>}`. If `webhook.secret` is set, requests must include `X-Aethon-Signature: <hex hmac-sha256 of the raw body>` or they're rejected with `403`. **Fail-closed:** with an empty `webhook.secret` on a non-loopback bind the routes are not registered at all (an ERROR names the missing key at startup); on loopback an empty secret still works for local development, with a warning.
 
 **Run a SOP and get the reply back** (`POST /webhook/trigger`):
 
@@ -973,7 +973,7 @@ AETHON is **local-first** and ships safe defaults:
 - **Sender allowlists:** `security.allowed_senders` can restrict who may message each channel.
 - **Secret masking:** the dashboard `GET /api/config` dump masks sensitive keys (`api_key`, `token`, `bot_token`, `app_token`, `secret`, `password`) to `***`.
 - **Memory guard:** the memory guard hook blocks secrets from being written to long-term memory.
-- **Webhook verification:** set `webhook.secret` to require an HMAC-SHA256 `X-Aethon-Signature` on incoming webhooks.
+- **Webhook verification:** set `webhook.secret` to require an HMAC-SHA256 `X-Aethon-Signature` on incoming webhooks. Webhooks **fail closed**: an empty secret on a non-loopback bind disables the `/webhook/*` routes (Docker: set `AETHON_WEBHOOK_SECRET`).
 - **Credential isolation:** keep tokens out of the config file by referencing `${ENV_VAR}`s and storing secrets under `~/.aethon/credentials/`.
 
 ---

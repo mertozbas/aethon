@@ -25,6 +25,11 @@ deny by default on every network surface, fail closed at startup. Design doc:
 - **Startup output prints the real bind host (S4)** — `aethon start` and the
   gateway no longer print hardcoded `http://127.0.0.1:…` URLs when bound
   elsewhere.
+- **Webhooks fail closed (S3)** — an empty `webhook.secret` on a non-loopback
+  bind no longer registers the `/webhook/*` routes (startup ERROR names the
+  key); loopback + empty secret keeps working for local dev, with a WARN. The
+  wizard now offers to generate a webhook secret; Docker passes it via
+  `AETHON_WEBHOOK_SECRET`.
 
 ### Phase 8 — Reliability Hardening (R1-R18)
 

@@ -39,6 +39,9 @@ services:
       # a token. Behind your own auth proxy you may instead override the command:
       #   command: ["aethon", "start", "--insecure-bind"]
       AETHON_DASHBOARD_TOKEN: ${AETHON_DASHBOARD_TOKEN:-}
+      # Optional: enables /webhook/* (unset = webhooks stay disabled in the
+      # container, because the bind is non-loopback and webhooks fail closed).
+      AETHON_WEBHOOK_SECRET: ${AETHON_WEBHOOK_SECRET:-}
     restart: unless-stopped
 
   ollama:

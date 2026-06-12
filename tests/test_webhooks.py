@@ -73,11 +73,55 @@ def test_webhook_trigger_with_sop(app_no_secret, mock_router):
     assert inbound.text == "/morning-brief bugun"
 
 
-def test_webhook_no_secret_allows_any(app_no_secret):
-    """No secret allows any request."""
-    client = TestClient(app_no_secret)
+def test_webhook_no_secret_loopback_allows_any_and_warns(mock_router, caplog):
+    """Empty secret on a LOOPBACK bind keeps working (local dev) but warns (S3)."""
+    import logging
+
+    app = FastAPI()
+    with caplog.at_level(logging.WARNING, logger="aethon.webhooks"):
+        registered = setup_webhooks(app, mock_router, secret="", host="127.0.0.1")
+    assert registered is True
+    assert any("UNAUTHENTICATED" in r.message for r in caplog.records)
+    client = TestClient(app)
     resp = client.post("/webhook/telegram", json={"text": "test"})
     assert resp.status_code == 200
+
+
+def test_webhook_no_secret_nonloopback_refuses_registration(mock_router, caplog):
+    """Empty secret on a non-loopback bind: routes NOT registered, ERROR log (S3)."""
+    import logging
+
+    app = FastAPI()
+    with caplog.at_level(logging.ERROR, logger="aethon.webhooks"):
+        registered = setup_webhooks(app, mock_router, secret="", host="0.0.0.0")
+    assert registered is False
+    assert any("webhook.secret" in r.message for r in caplog.records)
+    client = TestClient(app)
+    assert client.post("/webhook/trigger", json={"text": "x"}).status_code == 404
+    assert client.post("/webhook/telegram", json={"text": "x"}).status_code == 404
+
+
+def test_webhook_secret_nonloopback_registers(mock_router):
+    """A secret keeps webhooks available on an exposed bind (HMAC verified)."""
+    app = FastAPI()
+    assert setup_webhooks(app, mock_router, secret="test-secret", host="0.0.0.0") is True
+    client = TestClient(app)
+    body = json.dumps({"text": "test"}).encode()
+    sig = hmac.new(b"test-secret", body, hashlib.sha256).hexdigest()
+    resp = client.post(
+        "/webhook/telegram",
+        content=body,
+        headers={"X-Aethon-Signature": sig, "Content-Type": "application/json"},
+    )
+    assert resp.status_code == 200
+
+
+def test_webhook_trigger_route_order_preserved(app_no_secret, mock_router):
+    """/webhook/trigger must match BEFORE /webhook/{channel} (registration order)."""
+    client = TestClient(app_no_secret)
+    client.post("/webhook/trigger", json={"text": "x"})
+    inbound = mock_router.handle.call_args[0][0]
+    assert inbound.channel == "webhook:trigger"
 
 
 def test_webhook_invalid_secret(app_with_secret):
