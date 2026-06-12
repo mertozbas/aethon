@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Phase 9B Sprint 1 — Liveness
+
+Makes AETHON feel alive and stop failing silently. Design doc:
+`docs/development/PHASE-9B-ROBUSTNESS.md`.
+
+### Added
+- **User-facing error replies (H2)** — a model/runtime failure no longer leaves
+  a bot silent: every channel now sends a short, localized last-resort reply
+  (classifies auth/quota/timeout/model errors, falls back to naming the
+  exception class) pointing at `aethon doctor`. Language follows the user's
+  message (Turkish if it contains Turkish characters). Wired once in
+  `ChannelAdapter.on_message` (covers Telegram/Discord/Slack/WhatsApp) and in
+  the CLI/WebChat direct paths.
+
 ### Phase 9A Sprint 1 — Network security (S1-S5)
 
 Closes the remote-RCE-grade network findings of the seven-lens gap analysis:

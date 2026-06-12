@@ -16,6 +16,7 @@ from aethon.channels.base import (
     ChannelAdapter,
     InboundMessage,
     OutboundMessage,
+    build_error_reply,
 )
 
 
@@ -64,13 +65,13 @@ class CLIAdapter(ChannelAdapter):
 
                 try:
                     response = await self.router.handle(inbound)
-
-                    if response:
-                        self.console.print()
-                        self.console.print(Markdown(response.text))
-                        self.console.print()
                 except Exception as e:
-                    self.console.print(f"\n[red]ERROR:[/] {type(e).__name__}: {e}\n")
+                    # H2: never silent — show a short localized error line.
+                    response = build_error_reply(inbound, e)
+                if response:
+                    self.console.print()
+                    self.console.print(Markdown(response.text))
+                    self.console.print()
 
             except (KeyboardInterrupt, EOFError):
                 self.console.print("\n[dim]See you![/]")

@@ -16,6 +16,7 @@ from aethon.channels.base import (
     ChannelAdapter,
     InboundMessage,
     OutboundMessage,
+    build_error_reply,
 )
 from aethon.gateway.netsec import install_auth_gate, origin_allowed, token_ok
 
@@ -300,14 +301,19 @@ class WebChatAdapter(ChannelAdapter):
         receive loop (not the turn) reads the answer.
         """
         try:
-            async with self._turn_lock:
-                response = await self.router.handle(inbound)
+            try:
+                async with self._turn_lock:
+                    response = await self.router.handle(inbound)
+            except (WebSocketDisconnect, asyncio.CancelledError):
+                raise
+            except Exception as e:
+                # H2: a failed turn must reach the browser, not vanish.
+                logger.error(f"WebChat turn error: {type(e).__name__}: {e}", exc_info=True)
+                response = build_error_reply(inbound, e)
             if response:
                 await websocket.send_text(response.text)
         except (WebSocketDisconnect, asyncio.CancelledError):
             pass
-        except Exception as e:
-            logger.error(f"WebChat turn error: {e}")
 
     async def ask_approval(self, request: ApprovalRequest):
         """Send an approval card over the live socket and await the answer (S6).
