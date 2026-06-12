@@ -104,6 +104,14 @@ class AethonGateway:
                 f"security.allowed_senders.{channel} in config.yaml."
             )
 
+        # Disk retention (H7): prune old cleared-batches and recordings at boot.
+        try:
+            from aethon.maintenance import apply_retention
+
+            apply_retention(self.config)
+        except Exception as e:
+            logger.warning(f"Retention error: {e}")
+
         # Start session recording (if enabled) before any channels accept messages.
         if self._recorder:
             try:

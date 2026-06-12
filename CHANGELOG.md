@@ -13,6 +13,11 @@ Makes AETHON feel alive and stop failing silently. Design doc:
 `docs/development/PHASE-9B-ROBUSTNESS.md`.
 
 ### Fixed
+- **Disk retention (H7)** — session-reset backups (`cleared/batch_*`) grew
+  forever. They (and recordings) are now pruned at boot per a new `retention`
+  config: keep the newest N cleared-batches per session and the newest N
+  recordings, with an optional recording age cap. `aethon doctor` shows a disk
+  usage report.
 - **Config safety (H8)** — a typo'd or removed config key used to be silently
   ignored. `AethonConfig.load` now warns and lists unknown keys (walking nested
   sections, leaving free-form dicts like `scheduler.jobs` alone), and

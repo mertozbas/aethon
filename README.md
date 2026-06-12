@@ -591,6 +591,15 @@ channels:
 | `level` | str | `"INFO"` | Log level for AETHON's own loggers. |
 | `third_party_level` | str | `"WARNING"` | Floor for library loggers (keeps the file readable). |
 
+#### `retention`
+
+| Field | Type | Default | Meaning |
+|---|---|---|---|
+| `enabled` | bool | `true` | Prune old disk state at boot (`aethon doctor` reports sizes). |
+| `cleared_keep` | int | `10` | Keep the newest N `cleared/batch_*` session-reset backups per session. |
+| `recordings_keep` | int | `20` | Keep the newest N recording archives. |
+| `recordings_max_age_days` | int | `0` | Also drop recordings older than this (0 = no age cap). |
+
 #### `approval`
 
 | Field | Type | Default | Meaning |

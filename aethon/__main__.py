@@ -70,7 +70,21 @@ def doctor(config: str):
 
     _report_secrets_hygiene(cfg, cfg_path)
     _report_unknown_keys(cfg_path)
+    _report_disk_usage(cfg)
     console.print()
+
+
+def _report_disk_usage(cfg: AethonConfig) -> None:
+    """Show on-disk state sizes (H7)."""
+    from aethon.maintenance import disk_report, human_bytes
+
+    try:
+        report = disk_report(cfg)
+    except Exception:
+        return
+    console.print("  [bold]Disk usage:[/]")
+    for label, size in report:
+        console.print(f"    {label}: [green]{human_bytes(size)}[/]")
 
 
 def _report_unknown_keys(cfg_path: Path) -> None:

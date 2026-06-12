@@ -294,6 +294,19 @@ class SessionRecorderConfig(BaseModel):
     max_sessions_kept: int = 20
 
 
+class RetentionConfig(BaseModel):
+    """Disk retention (Phase 9B / H7).
+
+    Session-reset backups (``cleared/batch_*``) and recordings otherwise grow
+    forever. Pruned at boot; ``aethon doctor`` reports disk usage. 0 = unlimited.
+    """
+
+    enabled: bool = True
+    cleared_keep: int = 10        # newest cleared/batch_* per session
+    recordings_keep: int = 20     # newest recording archives
+    recordings_max_age_days: int = 0  # 0 = no age cap
+
+
 class LSPConfig(BaseModel):
     """Language Server Protocol integration.
 
@@ -504,6 +517,7 @@ class AethonConfig(BaseModel):
     session_recorder: SessionRecorderConfig = SessionRecorderConfig()
     ambient: AmbientConfig = AmbientConfig()
     lsp: LSPConfig = LSPConfig()
+    retention: RetentionConfig = RetentionConfig()
     prompt: PromptConfig = PromptConfig()
     reliability: ReliabilityConfig = ReliabilityConfig()
     capabilities: CapabilitiesConfig = CapabilitiesConfig()
