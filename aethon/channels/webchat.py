@@ -4,13 +4,19 @@ FastAPI + WebSocket based web chat interface with Markdown rendering.
 """
 
 import asyncio
+import json
 import logging
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 
 from aethon import __version__
-from aethon.channels.base import ChannelAdapter, InboundMessage, OutboundMessage
+from aethon.channels.base import (
+    ApprovalRequest,
+    ChannelAdapter,
+    InboundMessage,
+    OutboundMessage,
+)
 from aethon.gateway.netsec import install_auth_gate, origin_allowed, token_ok
 
 
@@ -37,7 +43,15 @@ function connect() {
   wsOpened = false;
   ws = new WebSocket(wsUrl());
   ws.onopen = function() { wsOpened = true; };
-  ws.onmessage = function(e) { addMsg(e.data, 'bot'); };
+  ws.onmessage = function(e) {
+    // Approval cards arrive as {"type":"approval",...}; everything else is a
+    // bot reply (plain text). Only intercept well-formed approval frames.
+    try {
+      var obj = JSON.parse(e.data);
+      if (obj && obj.type === 'approval') { showApproval(obj); return; }
+    } catch (err) { /* not JSON — a normal reply */ }
+    addMsg(e.data, 'bot');
+  };
   ws.onclose = function() {
     // Auth rejection closes the socket before it ever opens. (Browsers can't
     // see the 1008 close code on a pre-accept rejection — they report 1006 —
@@ -121,6 +135,36 @@ function addMsg(text, cls) {
   msgs.scrollTop = msgs.scrollHeight;
 }
 
+function showApproval(obj) {
+  var d = document.createElement('div');
+  d.className = 'msg bot';
+  d.innerHTML = '<b>Onay gerekiyor</b><br>' + esc(obj.message || '');
+  var row = document.createElement('div');
+  row.style.marginTop = '8px';
+  var yes = document.createElement('button');
+  yes.textContent = '✅ Onayla';
+  var no = document.createElement('button');
+  no.textContent = '❌ Reddet';
+  no.style.marginLeft = '8px';
+  function answer(decision) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'approval', id: obj.id, decision: decision }));
+    }
+    yes.disabled = true; no.disabled = true;
+    var verdict = document.createElement('div');
+    verdict.style.marginTop = '6px';
+    verdict.style.color = decision ? '#4ec9b0' : '#f48771';
+    verdict.textContent = decision ? 'Onaylandı' : 'Reddedildi';
+    d.appendChild(verdict);
+  }
+  yes.onclick = function() { answer(true); };
+  no.onclick = function() { answer(false); };
+  row.appendChild(yes); row.appendChild(no);
+  d.appendChild(row);
+  msgs.appendChild(d);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
 function send() {
   var t = inp.value.trim();
   if (!t || !ws || ws.readyState !== WebSocket.OPEN) return;
@@ -149,6 +193,10 @@ class WebChatAdapter(ChannelAdapter):
         self._allowed_origins = config.channels.webchat.allowed_origins
         install_auth_gate(self.app, self._auth_token)
         self._server = None
+        # S6 approval: the live chat socket + pending approval futures keyed by
+        # interrupt id. WebChat is single local user, so one active socket.
+        self._socket: WebSocket | None = None
+        self._pending: dict[str, asyncio.Future] = {}
         self._setup_routes()
 
     def _setup_routes(self):
@@ -173,20 +221,31 @@ class WebChatAdapter(ChannelAdapter):
                 await websocket.close(code=1008)
                 return
             await websocket.accept()
+            self._socket = websocket
             try:
                 while True:
                     data = await websocket.receive_text()
+                    # Approval responses resolve a pending future, not a chat
+                    # turn — intercept them before they become a message.
+                    if self._maybe_resolve_approval(data):
+                        continue
                     inbound = InboundMessage(
                         channel="webchat",
                         sender_id="local",
                         sender_name="User",
                         text=data,
                     )
-                    response = await self.router.handle(inbound)
-                    if response:
-                        await websocket.send_text(response.text)
+                    # Run the turn as a task so the receive loop stays free to
+                    # read the approval answer mid-turn (otherwise an in-turn
+                    # approval would deadlock: the turn waits for an answer the
+                    # blocked socket can't read).
+                    asyncio.create_task(self._run_turn(websocket, inbound))
             except (WebSocketDisconnect, asyncio.CancelledError):
                 pass  # client closed or server shutting down — not an error
+            finally:
+                self._reject_pending()
+                if self._socket is websocket:
+                    self._socket = None
 
         @self.app.get("/api/status")
         async def status():
@@ -217,6 +276,65 @@ class WebChatAdapter(ChannelAdapter):
 
     async def send(self, message: OutboundMessage) -> None:
         pass  # WebSocket sends response directly
+
+    async def _run_turn(self, websocket: WebSocket, inbound: InboundMessage) -> None:
+        """Process one turn and send the reply (run as a task so the receive
+        loop stays free to read an in-turn approval answer)."""
+        try:
+            response = await self.router.handle(inbound)
+            if response:
+                await websocket.send_text(response.text)
+        except (WebSocketDisconnect, asyncio.CancelledError):
+            pass
+
+    async def ask_approval(self, request: ApprovalRequest):
+        """Send an approval card over the live socket and await the answer (S6).
+
+        Returns True/False, or None when no browser is connected (fail closed).
+        The runtime's timeout cancels the await; the disconnect path rejects any
+        outstanding futures so a blocked turn never hangs.
+        """
+        ws = self._socket
+        if ws is None:
+            return None  # no live browser → can't answer → runtime denies
+        loop = asyncio.get_running_loop()
+        fut: asyncio.Future = loop.create_future()
+        self._pending[request.interrupt_id] = fut
+        try:
+            await ws.send_text(json.dumps({
+                "type": "approval",
+                "id": request.interrupt_id,
+                "tool": request.tool,
+                "message": request.message,
+            }))
+            return await fut
+        finally:
+            self._pending.pop(request.interrupt_id, None)
+
+    def _maybe_resolve_approval(self, data: str) -> bool:
+        """Resolve a pending approval if ``data`` is an approval-response frame.
+
+        Returns True when the frame was an approval response (swallowed, not a
+        chat turn). Only intercepts well-formed ``{"type":"approval"}`` JSON so
+        ordinary chat text — even text that happens to be JSON — flows through.
+        """
+        try:
+            obj = json.loads(data)
+        except (ValueError, TypeError):
+            return False
+        if not (isinstance(obj, dict) and obj.get("type") == "approval"):
+            return False
+        fut = self._pending.get(obj.get("id"))
+        if fut is not None and not fut.done():
+            fut.set_result(bool(obj.get("decision")))
+        return True  # swallow even an unknown id — it is not chat
+
+    def _reject_pending(self) -> None:
+        """Deny all outstanding approvals (e.g. on disconnect) so turns unblock."""
+        for fut in list(self._pending.values()):
+            if not fut.done():
+                fut.set_result(False)
+        self._pending.clear()
 
     def _get_chat_html(self) -> str:
         """Minimal chat UI HTML with Markdown rendering."""
