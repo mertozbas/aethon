@@ -91,6 +91,36 @@ spend. Design doc: `docs/development/PHASE-9B-ROBUSTNESS.md`.
   `ChannelAdapter.on_message` (covers Telegram/Discord/Slack/WhatsApp) and in
   the CLI/WebChat direct paths.
 
+### Fixed (Phase 9B adversarial review — round 1)
+
+End-of-phase review across independent dimensions; each finding independently
+refuted before fixing, each fix shipped with a regression test.
+- **Agent-cache thread safety (H1, HIGH)** — the per-session `asyncio.Lock` only
+  serialized same-session turns; different sessions mutated the shared, unlocked
+  `self.agents` LRU from executor threads at once, overflowing its bound or
+  evicting an in-use agent. The check-then-act and every eviction site now run
+  under a `threading.RLock`.
+- **Scheduler serialization (H4, HIGH)** — config-defined cron SOPs ran through
+  the shared `scheduler:cron` agent while bypassing the H1 lock, so two jobs
+  firing in the same window corrupted its session file. An `asyncio.Lock` now
+  serializes all scheduled execution.
+- **SOP turn metering (E0, HIGH)** — `_capture_usage` ran only on normal turns,
+  so SOP turns went unmetered and their tokens inflated the next turn's diff and
+  escaped the budget ceiling. SOP turns are now metered off the agent's own
+  metrics.
+- **Reset-backup data loss (H7, HIGH)** — session-reset backups were named
+  `batch_<count>`; after retention pruned the lowest batches the count collided
+  with a survivor, `mkdir` raised, and the fallback **deleted** the history
+  instead of backing it up. Backups are now numbered max+1 (collision-proof) and
+  the delete fallback is fail-loud.
+- **Lone-bot shutdown (H3, MEDIUM)** — a single network bot's transient clean
+  return ended its supervisor and tore the gateway down. A `blocking` adapter
+  flag now distinguishes a long-running channel (restarted on an unexpected
+  return) from a fire-and-return one like WhatsApp (done on return).
+- **Fail-loud + docs (LOW)** — `_setup_file_logging` no longer swallows setup
+  errors (warns on stderr); the `prompt.py` docstring and `CAPABILITIES.md`/
+  README now describe the post-E1 layer order and `include_recent_logs` default.
+
 ### Phase 9A Sprint 1 — Network security (S1-S5)
 
 Closes the remote-RCE-grade network findings of the seven-lens gap analysis:

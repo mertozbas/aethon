@@ -725,7 +725,7 @@ ambient:                           # proactive / autonomous idle-time work
 prompt:                            # system-prompt awareness layers
   include_environment: true
   include_learnings: true
-  include_recent_logs: true
+  include_recent_logs: false       # opt-in: the log tail changes every turn → defeats prompt caching (E1)
   include_shell_history: false     # privacy
   include_self_awareness: false    # embeds key source files — heavy
 
