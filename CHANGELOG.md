@@ -7,11 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Phase 10 — The Core Loop (C1 intake; C2 plan→ledger; C3 executor)
+### Phase 10 — The Core Loop (C1 intake; C2 plan→ledger; C3 executor; C4 receipt)
 
-The autonomous core loop takes shape: a clear unit of work is recognized, opened
-as a planned dependency-ordered project, and — when enabled — worked to
-completion by a bounded executor.
+The autonomous core loop's four stitches: a clear unit of work is recognized,
+opened as a planned dependency-ordered project, worked to completion by a bounded
+executor, and delivered with proof.
+
+#### Added — C4 pulse + proof-of-work receipt
+- **"Done, here's the proof."** As the executor works a project it sends a
+  compact progress pulse to the channel the work came from every N newly-completed
+  tasks (silenceable), and on every run-end delivers a structured receipt — each
+  task's status with the REAL evidence the ledger captured (never a bare "done",
+  never fabricated; a truncated evidence tail is marked, an empty project never
+  claims success), plus any dropped tasks and the stop reason. The project's
+  parent task remembers its origin channel + recipient (stamped at intake) so the
+  receipt goes back to the right place; an agent-initiated project with no origin
+  delivers nothing. Delivery is best-effort and bounded (10s timeout), failing
+  loud rather than silently dropping. New `core_loop` knobs: `pulse_enabled`,
+  `pulse_every_n_tasks`, `receipt_enabled`.
 
 #### Added — C3 execution loop (ambient promoted)
 - **Bounded project executor** — `ProjectExecutor` works a planned project to
@@ -86,6 +99,16 @@ it is dropped — the limit is global across re-invocations and restarts. Also
 fixed a concurrency revert (a user-completed task is no longer reset to
 in_progress). The Turkish executor prompt (agent-facing) and config-bound guards
 were reviewed and left as-is.
+
+#### Fixed (C4 adversarial review — round 1)
+End-of-stitch review (20 findings → 11 confirmed/partial); each fix ships a
+regression test. The origin fields are now backfilled + flattened on read (a
+pre-C4 ledger loads them; a hand-edited newline can't fabricate message structure
+in the receipt). The receipt is kept honest: an empty project never reports
+"complete", and truncated evidence is explicitly marked so a FAIL at the tail
+can't be hidden. Delivery is bounded by a 10s timeout so a hung adapter can't
+stall the executor. The pulse-durability-across-resume and send-timeout severities
+were downgraded by independent verification (best-effort, opt-in).
 
 ### Phase 9B — Robustness, Liveness & Token Economy (H1-H11, E0-E1)
 
