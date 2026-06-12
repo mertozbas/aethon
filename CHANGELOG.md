@@ -7,12 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Phase 10 — The Core Loop (C1-C4 stitches; C5/C6 Tiny organs; E2/E4 token economy)
+### Phase 10 — The Core Loop (C1-C4 stitches; C5-C7 Tiny organs; E2/E4 token economy)
 
 The autonomous core loop's four stitches: a clear unit of work is recognized,
 opened as a planned dependency-ordered project, worked to completion by a bounded
 executor, and delivered with proof. Plus the token-economy tier that makes
 long-horizon work affordable, and the Tiny-AI organs.
+
+#### Added — C7 need-driven tool loading
+- **Capabilities arrive on demand.** An Operating Rule (shown only when
+  `runtime_tools` is enabled) tells the agent that if a task needs a capability no
+  current tool provides, it should load or — when permitted — create the tool via
+  the existing `manage_tools` (Phase 7) and continue, instead of giving up or
+  faking it. New-tool creation stays approval-gated. With C6's diet, the core
+  stays small and tools arrive when needed.
 
 #### Added — C6 capability diet
 - **Don't carry every tool's schema every turn.** A few tools have huge schemas
