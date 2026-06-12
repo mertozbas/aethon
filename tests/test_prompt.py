@@ -229,3 +229,18 @@ def test_sop_layer_uses_runner_when_wired(workspace_dir):
     composer.sop_runner = _FakeRunner()
     prompt = composer.compose("s")
     assert "/ozel-sop" in prompt
+
+
+def test_need_driven_tooling_rule_only_when_runtime_tools_enabled(tmp_path):
+    """C7: the need-driven-tooling Operating Rule appears only when manage_tools
+    is available (runtime_tools enabled)."""
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    off = SystemPromptComposer(str(ws)).compose()
+    assert "Need-driven tooling" not in off
+    assert "manage_tools" not in off.split("## Operating Rules")[-1].split("---")[0]
+
+    on = SystemPromptComposer(str(ws), runtime_tools_enabled=True).compose()
+    assert "Need-driven tooling" in on
+    assert "manage_tools" in on
+    assert "approval-gated" in on

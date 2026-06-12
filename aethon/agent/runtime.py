@@ -56,6 +56,9 @@ class AethonRuntime:
             config.paths.workspace,
             config=getattr(config, "prompt", None),
             logs_dir=getattr(config.paths, "logs", None),
+            runtime_tools_enabled=getattr(
+                getattr(config, "runtime_tools", None), "enabled", False
+            ),
         )
         self._session_cache_size = config.performance.session_cache_size
         self.agents: OrderedDict[str, Agent] = OrderedDict()
