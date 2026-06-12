@@ -7,12 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Phase 10 — The Core Loop (C1-C4 stitches; E2/E4 token economy)
+### Phase 10 — The Core Loop (C1-C4 stitches; C5 Tiny organ; E2/E4 token economy)
 
 The autonomous core loop's four stitches: a clear unit of work is recognized,
 opened as a planned dependency-ordered project, worked to completion by a bounded
 executor, and delivered with proof. Plus the token-economy tier that makes
-long-horizon work affordable.
+long-horizon work affordable, and the first Tiny-AI organ.
+
+#### Added — C5 dynamic specialist creation
+- **Raise a soldier on demand.** A new `manage_specialists` tool lets the agent
+  define custom specialists (`{name, system_prompt, tools}`) that persist across
+  sessions (`workspace/specialists/*.json`) and a generic `ask_specialist(name,
+  task)` reaches any specialist — built-in or custom — by name. Bounded by
+  default: the feature is opt-in (`core_loop.dynamic_specialists`); a specialist's
+  tools must be in a fixed allowlist (resolved at create AND disk-load, so a
+  crafted JSON can't smuggle a tool in); powerful tools (shell, python_repl,
+  file_write, editor, http_request) need `core_loop.allow_powerful_specialists`;
+  the name is slugged (no path traversal); persistence is atomic; and creating a
+  specialist is approval-gated. Custom specialists inherit the same security +
+  sandbox + hooks as the built-ins.
 
 #### Added — E4 scout specialist
 - **Read many, return little.** A new `scout` specialist + `ask_scout` tool: the
