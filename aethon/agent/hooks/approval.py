@@ -92,7 +92,10 @@ class ApprovalHookProvider(HookProvider):
 
         logger.info(f"Onay isteniyor: {tool_name}")
 
-        event.interrupt(
+        # First pass RAISES InterruptException (pausing the turn); on resume the
+        # same call RETURNS the user's decision dict. The runtime resolves the
+        # decision via the originating channel (S6) and resumes the agent.
+        decision = event.interrupt(
             name=f"{tool_name}_approval",
             reason={
                 "tool": tool_name,
@@ -100,6 +103,14 @@ class ApprovalHookProvider(HookProvider):
                 "message": f"'{tool_name}' calistirilmak isteniyor. Onayla?",
             },
         )
+
+        # Resume path: cancel the tool unless explicitly approved. Without this
+        # the interrupt would be raised but never enforced (the F6 half-wiring).
+        if not (isinstance(decision, dict) and decision.get("approved")):
+            reason = ""
+            if isinstance(decision, dict):
+                reason = str(decision.get("reason") or "")
+            event.cancel_tool = reason or f"'{tool_name}' onaylanmadı."
 
     @staticmethod
     def _is_github_mutation(tool_input: dict) -> bool:

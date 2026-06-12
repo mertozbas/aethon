@@ -19,10 +19,13 @@ from aethon.config import AethonConfig
 from aethon.agent.model_factory import create_model
 from aethon.agent.prompt import SystemPromptComposer
 from aethon.agent.hooks.security import SecurityHookProvider
-from aethon.channels.base import InboundMessage
+from aethon.channels.base import ApprovalRequest, InboundMessage
 
 
 logger = logging.getLogger("aethon.runtime")
+
+# Safety cap against a pathological tool that re-interrupts forever (S6).
+MAX_INTERRUPT_ROUNDS = 25
 
 
 class AethonRuntime:
@@ -829,7 +832,7 @@ class AethonRuntime:
             agent = self.get_or_create_agent(session_id)
             self._discard_stale_gate_note(session_id)
             self._refresh_volatile_prompt(agent, session_id)
-            result = agent(message.text)
+            result = self._run_with_interrupts(agent, message, session_id, message.text)
             response = self._extract_text(result)
             return self._apply_completion_gate(agent, session_id, response)
 
@@ -852,6 +855,110 @@ class AethonRuntime:
 
             logger.error(f"Model error ({session_id}): {type(e).__name__}: {e}")
             raise
+
+    def _run_with_interrupts(self, agent, message: InboundMessage, session_id: str, text):
+        """Invoke the agent, resolving any approval interrupts (S6).
+
+        strands stops the agent loop and returns ``stop_reason == "interrupt"``
+        when the approval hook raises. We resolve each interrupt via the
+        originating channel (fail-closed deny if it can't answer) and resume the
+        agent with the decisions, looping until the turn completes.
+        """
+        result = agent(text)
+        rounds = 0
+        while getattr(result, "stop_reason", None) == "interrupt":
+            rounds += 1
+            if rounds > MAX_INTERRUPT_ROUNDS:
+                logger.error(
+                    f"Approval interrupt loop exceeded {MAX_INTERRUPT_ROUNDS} "
+                    f"rounds ({message.channel}); denying the rest."
+                )
+                # Resume one last time denying everything so the turn can finish.
+                result = agent(self._deny_all(result.interrupts))
+                break
+            responses = [
+                {
+                    "interruptResponse": {
+                        "interruptId": itr.id,
+                        "response": self._resolve_approval_decision(message, session_id, itr),
+                    }
+                }
+                for itr in result.interrupts
+            ]
+            result = agent(responses)
+        return result
+
+    @staticmethod
+    def _deny_all(interrupts) -> list:
+        return [
+            {
+                "interruptResponse": {
+                    "interruptId": itr.id,
+                    "response": {"approved": False, "reason": "onay döngüsü iptal edildi."},
+                }
+            }
+            for itr in interrupts
+        ]
+
+    def _resolve_approval_decision(
+        self, message: InboundMessage, session_id: str, interrupt
+    ) -> dict:
+        """Ask the originating channel to approve a tool call; deny on any doubt.
+
+        Returns the resume payload ``{"approved": bool, "reason": str}`` the
+        approval hook reads. Fails closed (deny) when the channel can't answer,
+        times out, or errors — never wedges the turn.
+        """
+        reason = interrupt.reason if isinstance(interrupt.reason, dict) else {}
+        request = ApprovalRequest(
+            interrupt_id=interrupt.id,
+            tool=str(reason.get("tool", "")),
+            parameters=reason.get("parameters", {}) or {},
+            message=str(reason.get("message", "")),
+            session_id=session_id,
+            recipient_id=message.sender_id,
+        )
+        unanswerable = {
+            "approved": False,
+            "reason": (
+                "Onay gerekli ama bu kanal yanıtlayamıyor — CLI/WebChat kullanın "
+                "ya da approval'ı kapatın."
+            ),
+        }
+
+        from aethon.tools.messaging import get_gateway
+
+        gateway = get_gateway()
+        adapter = gateway.adapters.get(message.channel) if gateway else None
+        loop = getattr(gateway, "loop", None) if gateway else None
+        ask = getattr(adapter, "ask_approval", None)
+        if not (adapter and loop and loop.is_running() and callable(ask)):
+            logger.warning(
+                f"Approval can't be answered on {message.channel} — denying "
+                f"({request.tool})."
+            )
+            return unanswerable
+
+        timeout = getattr(self.config.approval, "timeout_seconds", 120.0)
+        future = asyncio.run_coroutine_threadsafe(ask(request), loop)
+        try:
+            decision = future.result(timeout=timeout)
+        except asyncio.TimeoutError:
+            future.cancel()
+            logger.warning(
+                f"Approval timed out after {timeout}s on {message.channel} — "
+                f"denying ({request.tool})."
+            )
+            return {"approved": False, "reason": "onay zaman aşımına uğradı."}
+        except Exception as e:
+            logger.error(f"Approval responder error ({message.channel}): {e}")
+            return {"approved": False, "reason": "onay alınamadı."}
+
+        if decision is None:
+            return unanswerable
+        if decision:
+            return {"approved": True, "reason": ""}
+        return {"approved": False, "reason": "kullanıcı reddetti."}
 
     def _discard_stale_gate_note(self, session_id: str) -> None:
         """Drop a gate note left over from an earlier turn.

@@ -48,6 +48,23 @@ class OutboundMessage:
     raw: dict = field(default_factory=dict)
 
 
+@dataclass
+class ApprovalRequest:
+    """A pending tool-approval question routed back to a channel (Phase 9A / S6).
+
+    Built from a strands interrupt's ``reason`` (the approval hook sets
+    ``{tool, parameters, message}``) plus the originating sender. Channels turn
+    it into a yes/no prompt; the answer resumes the paused agent turn.
+    """
+
+    interrupt_id: str
+    tool: str
+    parameters: dict
+    message: str
+    session_id: str
+    recipient_id: str
+
+
 class ChannelAdapter(ABC):
     """Base class for all channel adapters."""
 
@@ -91,3 +108,13 @@ class ChannelAdapter(ABC):
                 logger.error(
                     f"Reply delivery failed ({message.channel}): {e}"
                 )
+
+    async def ask_approval(self, request: "ApprovalRequest") -> Optional[bool]:
+        """Ask the user to approve a tool call mid-turn (Phase 9A / S6).
+
+        Returns ``True`` (approved) / ``False`` (denied), or ``None`` when this
+        channel cannot answer — the runtime then fails closed (denies) with a
+        clear message rather than wedging the session. Channels that can answer
+        override this; the base default advertises "cannot answer".
+        """
+        return None

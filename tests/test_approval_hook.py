@@ -101,3 +101,44 @@ def test_custom_hook_ignores_default_tools(agent, custom_hook):
     event = _make_event(agent, "shell", {"command": "ls"})
     # shell is not in custom_hook's requires_approval — should not raise
     custom_hook.check_approval(event)
+
+
+# --- S6: the resume decision is enforced (the F6 half-wiring fix) ------------
+
+
+def _seed_response(agent, event, tool_name, response):
+    """Pre-seed the interrupt response so the second check_approval RETURNS it
+    (simulating a resume) instead of raising."""
+    from strands.interrupt import Interrupt
+
+    name = f"{tool_name}_approval"
+    iid = event._interrupt_id(name)
+    agent._interrupt_state.interrupts[iid] = Interrupt(iid, name, None, response)
+
+
+def test_resume_denied_cancels_tool(agent, approval_hook):
+    """On resume with approved=False, the tool is cancelled with the reason."""
+    event = _make_event(agent, "shell", {"command": "rm -rf x"})
+    _seed_response(agent, event, "shell", {"approved": False, "reason": "kullanıcı reddetti."})
+    approval_hook.check_approval(event)  # must NOT raise — it resumes
+    assert event.cancel_tool  # truthy
+    assert "reddetti" in str(event.cancel_tool)
+
+
+def test_resume_approved_does_not_cancel(agent, approval_hook):
+    """On resume with approved=True, the tool proceeds (no cancel)."""
+    event = _make_event(agent, "shell", {"command": "ls"})
+    _seed_response(agent, event, "shell", {"approved": True, "reason": ""})
+    approval_hook.check_approval(event)
+    assert event.cancel_tool is False
+
+
+def test_resume_unanswerable_cancels_with_message(agent, approval_hook):
+    """A fail-closed decision (no 'approved' key truthy) cancels with its reason."""
+    event = _make_event(agent, "file_write", {"path": "/tmp/x"})
+    _seed_response(
+        agent, event, "file_write",
+        {"approved": False, "reason": "bu kanal yanıtlayamıyor"},
+    )
+    approval_hook.check_approval(event)
+    assert "yanıtlayamıyor" in str(event.cancel_tool)

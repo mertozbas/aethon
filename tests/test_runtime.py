@@ -184,6 +184,158 @@ def test_reliability_hooks_can_be_disabled(runtime_config):
     assert "CompletionGateHookProvider" not in names
 
 
+# --- S6: answerable approval (interrupt→question→resume) --------------------
+
+
+class _FakeInterrupt:
+    def __init__(self, iid, reason):
+        self.id = iid
+        self.reason = reason
+
+
+class _Result:
+    def __init__(self, stop_reason, interrupts=None, text="done"):
+        self.stop_reason = stop_reason
+        self.interrupts = interrupts or []
+        self.message = {"content": [{"text": text}]}
+
+
+class _FakeAgent:
+    """Returns an interrupt on the first call, a normal result on resume."""
+
+    def __init__(self, rounds=1):
+        self.calls = []
+        self._rounds = rounds
+
+    def __call__(self, prompt):
+        self.calls.append(prompt)
+        if len(self.calls) <= self._rounds:
+            return _Result("interrupt", [
+                _FakeInterrupt(
+                    f"itr-{len(self.calls)}",
+                    {"tool": "shell", "parameters": {"command": "ls"}, "message": "Onayla?"},
+                )
+            ])
+        return _Result("end_turn", text="tamam")
+
+
+def _msg(channel="telegram"):
+    return InboundMessage(
+        channel=channel, sender_id="u1", sender_name="U", text="çalıştır"
+    )
+
+
+def test_run_with_interrupts_resumes_with_decision(runtime_config, monkeypatch):
+    """The loop resumes the agent with the channel's decision until it completes."""
+    runtime = AethonRuntime(runtime_config)
+    monkeypatch.setattr(
+        runtime, "_resolve_approval_decision",
+        lambda message, session_id, itr: {"approved": True, "reason": ""},
+    )
+    agent = _FakeAgent(rounds=1)
+    result = runtime._run_with_interrupts(agent, _msg(), "telegram:u1", "çalıştır")
+    assert result.stop_reason == "end_turn"
+    assert len(agent.calls) == 2  # initial + one resume
+    # The resume carried the interrupt response payload.
+    resume = agent.calls[1]
+    assert resume[0]["interruptResponse"]["interruptId"] == "itr-1"
+    assert resume[0]["interruptResponse"]["response"]["approved"] is True
+
+
+def test_run_with_interrupts_caps_runaway(runtime_config, monkeypatch):
+    """A tool that re-interrupts forever is capped and denied, not hung."""
+    runtime = AethonRuntime(runtime_config)
+    monkeypatch.setattr(
+        runtime, "_resolve_approval_decision",
+        lambda message, session_id, itr: {"approved": True, "reason": ""},
+    )
+    # Always interrupts → exercises the MAX_INTERRUPT_ROUNDS guard.
+    agent = _FakeAgent(rounds=10_000)
+    runtime._run_with_interrupts(agent, _msg(), "telegram:u1", "x")
+    from aethon.agent.runtime import MAX_INTERRUPT_ROUNDS
+    # initial call + MAX rounds of resume + one final deny-all resume.
+    assert len(agent.calls) == MAX_INTERRUPT_ROUNDS + 2
+
+
+def test_resolve_approval_fails_closed_without_gateway(runtime_config, monkeypatch):
+    """No gateway/adapter/responder → deny with the 'can't answer' message."""
+    import aethon.tools.messaging as messaging
+
+    runtime = AethonRuntime(runtime_config)
+    monkeypatch.setattr(messaging, "get_gateway", lambda: None)
+    itr = _FakeInterrupt("i1", {"tool": "shell", "parameters": {}, "message": "?"})
+    decision = runtime._resolve_approval_decision(_msg(), "telegram:u1", itr)
+    assert decision["approved"] is False
+    assert "yanıtlayamıyor" in decision["reason"]
+
+
+def test_resolve_approval_uses_channel_responder(runtime_config, monkeypatch):
+    """A channel that answers True is dispatched on the gateway loop and approved."""
+    import asyncio
+    import threading
+    import aethon.tools.messaging as messaging
+
+    runtime = AethonRuntime(runtime_config)
+
+    # A real loop running on a background thread (mirrors the gateway loop).
+    loop = asyncio.new_event_loop()
+    t = threading.Thread(target=loop.run_forever, daemon=True)
+    t.start()
+
+    class _Adapter:
+        async def ask_approval(self, request):
+            assert request.tool == "shell"
+            return True
+
+    class _GW:
+        adapters = {"telegram": _Adapter()}
+
+    gw = _GW()
+    gw.loop = loop
+    monkeypatch.setattr(messaging, "get_gateway", lambda: gw)
+    try:
+        itr = _FakeInterrupt("i1", {"tool": "shell", "parameters": {}, "message": "?"})
+        decision = runtime._resolve_approval_decision(_msg(), "telegram:u1", itr)
+        assert decision["approved"] is True
+    finally:
+        loop.call_soon_threadsafe(loop.stop)
+        t.join(timeout=2)
+
+
+def test_resolve_approval_times_out_to_deny(runtime_config, monkeypatch):
+    """A responder that never answers is denied at the timeout, not hung."""
+    import asyncio
+    import threading
+    import aethon.tools.messaging as messaging
+
+    runtime_config.approval.timeout_seconds = 0.2
+    runtime = AethonRuntime(runtime_config)
+
+    loop = asyncio.new_event_loop()
+    t = threading.Thread(target=loop.run_forever, daemon=True)
+    t.start()
+
+    class _Adapter:
+        async def ask_approval(self, request):
+            await asyncio.sleep(60)  # never answers within the timeout
+            return True
+
+    class _GW:
+        adapters = {"telegram": _Adapter()}
+
+    gw = _GW()
+    gw.loop = loop
+    monkeypatch.setattr(messaging, "get_gateway", lambda: gw)
+    try:
+        itr = _FakeInterrupt("i1", {"tool": "shell", "parameters": {}, "message": "?"})
+        decision = runtime._resolve_approval_decision(_msg(), "telegram:u1", itr)
+        assert decision["approved"] is False
+        assert "zaman aşımı" in decision["reason"]
+    finally:
+        loop.call_soon_threadsafe(loop.stop)
+        t.join(timeout=2)
+
+
 def test_completion_gate_note_appended_to_reply(runtime_config):
     """R6: the runtime appends the gate's pending reminder to the response."""
     runtime = AethonRuntime(runtime_config)

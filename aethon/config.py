@@ -151,6 +151,9 @@ class ApprovalConfig(BaseModel):
     requires_approval: list[str] = Field(
         default_factory=lambda: ["shell", "file_write", "manage_tools"]
     )
+    # Seconds to wait for a human approval answer before denying (S6). Generous
+    # by default — the prompt is local (CLI/WebChat) or push (Telegram).
+    timeout_seconds: float = 120.0
 
 
 class TelemetryConfig(BaseModel):
