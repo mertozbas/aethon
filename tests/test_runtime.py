@@ -60,10 +60,18 @@ class _PlanResult:
         self.structured_output = plan
 
 
+class _Metrics:
+    def __init__(self, usage):
+        self.accumulated_usage = usage
+
+
 class _StructPlanner:
-    """A planner stub that returns a fixed structured plan."""
-    def __init__(self, plan):
+    """A planner stub that returns a fixed structured plan (optionally carrying
+    accumulated token usage on event_loop_metrics, like a real specialist)."""
+    def __init__(self, plan, usage=None):
         self._plan = plan
+        if usage is not None:
+            self.event_loop_metrics = _Metrics(usage)
 
     def __call__(self, prompt, structured_output_model=None):
         return _PlanResult(self._plan)
@@ -79,14 +87,15 @@ def test_intake_disabled_is_normal_path(runtime_config):
     """With intake off (default), even a clear work message stays a normal turn."""
     runtime = AethonRuntime(runtime_config)
     assert runtime._maybe_intake(
-        _intake_msg("Kullanıcı girişi olan bir blog API'si geliştir ve testleri yaz.")
+        _intake_msg("Kullanıcı girişi olan bir blog API'si geliştir ve testleri yaz."),
+        "cli:u",
     ) is None
 
 
 def test_intake_chat_message_falls_through(runtime_config):
     runtime = AethonRuntime(runtime_config)
     runtime.config.core_loop.intake_enabled = True
-    assert runtime._maybe_intake(_intake_msg("merhaba, bugün nasılsın?")) is None
+    assert runtime._maybe_intake(_intake_msg("merhaba, bugün nasılsın?"), "cli:u") is None
 
 
 def test_intake_work_message_opens_project(runtime_config):
@@ -98,13 +107,34 @@ def test_intake_work_message_opens_project(runtime_config):
     runtime.specialist_factory._cache["planner"] = _StructPlanner(plan)
 
     reply = runtime._maybe_intake(
-        _intake_msg("Kullanıcı girişi olan bir blog API'si geliştir ve testleri yaz.")
+        _intake_msg("Kullanıcı girişi olan bir blog API'si geliştir ve testleri yaz."),
+        "cli:u",
     )
     assert reply is not None
     assert "iş olarak" in reply           # acknowledgement
     assert "Blog API" in reply            # the plan summary
     # A project actually landed in the ledger.
     assert any(t["title"] == "Blog API" for t in runtime._task_ledger.list())
+
+
+def test_intake_meters_planner_tokens(runtime_config):
+    """C1 review fix: intake returns early, so it must meter the planner's spend
+    itself — otherwise those tokens escape the E0 budget ceiling."""
+    from aethon.agent.planning import PlanSchema, PlanTask
+
+    runtime = AethonRuntime(runtime_config)
+    runtime.config.core_loop.intake_enabled = True
+    plan = PlanSchema(project_title="API", tasks=[PlanTask(title="şema")])
+    runtime.specialist_factory._cache["planner"] = _StructPlanner(
+        plan, usage={"inputTokens": 1200, "outputTokens": 600}
+    )
+    reply = runtime._maybe_intake(
+        _intake_msg("Kullanıcı girişi olan bir blog API'si geliştir ve testleri yaz."),
+        "cli:u",
+    )
+    assert reply is not None
+    sess = runtime.token_meter._session.get("cli:u")
+    assert sess and (sess["input"], sess["output"]) == (1200, 600)
 
 
 def test_intake_work_but_no_structured_plan_falls_through(runtime_config):
@@ -117,7 +147,8 @@ def test_intake_work_but_no_structured_plan_falls_through(runtime_config):
     runtime.specialist_factory._cache["planner"] = _StructPlanner(PlanSchema(tasks=[]))
 
     assert runtime._maybe_intake(
-        _intake_msg("Bir blog API'si geliştir ve testleri de yaz lütfen arkadaşım.")
+        _intake_msg("Bir blog API'si geliştir ve testleri de yaz lütfen arkadaşım."),
+        "cli:u",
     ) is None
     assert runtime._task_ledger.list() == []  # nothing opened
 

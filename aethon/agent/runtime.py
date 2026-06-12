@@ -932,7 +932,7 @@ class AethonRuntime:
             # planned project instead of a normal chat turn. Returns None (and
             # leaves the normal path untouched) for chat, when disabled, or if a
             # project can't actually be opened.
-            intake_reply = self._maybe_intake(message)
+            intake_reply = self._maybe_intake(message, session_id)
             if intake_reply is not None:
                 return intake_reply
 
@@ -1103,7 +1103,7 @@ class AethonRuntime:
         except Exception as e:
             logger.debug(f"Usage capture skipped: {e}")
 
-    def _maybe_intake(self, message: InboundMessage) -> str | None:
+    def _maybe_intake(self, message: InboundMessage, session_id: str) -> str | None:
         """C1 intake: classify the message and, on a clear unit of work, open a
         planned project and return an acknowledgement + plan summary. Returns
         ``None`` to leave the normal turn path untouched — when intake is off,
@@ -1135,6 +1135,15 @@ class AethonRuntime:
             # Classified as work but no project could be opened — don't claim to
             # have started one; let the normal turn answer instead.
             return None
+        # Meter the planner's spend (E0): intake returns early, so without this
+        # the planner's tokens would escape the budget ceiling. (Specialist
+        # usage on the ask_* tool paths is still a broader, pending E0 gap.)
+        try:
+            self._capture_usage(
+                self.specialist_factory.get("planner"), None, session_id
+            )
+        except Exception as e:
+            logger.debug(f"Intake planner usage capture skipped: {e}")
         logger.info(f"Intake opened project {result.get('project_id')} from a work message.")
         ack = "Anladım — bunu bir iş olarak ele alıp planını çıkardım:"
         return f"{ack}\n\n{result['summary']}"
