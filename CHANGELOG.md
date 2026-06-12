@@ -48,6 +48,11 @@ Makes AETHON feel alive and stop failing silently. Design doc:
   Phase 9A.
 
 ### Added
+- **`aethon backup` + run-at-boot service (H10/H11)** — `aethon backup` archives
+  `~/.aethon` to a `.tar.gz` (SQLite copied live-safe, `logs/` skipped);
+  `aethon service install` writes a launchd agent (macOS) or systemd user unit
+  (Linux) that keeps the gateway running and restarts on failure, logging to
+  `~/.aethon/logs/`. New `website/docs/operations/backup-and-service.md`.
 - **Scheduler persistence + one-shot reminders + free-text (H4)** — runtime
   `schedule_task` jobs no longer vanish on restart: they persist to
   `workspace/SCHEDULE.json` and reload at boot, recovering one-shots missed

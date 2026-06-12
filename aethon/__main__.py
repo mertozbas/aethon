@@ -150,6 +150,55 @@ def _report_secrets_hygiene(cfg: AethonConfig, cfg_path: Path) -> None:
 
 
 @main.command()
+@click.option(
+    "--output", "-o", default="",
+    help="Backup file path (default ~/.aethon-backup-<timestamp>.tar.gz).",
+)
+def backup(output: str):
+    """Back up ~/.aethon to a .tar.gz (live-safe SQLite; skips logs)."""
+    from datetime import datetime
+
+    from aethon.maintenance import create_backup, human_bytes
+
+    home = Path("~/.aethon").expanduser()
+    if not home.exists():
+        console.print("[yellow]Nothing to back up — ~/.aethon doesn't exist yet.[/]")
+        return
+    if not output:
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        output = str(Path(f"~/.aethon-backup-{stamp}.tar.gz").expanduser())
+    try:
+        path = create_backup(home, Path(output))
+    except Exception as e:
+        console.print(f"[red]Backup failed:[/] {type(e).__name__}: {e}")
+        return
+    size = human_bytes(path.stat().st_size)
+    console.print(f"[green]✓ Backup written:[/] {path} ({size})")
+    console.print(f"[dim]Restore: tar -xzf {path.name} -C ~/.aethon[/]")
+
+
+@main.group()
+def service():
+    """Manage the run-at-boot service (launchd / systemd)."""
+
+
+@service.command("install")
+def service_install():
+    """Install a run-at-boot service (macOS launchd / Linux systemd user)."""
+    from aethon.gateway.service import install_service
+
+    logs_dir = str(Path("~/.aethon/logs").expanduser())
+    Path(logs_dir).mkdir(parents=True, exist_ok=True)
+    try:
+        path, hint = install_service(logs_dir)
+    except RuntimeError as e:
+        console.print(f"[yellow]{e}[/]")
+        return
+    console.print(f"[green]✓ Service unit written:[/] {path}")
+    console.print(f"Enable it with:\n  [bold]{hint}[/]")
+
+
+@main.command()
 @click.option("--config", "-c", default="~/.aethon/config.yaml", help="Config file path")
 def mcp(config: str):
     """Serve AETHON's tools to MCP clients (e.g. Claude Desktop) over stdio."""

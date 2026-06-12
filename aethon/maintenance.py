@@ -126,3 +126,56 @@ def _rmtree(path: Path) -> None:
     import shutil
 
     shutil.rmtree(path)
+
+
+# --- backup (H10) ----------------------------------------------------------
+
+
+def _sqlite_backup(src: Path, dst: Path) -> None:
+    """Consistent live copy of a SQLite DB (safe while AETHON is running)."""
+    import sqlite3
+
+    s = sqlite3.connect(str(src))
+    d = sqlite3.connect(str(dst))
+    try:
+        with d:
+            s.backup(d)
+    finally:
+        s.close()
+        d.close()
+
+
+def create_backup(home: Path, output: Path) -> Path:
+    """Archive ``~/.aethon`` to a ``.tar.gz`` (H10).
+
+    SQLite DBs are copied via the live-safe backup API so the archive is
+    consistent even while the gateway runs; ``logs/`` is skipped. Returns the
+    output path.
+    """
+    import tarfile
+    import tempfile
+
+    home = Path(home).expanduser()
+    output = Path(output).expanduser()
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory() as td:
+        tmp = Path(td)
+        with tarfile.open(output, "w:gz") as tar:
+            for p in sorted(home.rglob("*")):
+                if not p.is_file():
+                    continue
+                rel = p.relative_to(home)
+                if rel.parts and rel.parts[0] == "logs":
+                    continue  # transient — don't bloat the backup
+                if p == output:
+                    continue  # never archive the archive itself
+                if p.suffix == ".sqlite":
+                    consistent = tmp / rel.name
+                    try:
+                        _sqlite_backup(p, consistent)
+                        tar.add(consistent, arcname=str(rel))
+                        continue
+                    except Exception as e:
+                        logger.warning(f"Live SQLite backup failed for {rel}: {e}")
+                tar.add(p, arcname=str(rel))
+    return output
