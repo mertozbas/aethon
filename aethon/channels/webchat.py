@@ -197,6 +197,12 @@ class WebChatAdapter(ChannelAdapter):
         # interrupt id. WebChat is single local user, so one active socket.
         self._socket: WebSocket | None = None
         self._pending: dict[str, asyncio.Future] = {}
+        # Serialize turns: all webchat turns resolve to the same "webchat:local"
+        # session and thus the SAME cached agent, whose interrupt/conversation
+        # state is not concurrency-safe. The receive loop still runs free (so an
+        # in-turn approval answer is read); only the agent invocation is gated.
+        self._turn_lock = asyncio.Lock()
+        self._turn_tasks: set = set()
         self._setup_routes()
 
     def _setup_routes(self):
@@ -221,6 +227,10 @@ class WebChatAdapter(ChannelAdapter):
                 await websocket.close(code=1008)
                 return
             await websocket.accept()
+            # A new connection supersedes any previous one — deny its in-flight
+            # approvals so a stale card on the old tab can't linger or cross.
+            if self._socket is not None and self._socket is not websocket:
+                self._reject_pending()
             self._socket = websocket
             try:
                 while True:
@@ -239,7 +249,11 @@ class WebChatAdapter(ChannelAdapter):
                     # read the approval answer mid-turn (otherwise an in-turn
                     # approval would deadlock: the turn waits for an answer the
                     # blocked socket can't read).
-                    asyncio.create_task(self._run_turn(websocket, inbound))
+                    # Keep a strong reference: asyncio only weakly references
+                    # tasks, so an unreferenced task can be GC'd mid-flight.
+                    task = asyncio.create_task(self._run_turn(websocket, inbound))
+                    self._turn_tasks.add(task)
+                    task.add_done_callback(self._turn_tasks.discard)
             except (WebSocketDisconnect, asyncio.CancelledError):
                 pass  # client closed or server shutting down — not an error
             finally:
@@ -279,13 +293,21 @@ class WebChatAdapter(ChannelAdapter):
 
     async def _run_turn(self, websocket: WebSocket, inbound: InboundMessage) -> None:
         """Process one turn and send the reply (run as a task so the receive
-        loop stays free to read an in-turn approval answer)."""
+        loop stays free to read an in-turn approval answer).
+
+        Turns are serialized on ``_turn_lock`` so two overlapping messages never
+        race the shared agent; an in-turn approval still resolves because the
+        receive loop (not the turn) reads the answer.
+        """
         try:
-            response = await self.router.handle(inbound)
+            async with self._turn_lock:
+                response = await self.router.handle(inbound)
             if response:
                 await websocket.send_text(response.text)
         except (WebSocketDisconnect, asyncio.CancelledError):
             pass
+        except Exception as e:
+            logger.error(f"WebChat turn error: {e}")
 
     async def ask_approval(self, request: ApprovalRequest):
         """Send an approval card over the live socket and await the answer (S6).

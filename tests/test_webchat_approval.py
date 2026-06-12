@@ -82,3 +82,37 @@ def test_plain_text_not_intercepted():
     assert adapter._maybe_resolve_approval('{"foo": 1}') is False
     # A well-formed approval frame for an unknown id is still swallowed (not chat).
     assert adapter._maybe_resolve_approval('{"type":"approval","id":"zzz","decision":true}') is True
+
+
+@pytest.mark.asyncio
+async def test_turns_are_serialized():
+    """Two overlapping webchat turns must not run the shared agent concurrently
+    (they share one 'webchat:local' session/agent — S6 race fix)."""
+    state = {"active": 0, "max": 0}
+
+    class _Router:
+        async def handle(self, message):
+            state["active"] += 1
+            state["max"] = max(state["max"], state["active"])
+            await asyncio.sleep(0.02)  # hold the turn so overlap would show
+            state["active"] -= 1
+            return None
+
+    adapter = WebChatAdapter(AethonConfig(), _Router())
+    ws = _FakeWS()
+    inbound = type("M", (), {})()
+    t1 = asyncio.ensure_future(adapter._run_turn(ws, inbound))
+    t2 = asyncio.ensure_future(adapter._run_turn(ws, inbound))
+    await asyncio.gather(t1, t2)
+    assert state["max"] == 1  # never two agent turns at once
+
+
+@pytest.mark.asyncio
+async def test_new_connection_rejects_previous_pending():
+    """A superseding connection denies the old tab's in-flight approval."""
+    adapter = _adapter()
+    adapter._socket = _FakeWS()
+    task = asyncio.ensure_future(adapter.ask_approval(_request("i9")))
+    await asyncio.sleep(0)
+    adapter._reject_pending()  # what a new ws_chat accept triggers
+    assert await task is False
