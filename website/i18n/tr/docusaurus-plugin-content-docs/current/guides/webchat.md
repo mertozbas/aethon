@@ -13,13 +13,17 @@ mesaj için bir yanıt alırsınız.
 
 Aynı uygulama/portta kullanışlı uç noktalar:
 
-- `GET /api/status` → `{"status": "running", "version": "..."}` (kimlik doğrulamasız).
-- `GET /health` → `{"status": "ok"}` (konteyner/yük dengeleyici sondaları için bilinçli olarak kimlik doğrulamasız).
+- `GET /api/status` → `{"status": "running", "version": "..."}` (`dashboard.auth_token` ayarlandığında korumalı).
+- `GET /health` → `{"status": "ok"}` (her zaman açık, konteyner/yük dengeleyici sondaları için — uptime izleyiciler için `/api/status` yerine bunu kullanın).
+
+Bir token ayarlandığında `/ws/chat` de token gerektirir: sohbet sayfası ilk bağlantıda token'ı
+sorar (`sessionStorage`'da tutulur) ve bilinmeyen tarayıcı Origin'lerini reddeder.
 
 ## WebChat'i ağınızda yayımlama
 
 WebChat'i localhost dışına açmak için `channels.webchat.host: 0.0.0.0` ayarlayın — **ve ayrıca**
-`dashboard.auth_token` değerini de ayarlayın (bkz. **[Güvenlik](../operations/security.md)**).
+`dashboard.auth_token` değerini de ayarlayın (bkz. **[Güvenlik](../operations/security.md)**);
+loopback dışı bir bağlama bu olmadan **başlamayı reddeder**.
 Dashboard, webhook'lar ve WebChat'in tümü bu tek host/portu paylaşır.
 
 ```yaml

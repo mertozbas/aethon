@@ -111,6 +111,23 @@ def test_origin_allowlist_normalizes_trailing_slash_and_case():
     assert origin_allowed("https://chat.example.com", "x", allowed) is True
 
 
+def test_origin_default_port_normalized_both_directions():
+    """A reverse proxy that preserves the default port in Host must still match
+    a browser Origin that omits it (https/443, http/80)."""
+    assert origin_allowed("https://example.com", "example.com:443", []) is True
+    assert origin_allowed("http://example.com", "example.com:80", []) is True
+    # And the symmetric case (origin keeps port, host omits it).
+    assert origin_allowed("https://example.com:443", "example.com", []) is True
+
+
+def test_origin_nondefault_port_still_required_to_match():
+    """Default-port normalization must NOT make different ports equal."""
+    assert origin_allowed("https://example.com", "example.com:8443", []) is False
+    assert origin_allowed("https://example.com:8443", "example.com", []) is False
+    # A matching non-default port is fine.
+    assert origin_allowed("https://example.com:8443", "example.com:8443", []) is True
+
+
 # --- allowlist_gaps (S5) ------------------------------------------------------
 
 

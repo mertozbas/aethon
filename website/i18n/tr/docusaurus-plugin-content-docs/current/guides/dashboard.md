@@ -27,12 +27,15 @@ ve `dashboard.enabled` true olduğunda kullanılabilir. Ayrıca bir **Özellikle
 
 ## Kimlik doğrulama (`dashboard.auth_token`)
 
-Boş = kimlik doğrulama yok (varsayılan localhost bağlaması için uygundur). Ayarlandığında,
-bir HTTP ara katmanı `/dashboard` ve korumalı `/api/*` öneklerini (`/api/sessions`, `/api/memory`,
-`/api/config`, `/api/scheduler`, `/api/telemetry`, `/api/sops`, `/api/agents`) ve
-`/ws/dashboard` yolunu korur. `/api/status` ve `/health` yollarının açık kaldığını unutmayın.
-Token (öncelik sırasına göre) `aethon_dash` çerezi, bir `Authorization: Bearer <token>`
-başlığı veya bir `?token=<token>` sorgu parametresi aracılığıyla kabul edilir.
+Boş = kimlik doğrulama yok (varsayılan localhost bağlaması için uygundur; loopback dışı
+bir bağlama bunu gerektirir). Ayarlandığında, **varsayılan-ret** bir ara katman paylaşılan
+uygulamadaki **tüm** yolları korur — her `/api/*` (`/api/status` dâhil), `/dashboard`,
+FastAPI belgeleri ve bilinmeyen yollar (401, yol ifşası yok). Genel istisnalar: `/`,
+`/health`, `/dashboard/static/*` ve kendi HMAC'iyle doğrulanan `/webhook/*`. Her iki
+WebSocket de (`/ws/chat`, `/ws/dashboard`) upgrade'i kabul etmeden önce Origin başlığını ve
+token'ı denetler (aksi halde `1008` ile kapatılır). Token (öncelik sırasına göre)
+`aethon_dash` çerezi, bir `Authorization: Bearer <token>` başlığı veya bir `?token=<token>`
+sorgu parametresi aracılığıyla kabul edilir.
 
 Bir token ayarlandığında olağan akış:
 

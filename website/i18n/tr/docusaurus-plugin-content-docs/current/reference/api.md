@@ -16,14 +16,18 @@ dosyasına bakın.
 
 | Method | Path | Döndürür |
 |---|---|---|
-| `GET` | `/health` | `{"status": "ok"}` — canlılık (liveness) yoklaması, her zaman açık (kontrol paneli token'ı olsa bile). |
-| `GET` | `/api/status` | `{"status": "running", "version": "..."}` |
+| `GET` | `/health` | `{"status": "ok"}` — canlılık (liveness) yoklaması, her zaman açık (kontrol paneli token'ı olsa bile). Uptime izleyicileri için bunu kullanın. |
+| `GET` | `/` | WebChat HTML sayfası. |
+
+> `dashboard.auth_token` ayarlandığında varsayılan-ret geçerlidir: `/`, `/health`,
+> `/dashboard/static/*` ve `/webhook/*` dışındaki her şey token gerektirir —
+> `GET /api/status` (`{"status": "running", "version": "..."}`) dâhil.
 
 ## Sohbet
 
 | Taşıma | Path | Notlar |
 |---|---|---|
-| WebSocket | `/ws/chat` | Düz metin gönderin; mesaj başına bir Markdown yanıt alın. WebChat arayüzünü besler. |
+| WebSocket | `/ws/chat` | Düz metin gönderin; mesaj başına bir Markdown yanıt alın. WebChat arayüzünü besler. Token ayarlandığında, upgrade kabul edilmeden önce token (Origin doğrulamasıyla) gerekir. |
 
 ## Kontrol paneli API'si (ayarlandığında `dashboard.auth_token` ile kapı altında)
 

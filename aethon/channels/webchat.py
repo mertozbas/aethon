@@ -194,9 +194,9 @@ class WebChatAdapter(ChannelAdapter):
 
         @self.app.get("/health")
         async def health():
-            # Lightweight liveness probe. Deliberately ungated (the dashboard auth
-            # middleware covers /api/* and /dashboard, not /health) so container and
-            # load-balancer health checks work even when a dashboard token is set.
+            # Lightweight liveness probe. Enumerated in netsec.PUBLIC_PATHS so the
+            # deny-by-default gate leaves it open even when a token is set
+            # (Docker HEALTHCHECK / load-balancer probes).
             return {"status": "ok"}
 
     async def start(self) -> None:

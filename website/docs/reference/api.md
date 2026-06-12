@@ -16,14 +16,18 @@ in the repo.
 
 | Method | Path | Returns |
 |---|---|---|
-| `GET` | `/health` | `{"status": "ok"}` — liveness probe, always open (even with a dashboard token). |
-| `GET` | `/api/status` | `{"status": "running", "version": "..."}` |
+| `GET` | `/health` | `{"status": "ok"}` — liveness probe, always open (even with a dashboard token). Use this for uptime monitors. |
+| `GET` | `/` | The WebChat HTML page. |
+
+> When `dashboard.auth_token` is set, deny-by-default applies: everything except
+> `/`, `/health`, `/dashboard/static/*`, and `/webhook/*` requires the token —
+> including `GET /api/status` (`{"status": "running", "version": "..."}`).
 
 ## Chat
 
 | Transport | Path | Notes |
 |---|---|---|
-| WebSocket | `/ws/chat` | Send plain text; receive one Markdown reply per message. Backs the WebChat UI. |
+| WebSocket | `/ws/chat` | Send plain text; receive one Markdown reply per message. Backs the WebChat UI. When a token is set it is required (with Origin validation) before the upgrade is accepted. |
 
 ## Dashboard API (gated by `dashboard.auth_token` when set)
 

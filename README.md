@@ -316,7 +316,7 @@ location / {
 }
 ```
 
-Behind TLS the chat page automatically connects via `wss:`. Keep `AETHON_DASHBOARD_TOKEN` set even behind a proxy unless the proxy itself authenticates (then `--insecure-bind` is acceptable).
+Behind TLS the chat page automatically connects via `wss:`. Keep `AETHON_DASHBOARD_TOKEN` set even behind a proxy unless the proxy itself authenticates (then `--insecure-bind` is acceptable). The WebSocket Origin check compares the browser `Origin` against the forwarded `Host` header, so the proxy must set `Host` to the public hostname (`proxy_set_header Host $host` above) — or list the public origin in `channels.webchat.allowed_origins`.
 
 ### Updating & uninstalling
 
@@ -724,8 +724,8 @@ you > exit
 Open **http://127.0.0.1:18790** in your browser. It's a minimal dark chat UI (header, message list, input + Send) that connects over a WebSocket (`/ws/chat`) and renders bot replies as Markdown. You send plain text; you get one reply per message.
 
 Useful endpoints on the same app/port:
-- `GET /api/status` → `{"status": "running", "version": "0.1.0"}` (not gated).
-- `GET /health` → `{"status": "ok"}` (deliberately ungated, for container/load-balancer probes).
+- `GET /api/status` → `{"status": "running", "version": "0.1.0"}` (gated when `dashboard.auth_token` is set — deny by default).
+- `GET /health` → `{"status": "ok"}` (always public, for container/load-balancer probes — use this, not `/api/status`, for uptime monitors).
 
 To expose WebChat on your network, set `channels.webchat.host: 0.0.0.0` — `dashboard.auth_token` is then **required**: AETHON refuses to start without it (see [Security](#security)).
 

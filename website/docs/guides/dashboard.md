@@ -27,12 +27,14 @@ enabled** and `dashboard.enabled` is true. It also surfaces a **Features** panel
 
 ## Authentication (`dashboard.auth_token`)
 
-Empty = no auth (fine for the default localhost bind). When set, an HTTP middleware
-gates `/dashboard` and the protected `/api/*` prefixes (`/api/sessions`, `/api/memory`,
-`/api/config`, `/api/scheduler`, `/api/telemetry`, `/api/sops`, `/api/agents`) and
-`/ws/dashboard`. Note `/api/status` and `/health` stay open. The token is accepted
-(in precedence order) via the `aethon_dash` cookie, an `Authorization: Bearer <token>`
-header, or a `?token=<token>` query param.
+Empty = no auth (fine for the default localhost bind; a non-loopback bind requires it).
+When set, a **deny-by-default** middleware gates **every** route on the shared app —
+all `/api/*` (including `/api/status`), `/dashboard`, the FastAPI docs, and unknown
+paths (401, no route disclosure). Public exceptions: `/`, `/health`, `/dashboard/static/*`,
+and the self-authenticating `/webhook/*`. Both WebSockets (`/ws/chat`, `/ws/dashboard`)
+check the Origin header and the token before accepting the upgrade (close `1008` otherwise).
+The token is accepted (in precedence order) via the `aethon_dash` cookie, an
+`Authorization: Bearer <token>` header, or a `?token=<token>` query param.
 
 The usual flow when a token is set:
 

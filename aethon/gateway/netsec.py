@@ -76,6 +76,19 @@ def install_auth_gate(app, auth_token: str) -> None:
         return response
 
 
+def _strip_default_port(scheme: str, netloc: str) -> str:
+    """Drop a redundant default port so ``example.com`` == ``example.com:443``.
+
+    Browsers omit the default port from Origin (443 for https/wss, 80 for
+    http/ws); some reverse proxies preserve it in the forwarded Host header.
+    Normalizing both sides keeps the same-host comparison correct.
+    """
+    default = {"https": ":443", "wss": ":443", "http": ":80", "ws": ":80"}.get(scheme)
+    if default and netloc.endswith(default):
+        return netloc[: -len(default)]
+    return netloc
+
+
 def origin_allowed(origin: str | None, host_header: str, allowed_origins: list[str]) -> bool:
     """Validate a WebSocket upgrade's Origin header (S2 — anti drive-by).
 
@@ -83,8 +96,9 @@ def origin_allowed(origin: str | None, host_header: str, allowed_origins: list[s
     127.0.0.1, so even a loopback bind needs this check. Rules:
     - No Origin header (curl, Python clients): pass — the token is their gate.
     - Origin on the configured allowlist: pass.
-    - Otherwise the Origin's host:port must equal the request's own Host header
-      (covers direct use and TLS proxies, where both omit the default port).
+    - Otherwise the Origin's host:port must equal the request's own Host header,
+      with default ports normalized away (covers direct use and TLS proxies,
+      whether or not they preserve the default port in Host).
     - ``Origin: null`` (sandboxed iframe, file://) has no netloc -> rejected.
     """
     if not origin:
@@ -92,8 +106,15 @@ def origin_allowed(origin: str | None, host_header: str, allowed_origins: list[s
     normalized = {o.strip().rstrip("/").lower() for o in allowed_origins}
     if origin.strip().rstrip("/").lower() in normalized:
         return True
-    netloc = urlsplit(origin).netloc.lower()
-    return bool(netloc) and netloc == (host_header or "").strip().lower()
+    parsed = urlsplit(origin)
+    netloc = _strip_default_port(parsed.scheme.lower(), parsed.netloc.lower())
+    if not netloc:
+        return False
+    host = (host_header or "").strip().lower()
+    # The Host header carries no scheme; normalize it for both default ports so
+    # a proxy that keeps :443 (https) or :80 (http) still matches.
+    host_candidates = {host, _strip_default_port("https", host), _strip_default_port("http", host)}
+    return netloc in host_candidates
 
 
 def allowlist_gaps(config) -> list[str]:

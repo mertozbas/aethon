@@ -37,22 +37,32 @@ provider.
 - **Loopback by default.** The WebChat/dashboard server binds to
   `127.0.0.1` (`channels.webchat.host`, default `127.0.0.1`; default port
   `18790`), so it is reachable only from the local machine.
-- **Exposing on a network is opt-in.** To listen on other interfaces (for
+- **Exposing on a network is fail-closed.** To listen on other interfaces (for
   example `0.0.0.0`, as in the Docker image), you must change the bind host
-  explicitly. **Before exposing the dashboard or WebChat beyond loopback, set
-  `dashboard.auth_token`.**
-- **Dashboard authentication.** `dashboard.auth_token` is empty by default
-  (no auth, which is appropriate for the loopback bind). When set, an HTTP
-  middleware gates the `/dashboard` page and all protected
-  `/api/*` endpoints (`/api/sessions`, `/api/memory`, `/api/config`,
-  `/api/scheduler`, `/api/telemetry`, `/api/sops`, `/api/agents`) as well as
-  the `/ws/dashboard` WebSocket. The token may be supplied via the
+  explicitly — and a non-loopback bind **refuses to start** without
+  `dashboard.auth_token` (override only behind your own authenticating proxy
+  with `--insecure-bind`).
+- **Shared-token authentication (deny by default).** `dashboard.auth_token` is
+  empty by default (no auth, appropriate for the loopback bind). When set, a
+  deny-by-default HTTP middleware gates **every** route on the shared app —
+  all `/api/*` endpoints (including `/api/status`), `/dashboard`, the FastAPI
+  docs, and unknown paths (401, no route disclosure). The enumerated public
+  exceptions are `/` (the chat page; its WebSocket is gated separately),
+  `/health` (container/LB probes), `/dashboard/static/*` (SPA assets), and
+  `/webhook/*` (self-authenticating via HMAC). Both WebSockets (`/ws/chat`,
+  `/ws/dashboard`) validate the Origin header and the token before accepting
+  the upgrade (close `1008` otherwise). The token may be supplied via the
   `aethon_dash` cookie, an `Authorization: Bearer <token>` header, or a
-  `?token=<token>` query parameter; a mismatch returns `401`. The liveness
-  probes `/health` and `/api/status` are intentionally left ungated.
-- **Webhook verification.** When `webhook.secret` is set, incoming webhook
-  requests must carry a valid `X-Aethon-Signature` HMAC-SHA256 of the raw body;
-  an invalid signature is rejected with `403`.
+  `?token=<token>` query parameter. Health monitors should probe `/health`
+  (genuinely public), not `/api/status` (now gated).
+- **Webhook verification (fail closed).** When `webhook.secret` is set, incoming
+  webhook requests must carry a valid `X-Aethon-Signature` HMAC-SHA256 of the
+  raw body; an invalid signature is rejected with `403`. With an empty secret
+  on a non-loopback bind the `/webhook/*` routes are not registered at all.
+- **Network-channel sender allowlists (deny by default).** For the messaging
+  bots (`telegram`/`discord`/`slack`/`whatsapp`), an empty
+  `security.allowed_senders.<channel>` rejects every sender; add the allowed
+  sender ids to use the bot.
 
 ### Secrets
 
