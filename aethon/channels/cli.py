@@ -11,7 +11,12 @@ from prompt_toolkit.history import FileHistory
 from rich.console import Console
 from rich.markdown import Markdown
 
-from aethon.channels.base import ChannelAdapter, InboundMessage, OutboundMessage
+from aethon.channels.base import (
+    ApprovalRequest,
+    ChannelAdapter,
+    InboundMessage,
+    OutboundMessage,
+)
 
 
 class CLIAdapter(ChannelAdapter):
@@ -78,3 +83,24 @@ class CLIAdapter(ChannelAdapter):
     async def send(self, message: OutboundMessage) -> None:
         """Display message in terminal."""
         self.console.print(Markdown(message.text))
+
+    async def ask_approval(self, request: ApprovalRequest) -> bool:
+        """Inline y/n approval on the terminal (Phase 9A / S6).
+
+        Runs the blocking read on an executor thread so the gateway loop stays
+        free. The turn owns the terminal at this point (the main input prompt
+        has already returned the user's message), so a direct read is safe.
+        """
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self._blocking_approval, request)
+
+    def _blocking_approval(self, request: ApprovalRequest) -> bool:
+        self.console.print()
+        self.console.print(f"[yellow]Onay gerekiyor:[/] {request.message}")
+        if request.parameters:
+            self.console.print(f"  [dim]{request.tool}: {request.parameters}[/]")
+        try:
+            answer = input("  Onayla? [e/h] ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            return False
+        return answer in ("e", "evet", "y", "yes")
