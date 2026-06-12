@@ -7,12 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Phase 10 — The Core Loop (C1-C4 stitches; C5 Tiny organ; E2/E4 token economy)
+### Phase 10 — The Core Loop (C1-C4 stitches; C5/C6 Tiny organs; E2/E4 token economy)
 
 The autonomous core loop's four stitches: a clear unit of work is recognized,
 opened as a planned dependency-ordered project, worked to completion by a bounded
 executor, and delivered with proof. Plus the token-economy tier that makes
-long-horizon work affordable, and the first Tiny-AI organ.
+long-horizon work affordable, and the Tiny-AI organs.
+
+#### Added — C6 capability diet
+- **Don't carry every tool's schema every turn.** A few tools have huge schemas
+  (use_mac is enormous); the diet keeps an always-on core and pulls in the heavy,
+  domain-specific tools (use_mac, use_computer, use_github, apple_notes, scraper,
+  jsonrpc) only when the session looks like it needs them — by keyword match on
+  the message that builds the agent (cheap, no embedding call). Decided PER
+  SESSION, not per turn: in the provider APIs the tool list is a separate cached
+  array, so changing it every turn would invalidate the prompt/tool cache every
+  turn and defeat E1 — the tool set is chosen once and stays stable for the
+  agent's lifetime (an eviction + rebuild re-evaluates). Fail-safe (an empty hint
+  prunes nothing; only the discoverable set can ever be dropped) and off by
+  default (`core_loop.capability_diet`).
 
 #### Added — C5 dynamic specialist creation
 - **Raise a soldier on demand.** A new `manage_specialists` tool lets the agent
