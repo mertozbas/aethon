@@ -42,6 +42,19 @@ def test_runtime_creation(runtime_config):
     assert runtime.agents == {}
 
 
+def test_planner_wiring_failure_does_not_null_ledger(runtime_config, monkeypatch):
+    """C2 review fix: a failure wiring the planner→ledger pipeline must degrade
+    only that pipeline, never the already-active TaskLedger."""
+    import aethon.tools.delegate as delegate
+
+    def boom(*a, **k):
+        raise RuntimeError("wiring exploded")
+
+    monkeypatch.setattr(delegate, "set_plan_ledger", boom)
+    runtime = AethonRuntime(runtime_config)
+    assert runtime._task_ledger is not None  # ledger survived the wiring failure
+
+
 def test_get_or_create_agent(runtime_config):
     """Agent is created for a session."""
     runtime = AethonRuntime(runtime_config)

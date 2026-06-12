@@ -197,10 +197,11 @@ class CoreLoopConfig(BaseModel):
     """Autonomous core loop (Phase 10).
 
     Currently holds the plan→ledger pipeline knob (C2); intake/pulse/iteration
-    caps (C1/C3/C4) attach here as those stitches land. ``plan_approval`` gates
-    whether the executor waits for the user to approve a freshly-planned project
-    before working it — the plan is always written to the ledger (visible diff),
-    approval only gates *execution* (C3).
+    caps (C1/C3/C4) attach here as those stitches land. ``plan_approval`` is, as
+    of C2, RECORDED and surfaced in the plan summary only — there is no executor
+    yet to enforce it. Once the C3 executor lands it will gate whether execution
+    waits for the user to approve a freshly-planned project; the plan itself is
+    always written to the ledger (a visible diff) regardless.
     """
 
     plan_approval: bool = False

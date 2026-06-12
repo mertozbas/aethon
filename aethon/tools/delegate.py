@@ -100,7 +100,12 @@ def ask_planner(planning_task: str) -> str:
         try:
             from aethon.agent.planning import PlanSchema, persist_plan
 
-            plan = planner.structured_output(PlanSchema, planning_task)
+            # Non-deprecated structured-output path: force the planner's reply
+            # into PlanSchema via the agent invocation, then read the validated
+            # model off the result. A provider/model that can't force structured
+            # output raises → caught below → free-text fallback.
+            outcome = planner(planning_task, structured_output_model=PlanSchema)
+            plan = getattr(outcome, "structured_output", None)
             if plan and plan.tasks:
                 result = persist_plan(
                     _plan_ledger, plan, plan_approval=_plan_approval

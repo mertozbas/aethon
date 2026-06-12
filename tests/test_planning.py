@@ -105,15 +105,21 @@ def test_persist_plan_approval_note_in_summary(ledger):
 # --- ask_planner wiring + fallback ---
 
 
+class _FakeResult:
+    def __init__(self, plan):
+        self.structured_output = plan
+
+
 class _FakePlanner:
     def __init__(self, plan, text):
         self._plan = plan
         self._text = text
 
-    def structured_output(self, model, prompt):
-        return self._plan
-
-    def __call__(self, prompt):
+    def __call__(self, prompt, structured_output_model=None):
+        # Non-deprecated path: a structured_output_model request returns an
+        # AgentResult-like with .structured_output; a plain call returns text.
+        if structured_output_model is not None:
+            return _FakeResult(self._plan)
         return self._text
 
 
