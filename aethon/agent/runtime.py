@@ -206,6 +206,14 @@ class AethonRuntime:
                 str(Path(config.paths.workspace).expanduser())
             )
             logger.info("TaskLedger: active")
+            # Phase 10 C2: let ask_planner persist its structured plan into the
+            # ledger as a project tree (multi-agent must be on for ask_planner).
+            if config.multi_agent.enabled:
+                from aethon.tools.delegate import set_plan_ledger
+
+                set_plan_ledger(
+                    self._task_ledger, config.core_loop.plan_approval
+                )
         except Exception as e:
             logger.warning(f"TaskLedger startup error: {e}")
             self._task_ledger = None

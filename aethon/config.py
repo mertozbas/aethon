@@ -193,6 +193,19 @@ class ApprovalConfig(BaseModel):
     timeout_seconds: float = 120.0
 
 
+class CoreLoopConfig(BaseModel):
+    """Autonomous core loop (Phase 10).
+
+    Currently holds the plan→ledger pipeline knob (C2); intake/pulse/iteration
+    caps (C1/C3/C4) attach here as those stitches land. ``plan_approval`` gates
+    whether the executor waits for the user to approve a freshly-planned project
+    before working it — the plan is always written to the ledger (visible diff),
+    approval only gates *execution* (C3).
+    """
+
+    plan_approval: bool = False
+
+
 class TelemetryConfig(BaseModel):
     """Telemetry hook configuration."""
 
@@ -523,6 +536,7 @@ class AethonConfig(BaseModel):
     sops: SOPConfig = SOPConfig()
     logging: LoggingConfig = LoggingConfig()
     approval: ApprovalConfig = ApprovalConfig()
+    core_loop: CoreLoopConfig = CoreLoopConfig()
     telemetry: TelemetryConfig = TelemetryConfig()
     budget: BudgetConfig = BudgetConfig()
     memory_guard: MemoryGuardConfig = MemoryGuardConfig()

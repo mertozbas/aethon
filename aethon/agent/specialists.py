@@ -52,9 +52,12 @@ SPECIALIST_CONFIGS = {
         "name": "Planner",
         "system_prompt": (
             "You are a project planner.\n"
-            "Your responsibilities: breaking complex tasks into steps, prioritization.\n"
-            "Make each step clear, concrete, and actionable.\n"
-            "Call out dependencies and risks."
+            "Break the request into a project with ordered, concrete, actionable "
+            "steps. For each step give a clear title, an acceptance_criteria "
+            "(how to verify it is done), and a priority "
+            "(critical|high|medium|low). Express ordering with depends_on as the "
+            "1-based positions of earlier steps it needs (e.g. [\"1\",\"2\"]).\n"
+            "Call out dependencies and risks; prefer the smallest correct plan."
         ),
         "tools": [file_read, file_write, think],
     },
