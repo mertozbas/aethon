@@ -42,6 +42,86 @@ def test_runtime_creation(runtime_config):
     assert runtime.agents == {}
 
 
+# --- Phase 10 C1: intake (chat vs work) ---
+
+
+@pytest.fixture(autouse=True)
+def _reset_delegate_globals():
+    """Building a runtime wires the delegate module globals; reset them after
+    each test so intake/planner state can't leak across tests."""
+    yield
+    import aethon.tools.delegate as delegate
+    delegate.set_specialist_factory(None)
+    delegate.set_plan_ledger(None)
+
+
+class _PlanResult:
+    def __init__(self, plan):
+        self.structured_output = plan
+
+
+class _StructPlanner:
+    """A planner stub that returns a fixed structured plan."""
+    def __init__(self, plan):
+        self._plan = plan
+
+    def __call__(self, prompt, structured_output_model=None):
+        return _PlanResult(self._plan)
+
+
+def _intake_msg(text):
+    # NOTE: a different _msg() helper already lives lower in this file — use a
+    # distinct name so it isn't shadowed at module load.
+    return InboundMessage(channel="cli", sender_id="u", sender_name="u", text=text)
+
+
+def test_intake_disabled_is_normal_path(runtime_config):
+    """With intake off (default), even a clear work message stays a normal turn."""
+    runtime = AethonRuntime(runtime_config)
+    assert runtime._maybe_intake(
+        _intake_msg("Kullanıcı girişi olan bir blog API'si geliştir ve testleri yaz.")
+    ) is None
+
+
+def test_intake_chat_message_falls_through(runtime_config):
+    runtime = AethonRuntime(runtime_config)
+    runtime.config.core_loop.intake_enabled = True
+    assert runtime._maybe_intake(_intake_msg("merhaba, bugün nasılsın?")) is None
+
+
+def test_intake_work_message_opens_project(runtime_config):
+    from aethon.agent.planning import PlanSchema, PlanTask
+
+    runtime = AethonRuntime(runtime_config)
+    runtime.config.core_loop.intake_enabled = True
+    plan = PlanSchema(project_title="Blog API", tasks=[PlanTask(title="Şema tasarla")])
+    runtime.specialist_factory._cache["planner"] = _StructPlanner(plan)
+
+    reply = runtime._maybe_intake(
+        _intake_msg("Kullanıcı girişi olan bir blog API'si geliştir ve testleri yaz.")
+    )
+    assert reply is not None
+    assert "iş olarak" in reply           # acknowledgement
+    assert "Blog API" in reply            # the plan summary
+    # A project actually landed in the ledger.
+    assert any(t["title"] == "Blog API" for t in runtime._task_ledger.list())
+
+
+def test_intake_work_but_no_structured_plan_falls_through(runtime_config):
+    """Classified as work but the planner produced no structured tasks → don't
+    claim a project was opened; fall through to the normal turn."""
+    from aethon.agent.planning import PlanSchema
+
+    runtime = AethonRuntime(runtime_config)
+    runtime.config.core_loop.intake_enabled = True
+    runtime.specialist_factory._cache["planner"] = _StructPlanner(PlanSchema(tasks=[]))
+
+    assert runtime._maybe_intake(
+        _intake_msg("Bir blog API'si geliştir ve testleri de yaz lütfen arkadaşım.")
+    ) is None
+    assert runtime._task_ledger.list() == []  # nothing opened
+
+
 def test_planner_wiring_failure_does_not_null_ledger(runtime_config, monkeypatch):
     """C2 review fix: a failure wiring the planner→ledger pipeline must degrade
     only that pipeline, never the already-active TaskLedger."""

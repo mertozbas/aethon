@@ -79,6 +79,35 @@ def ask_analyst(data_task: str) -> str:
     return _extract_text(result)
 
 
+def plan_into_ledger(planning_task: str) -> dict | None:
+    """Run the planner for a task and persist a STRUCTURED plan into the ledger.
+
+    Returns the ``persist_plan`` result (``{project_id, task_ids, summary}``) or
+    ``None`` when the pipeline isn't wired or the planner produced no structured
+    tasks (a provider that can't force structured output). Shared by the
+    ask_planner tool and the C1 intake branch so both open a project the same way
+    (no double-creation — persist_plan owns the parent task).
+    """
+    if not _specialist_factory or _plan_ledger is None:
+        return None
+    try:
+        from aethon.agent.planning import PlanSchema, persist_plan
+
+        planner = _specialist_factory.get("planner")
+        # Non-deprecated structured-output path: force the planner's reply into
+        # PlanSchema via the agent invocation, then read the validated model off
+        # the result.
+        outcome = planner(planning_task, structured_output_model=PlanSchema)
+        plan = getattr(outcome, "structured_output", None)
+        if plan and plan.tasks:
+            return persist_plan(_plan_ledger, plan, plan_approval=_plan_approval)
+    except Exception as e:
+        logger.warning(
+            f"plan_into_ledger failed ({type(e).__name__}: {e})."
+        )
+    return None
+
+
 @tool
 def ask_planner(planning_task: str) -> str:
     """Delegate a planning task to the planner specialist.
@@ -92,34 +121,12 @@ def ask_planner(planning_task: str) -> str:
     """
     if not _specialist_factory:
         return "Error: Specialist factory not started."
-    planner = _specialist_factory.get("planner")
 
     # Phase 10 C2: structured plan → ledger, with a free-text fallback so a
     # provider that can't force structured output still returns a usable plan.
-    if _plan_ledger is not None:
-        try:
-            from aethon.agent.planning import PlanSchema, persist_plan
-
-            # Non-deprecated structured-output path: force the planner's reply
-            # into PlanSchema via the agent invocation, then read the validated
-            # model off the result. A provider/model that can't force structured
-            # output raises → caught below → free-text fallback.
-            outcome = planner(planning_task, structured_output_model=PlanSchema)
-            plan = getattr(outcome, "structured_output", None)
-            if plan and plan.tasks:
-                result = persist_plan(
-                    _plan_ledger, plan, plan_approval=_plan_approval
-                )
-                if result:
-                    return result["summary"]
-            logger.info(
-                "ask_planner: no structured tasks returned; using free-text plan."
-            )
-        except Exception as e:
-            logger.warning(
-                f"ask_planner structured output failed "
-                f"({type(e).__name__}: {e}); falling back to free-text."
-            )
-
-    result = planner(planning_task)
-    return _extract_text(result)
+    result = plan_into_ledger(planning_task)
+    if result:
+        return result["summary"]
+    logger.info("ask_planner: no structured plan persisted; using free-text plan.")
+    planner = _specialist_factory.get("planner")
+    return _extract_text(planner(planning_task))

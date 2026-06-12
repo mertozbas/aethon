@@ -928,6 +928,14 @@ class AethonRuntime:
                     # would leak into the next unrelated turn.
                     return self._apply_completion_gate(agent, session_id, sop_reply)
 
+            # C1 intake (advisory, opt-in): a clear unit of work becomes a
+            # planned project instead of a normal chat turn. Returns None (and
+            # leaves the normal path untouched) for chat, when disabled, or if a
+            # project can't actually be opened.
+            intake_reply = self._maybe_intake(message)
+            if intake_reply is not None:
+                return intake_reply
+
             # Normal message processing
             agent = self.get_or_create_agent(session_id)
             self._discard_stale_gate_note(session_id)
@@ -1094,6 +1102,42 @@ class AethonRuntime:
                 )
         except Exception as e:
             logger.debug(f"Usage capture skipped: {e}")
+
+    def _maybe_intake(self, message: InboundMessage) -> str | None:
+        """C1 intake: classify the message and, on a clear unit of work, open a
+        planned project and return an acknowledgement + plan summary. Returns
+        ``None`` to leave the normal turn path untouched — when intake is off,
+        the message reads as chat, or a project can't be opened (no ledger /
+        planner, or the planner produced nothing structured).
+
+        Deliberately fail-safe: anything short of a confidently-opened project
+        falls through to ordinary processing, so chat is never hijacked.
+        """
+        cfg = getattr(self.config, "core_loop", None)
+        if cfg is None or not getattr(cfg, "intake_enabled", False):
+            return None
+        if self._task_ledger is None or getattr(self, "specialist_factory", None) is None:
+            return None
+        from aethon.agent.intake import classify_intake
+
+        verdict = classify_intake(
+            message.text,
+            work_phrases=getattr(cfg, "intake_work_phrases", []),
+            chat_phrases=getattr(cfg, "intake_chat_phrases", []),
+        )
+        if verdict != "work":
+            return None
+
+        from aethon.tools.delegate import plan_into_ledger
+
+        result = plan_into_ledger(message.text)
+        if not result:
+            # Classified as work but no project could be opened — don't claim to
+            # have started one; let the normal turn answer instead.
+            return None
+        logger.info(f"Intake opened project {result.get('project_id')} from a work message.")
+        ack = "Anladım — bunu bir iş olarak ele alıp planını çıkardım:"
+        return f"{ack}\n\n{result['summary']}"
 
     def _discard_stale_gate_note(self, session_id: str) -> None:
         """Drop a gate note left over from an earlier turn.
