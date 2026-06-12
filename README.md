@@ -539,6 +539,7 @@ channels:
 | `require_approval` | list[str] | `["shell", "file_write", "send_message"]` | Reserved; not currently enforced. Approval gating is configured in the `approval` section. |
 | `blocked_commands` | list[str] | `["rm -rf /", "sudo", "mkfs"]` | Shell command substrings that are blocked. |
 | `allowed_senders` | dict[str, list[str]] | `{}` | Per-channel allowlist of sender identifiers. **Default-deny on network channels:** an empty list for `telegram`/`discord`/`slack`/`whatsapp` rejects every sender (the reply and a startup ERROR name this key). `cli`/`webchat` stay open (WebChat is token-gated instead). |
+| `mark_untrusted_content` | bool | `true` | Wrap results from external-content tools (`scraper`, `http_request`, `jsonrpc`, `use_github`) and webhook payloads in `[UNTRUSTED EXTERNAL CONTENT]` markers so the model treats them as data, not instructions. Honest marking, **not** an injection detector. |
 
 #### `session`
 

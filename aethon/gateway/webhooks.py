@@ -59,6 +59,19 @@ def setup_webhooks(app, router, secret: str = "", host: str = "127.0.0.1") -> bo
         ).hexdigest()
         return hmac.compare_digest(signature, expected)
 
+    def _mark(text: str) -> str:
+        """Wrap an external webhook payload as untrusted content (S9), gated by
+        config. Preserves a leading /sop command — only the payload is wrapped."""
+        if not text:
+            return text
+        if not getattr(
+            getattr(router, "config", None), "security", None
+        ) or not router.config.security.mark_untrusted_content:
+            return text
+        from aethon.agent.hooks.untrusted_content import wrap_untrusted
+
+        return wrap_untrusted(text)
+
     # NOTE: /webhook/trigger MUST be defined BEFORE /webhook/{channel}
     # so FastAPI matches the specific route first.
 
@@ -70,7 +83,9 @@ def setup_webhooks(app, router, secret: str = "", host: str = "127.0.0.1") -> bo
             raise HTTPException(status_code=403, detail="Invalid signature")
 
         body = json.loads(body_bytes)
-        text = body.get("text", "")
+        # Mark the payload as untrusted; a /sop command prefix stays unwrapped so
+        # SOP detection still works (only the external payload is data).
+        text = _mark(body.get("text", ""))
         sop_name = body.get("sop_name", "")
 
         if sop_name:
@@ -120,7 +135,7 @@ def setup_webhooks(app, router, secret: str = "", host: str = "127.0.0.1") -> bo
             channel=f"webhook:{channel}",
             sender_id="webhook",
             sender_name="Webhook",
-            text=body.get("text", ""),
+            text=_mark(body.get("text", "")),
             raw=body,
         )
         response = await router.handle(inbound)

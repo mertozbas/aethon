@@ -610,6 +610,21 @@ class AethonRuntime:
                 # A failed safety gate must not vanish silently.
                 degraded_hooks.append("Approval")
                 logger.error(f"ApprovalHook startup error: {e}")
+        # Untrusted-content marking (S9) — wrap external tool results in
+        # [UNTRUSTED EXTERNAL CONTENT] markers. Registered just BEFORE the output
+        # guard so (AfterToolCallEvent fires in REVERSE order) it runs AFTER
+        # truncation — the markers wrap the final, capped text rather than being
+        # truncated away.
+        if getattr(self.config.security, "mark_untrusted_content", True):
+            try:
+                from aethon.agent.hooks.untrusted_content import (
+                    UntrustedContentHookProvider,
+                )
+
+                hooks.append(UntrustedContentHookProvider())
+            except Exception as e:
+                degraded_hooks.append("UntrustedContent")
+                logger.warning(f"UntrustedContent startup error: {e}")
         # Tool-output guard — cap oversized tool results before they reach the
         # model. Registered LAST on purpose: AfterToolCallEvent callbacks run
         # in REVERSE registration order, so this truncates the raw output

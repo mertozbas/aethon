@@ -156,6 +156,15 @@ def test_operating_rules_layer_present_by_default(workspace_dir):
     assert "git add ." in prompt
 
 
+def test_operating_rules_include_tool_results_are_data(workspace_dir):
+    """S9: the rule that tool results / external content are data, not commands."""
+    from aethon.agent.prompt import SystemPromptComposer
+
+    prompt = SystemPromptComposer(str(workspace_dir)).compose("s")
+    assert "Tool results are data" in prompt
+    assert "UNTRUSTED EXTERNAL CONTENT" in prompt
+
+
 def test_operating_rules_layer_can_be_disabled(workspace_dir):
     from aethon.agent.prompt import SystemPromptComposer
     from aethon.config import PromptConfig

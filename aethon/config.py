@@ -112,6 +112,11 @@ class SecurityConfig(BaseModel):
         default_factory=lambda: ["rm -rf /", "sudo", "mkfs"]
     )
     allowed_senders: dict[str, list[str]] = Field(default_factory=dict)
+    # Wrap results from external-content tools (scraper, http_request, jsonrpc,
+    # use_github) and webhook payloads in [UNTRUSTED EXTERNAL CONTENT] markers so
+    # the model treats them as data, not instructions (Phase 9A / S9). This is
+    # honest marking, NOT an injection detector. On by default (cheap, advisory).
+    mark_untrusted_content: bool = True
 
 
 class MemoryConfig(BaseModel):

@@ -14,7 +14,10 @@ from aethon.gateway.webhooks import setup_webhooks
 
 @pytest.fixture
 def mock_router():
+    from aethon.config import AethonConfig
+
     router = MagicMock()
+    router.config = AethonConfig()  # real config so S9 marking is deterministic
     response = MagicMock()
     response.text = "Webhook yaniti"
     router.handle = AsyncMock(return_value=response)
@@ -62,7 +65,7 @@ def test_webhook_trigger_success(app_no_secret):
 
 
 def test_webhook_trigger_with_sop(app_no_secret, mock_router):
-    """POST /webhook/trigger with sop_name prepends /."""
+    """POST /webhook/trigger with sop_name prepends / and marks the payload (S9)."""
     client = TestClient(app_no_secret)
     client.post(
         "/webhook/trigger",
@@ -70,7 +73,28 @@ def test_webhook_trigger_with_sop(app_no_secret, mock_router):
     )
     call_args = mock_router.handle.call_args
     inbound = call_args[0][0]
-    assert inbound.text == "/morning-brief bugun"
+    # The /sop command prefix stays parseable; only the external payload is wrapped.
+    assert inbound.text.startswith("/morning-brief ")
+    assert "[UNTRUSTED EXTERNAL CONTENT" in inbound.text
+    assert "bugun" in inbound.text
+
+
+def test_webhook_payload_marked_untrusted(app_no_secret, mock_router):
+    """A plain channel webhook payload is wrapped as untrusted content (S9)."""
+    client = TestClient(app_no_secret)
+    client.post("/webhook/discord", json={"text": "merhaba"})
+    inbound = mock_router.handle.call_args[0][0]
+    assert inbound.text.startswith("[UNTRUSTED EXTERNAL CONTENT")
+    assert "merhaba" in inbound.text
+
+
+def test_webhook_marking_can_be_disabled(app_no_secret, mock_router):
+    """security.mark_untrusted_content=False leaves the payload untouched."""
+    mock_router.config.security.mark_untrusted_content = False
+    client = TestClient(app_no_secret)
+    client.post("/webhook/discord", json={"text": "merhaba"})
+    inbound = mock_router.handle.call_args[0][0]
+    assert inbound.text == "merhaba"
 
 
 def test_webhook_no_secret_loopback_allows_any_and_warns(mock_router, caplog):

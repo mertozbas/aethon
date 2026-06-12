@@ -14,6 +14,14 @@ deny by default on every network surface, fail closed at startup. Design doc:
 `docs/development/PHASE-9A-SECURITY.md`.
 
 ### Added
+- **Untrusted-content marking (S9)** — results from external-content tools
+  (`scraper`, `http_request`, `jsonrpc`, `use_github`) and webhook payloads are
+  wrapped in `[UNTRUSTED EXTERNAL CONTENT]` delimiters via an advisory
+  `AfterToolCallEvent` hook (registered to run after truncation), and the
+  Operating Rules layer gains a rule that tool results are data, never
+  instructions. Honest marking that reduces instruction-following on injected
+  content — explicitly **not** an injection detector. Gate:
+  `security.mark_untrusted_content` (on by default).
 - **Secrets hygiene (S8)** — `AethonConfig.write` now `chmod 0600`s the config
   file and `0700`s `~/.aethon` (the documented "0600 credential isolation" was
   never implemented). `aethon start` re-restricts `~/.aethon`; `aethon doctor`
