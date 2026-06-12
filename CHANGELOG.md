@@ -13,6 +13,13 @@ Makes AETHON feel alive and stop failing silently. Design doc:
 `docs/development/PHASE-9B-ROBUSTNESS.md`.
 
 ### Fixed
+- **Adapter supervision (H3)** — one channel crashing used to tear down the
+  whole gateway, and the cause was never logged (`asyncio.wait` returned and
+  `shutdown()` ran unconditionally, the `done` set ignored). Each adapter now
+  runs under a supervisor: a crash is logged with traceback and restarted with
+  exponential backoff (capped), and after the retry budget the channel is
+  degraded — the rest of AETHON keeps running. The gateway shuts down only on a
+  signal, the interactive CLI exiting, or every channel ending.
 - **Per-session turn serialization (H1)** — two messages to the same session
   could race the same cached Agent across executor threads and corrupt its
   session file. `runtime.process` now holds a per-`session_id` `asyncio.Lock`

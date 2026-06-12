@@ -114,6 +114,73 @@ async def test_gateway_logs_error_for_enabled_bot_with_empty_allowlist(
     )
 
 
+@pytest.mark.asyncio
+async def test_supervisor_restarts_then_degrades_one_channel():
+    """A crashing channel is retried with backoff, then degraded — the gateway
+    keeps running (H3)."""
+    gateway = AethonGateway(_config())
+    gateway._shutdown_event = __import__("asyncio").Event()
+    gateway._degraded_channels = []
+    gateway._MAX_CHANNEL_RETRIES = 2  # speed up the test
+
+    calls = {"n": 0}
+
+    class _CrashingAdapter:
+        async def start(self):
+            calls["n"] += 1
+            raise RuntimeError("boom")
+
+    # Patch sleep so backoff is instant.
+    import aethon.gateway.server as srv
+
+    async def _instant_sleep(_):
+        return None
+
+    orig_sleep = srv.asyncio.sleep
+    srv.asyncio.sleep = _instant_sleep
+    try:
+        await gateway._supervise("telegram", _CrashingAdapter())
+    finally:
+        srv.asyncio.sleep = orig_sleep
+
+    assert "telegram" in gateway._degraded_channels
+    assert calls["n"] == 3  # initial + 2 retries, then degrade
+
+
+@pytest.mark.asyncio
+async def test_supervisor_cli_clean_exit_triggers_shutdown():
+    """The interactive CLI returning cleanly brings the gateway down (H3)."""
+    import asyncio as _asyncio
+
+    gateway = AethonGateway(_config())
+    gateway._shutdown_event = _asyncio.Event()
+    gateway._degraded_channels = []
+
+    class _CleanCLI:
+        async def start(self):
+            return  # user typed 'exit'
+
+    await gateway._supervise("cli", _CleanCLI())
+    assert gateway._shutdown_event.is_set()
+
+
+@pytest.mark.asyncio
+async def test_supervisor_network_clean_exit_does_not_shutdown():
+    """A network bot returning does NOT bring the gateway down (only its channel ends)."""
+    import asyncio as _asyncio
+
+    gateway = AethonGateway(_config())
+    gateway._shutdown_event = _asyncio.Event()
+    gateway._degraded_channels = []
+
+    class _CleanBot:
+        async def start(self):
+            return
+
+    await gateway._supervise("telegram", _CleanBot())
+    assert not gateway._shutdown_event.is_set()
+
+
 def test_gateway_disabled_channels_no_adapter():
     """Disabled channels don't get adapters."""
     config = _config(

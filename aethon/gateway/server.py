@@ -63,12 +63,16 @@ class AethonGateway:
         set_gateway(self)
 
     async def start(self):
-        """Start all enabled channel adapters.
+        """Start all enabled channel adapters under supervision.
 
-        Registers SIGINT/SIGTERM handlers for graceful shutdown.
-        Waits until a signal arrives or any adapter exits (e.g. CLI 'exit').
+        Registers SIGINT/SIGTERM handlers for graceful shutdown. Each adapter
+        runs under a supervisor (H3): a crash is logged with traceback and
+        restarted with backoff, degrading only that channel on permanent failure
+        — one broken channel never tears down the gateway. Waits until a signal
+        arrives or the interactive CLI exits.
         """
-        coroutines = []
+        # Channels that permanently failed (surfaced like Phase 8 _degraded_hooks).
+        self._degraded_channels: list[str] = []
         self.loop = asyncio.get_running_loop()
 
         # Fail closed BEFORE any side effect (recorder, adapters, scheduler):
@@ -120,7 +124,6 @@ class AethonGateway:
 
         if self.config.channels.webchat.enabled:
             self.adapters["webchat"] = WebChatAdapter(self.config, self.router)
-            coroutines.append(self.adapters["webchat"].start())
             logger.info(
                 f"WebChat: http://{self.config.channels.webchat.host}:"
                 f"{self.config.channels.webchat.port}"
@@ -128,7 +131,6 @@ class AethonGateway:
 
         if self.config.channels.cli.enabled:
             self.adapters["cli"] = CLIAdapter(self.config, self.router)
-            coroutines.append(self.adapters["cli"].start())
             logger.info("CLI: active")
 
         # Telegram
@@ -139,7 +141,6 @@ class AethonGateway:
                 self.adapters["telegram"] = TelegramAdapter(
                     self.config, self.router
                 )
-                coroutines.append(self.adapters["telegram"].start())
                 logger.info("Telegram: active")
             except ImportError:
                 logger.warning(
@@ -156,7 +157,6 @@ class AethonGateway:
                 self.adapters["discord"] = DiscordAdapter(
                     self.config, self.router
                 )
-                coroutines.append(self.adapters["discord"].start())
                 logger.info("Discord: active")
             except ImportError:
                 logger.warning(
@@ -173,7 +173,6 @@ class AethonGateway:
                 self.adapters["slack"] = SlackAdapter(
                     self.config, self.router
                 )
-                coroutines.append(self.adapters["slack"].start())
                 logger.info("Slack: active")
             except ImportError:
                 logger.warning(
@@ -190,7 +189,6 @@ class AethonGateway:
                 self.adapters["whatsapp"] = WhatsAppAdapter(
                     self.config, self.router
                 )
-                coroutines.append(self.adapters["whatsapp"].start())
                 logger.info("WhatsApp: active (experimental)")
             except ImportError:
                 logger.warning(
@@ -261,7 +259,7 @@ class AethonGateway:
             except Exception as e:
                 logger.warning(f"Warm-up error: {e}")
 
-        if not coroutines:
+        if not self.adapters:
             raise RuntimeError("No channels are enabled!")
 
         # Register signal handlers within the running event loop
@@ -269,18 +267,64 @@ class AethonGateway:
         for sig in (signal.SIGINT, signal.SIGTERM):
             loop.add_signal_handler(sig, self._signal_handler)
 
-        # Launch all adapter coroutines as tasks
-        self._tasks = [asyncio.create_task(c) for c in coroutines]
-        shutdown_task = asyncio.create_task(self._shutdown_event.wait())
+        # Launch each adapter under a supervisor (H3) — a crash restarts that
+        # channel with backoff instead of tearing down the gateway.
+        self._tasks = [
+            asyncio.create_task(self._supervise(name, adapter))
+            for name, adapter in self.adapters.items()
+        ]
 
-        # Wait until shutdown signal OR any adapter exits (e.g. CLI 'exit')
-        done, _pending = await asyncio.wait(
-            self._tasks + [shutdown_task],
+        # Run until a shutdown signal (or the CLI exiting, which the supervisor
+        # turns into a shutdown) OR every channel has ended/degraded (nothing
+        # left to serve). A network bot looping forever keeps the gateway up.
+        shutdown_task = asyncio.create_task(self._shutdown_event.wait())
+        supervisors_done = asyncio.gather(*self._tasks)
+        await asyncio.wait(
+            {shutdown_task, supervisors_done},
             return_when=asyncio.FIRST_COMPLETED,
         )
-
-        # Graceful shutdown
         await self.shutdown()
+
+    # Adapter supervision (H3): retry budget + backoff ceiling.
+    _MAX_CHANNEL_RETRIES = 5
+    _BACKOFF_CEILING = 30.0
+
+    async def _supervise(self, name: str, adapter) -> None:
+        """Keep one channel alive: log crashes with traceback, restart with
+        exponential backoff, degrade the channel after the retry budget — never
+        the whole gateway."""
+        delay = 1.0
+        attempt = 0
+        while not self._shutdown_event.is_set():
+            try:
+                await adapter.start()
+                # Clean return. The interactive CLI returning means the user
+                # quit → bring the gateway down. A network bot looping forever
+                # shouldn't return; if it does, just end that channel.
+                if name == "cli":
+                    self._shutdown_event.set()
+                return
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                attempt += 1
+                logger.error(
+                    f"Channel '{name}' crashed (attempt {attempt}): "
+                    f"{type(e).__name__}: {e}",
+                    exc_info=True,
+                )
+                if attempt > self._MAX_CHANNEL_RETRIES:
+                    self._degraded_channels.append(name)
+                    logger.error(
+                        f"Channel '{name}' DEGRADED — gave up after "
+                        f"{attempt} attempts. The rest of AETHON keeps running."
+                    )
+                    return
+                try:
+                    await asyncio.sleep(delay)
+                except asyncio.CancelledError:
+                    raise
+                delay = min(delay * 2, self._BACKOFF_CEILING)
 
     def _signal_handler(self):
         """Called on SIGINT/SIGTERM — triggers graceful shutdown."""
