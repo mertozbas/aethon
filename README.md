@@ -580,8 +580,9 @@ channels:
 
 | Field | Type | Default | Meaning |
 |---|---|---|---|
-| `enabled` | bool | `false` | Enable the interrupt-based approval hook. |
-| `requires_approval` | list[str] | `["shell", "file_write"]` | Action types requiring approval via this hook. |
+| `enabled` | bool | `false` | Enable the interrupt-based approval hook. When on, the listed tools pause for a yes/no answer on the originating channel (CLI, WebChat, Telegram); a channel that can't answer fails closed (denies). |
+| `requires_approval` | list[str] | `["shell", "file_write", "manage_tools"]` | Action types requiring approval via this hook. |
+| `timeout_seconds` | float | `120.0` | Seconds to wait for an approval answer before denying. |
 
 #### `telemetry`
 
@@ -970,7 +971,7 @@ AETHON is **local-first** and ships safe defaults:
 - **Shared auth token (deny by default):** when `dashboard.auth_token` is set, **all** routes require the token — `/ws/chat`, `/ws/dashboard`, every `/api/*`, `/dashboard`, the FastAPI docs, and unknown paths. Public exceptions: `/`, `/health`, `/dashboard/static/*`, and the HMAC-authenticated `/webhook/*`. Token via `aethon_dash` cookie, `Authorization: Bearer`, or `?token=`.
 - **File-access sandbox:** by default, file tools may read/write anywhere under your home directory **except** a blocklist of system and credential paths (`/etc`, `/usr`, `/bin`, `~/.ssh`, `~/.gnupg`, `~/.aethon/credentials`, …). Set `security.workspace_only: true` to confine file tools strictly to `~/.aethon/workspace`.
 - **Blocked commands:** the security hook refuses shell commands containing any `security.blocked_commands` entry (default `rm -rf /`, `sudo`, `mkfs`, plus a built-in danger list).
-- **Approval gating:** an optional interrupt-based hook can require approval for the actions in `approval.requires_approval` (default `shell`, `file_write`) — it is **off by default** (`approval.enabled: false`). *(The `security.require_approval` field is reserved and not currently enforced.)*
+- **Approval gating (answerable):** an optional interrupt-based hook can require approval for the actions in `approval.requires_approval` (default `shell`, `file_write`, `manage_tools`) — it is **off by default** (`approval.enabled: false`). When enabled, each gated tool pauses the turn and asks for a yes/no answer on the originating channel: CLI (inline `[e/h]`), WebChat (an approval card with ✅/❌ over the socket), Telegram (an inline keyboard). A channel that can't answer **fails closed** (denies with a clear message) rather than wedging the session; no answer within `approval.timeout_seconds` also denies. *(The `security.require_approval` field is reserved and not currently enforced.)*
 - **Sender allowlists (default deny):** `security.allowed_senders.<channel>` restricts who may message each channel. On the network channels (`telegram`, `discord`, `slack`, `whatsapp`) an **empty allowlist rejects everyone** — enabling a bot requires listing its allowed sender ids; the rejection reply and a startup ERROR name the exact config key.
 - **Secret masking:** the dashboard `GET /api/config` dump masks sensitive keys (`api_key`, `token`, `bot_token`, `app_token`, `secret`, `password`) to `***`.
 - **Memory guard:** the memory guard hook blocks secrets from being written to long-term memory.

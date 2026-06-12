@@ -14,6 +14,16 @@ deny by default on every network surface, fail closed at startup. Design doc:
 `docs/development/PHASE-9A-SECURITY.md`.
 
 ### Added
+- **Answerable approval (S6)** — the interrupt-based approval hook is no longer
+  half-wired: a gated tool (`shell`/`file_write`/`manage_tools` by default) now
+  pauses the turn and asks for a yes/no answer on the originating channel — CLI
+  (inline `[e/h]`), WebChat (a ✅/❌ card over the socket), Telegram (an inline
+  keyboard, presser re-authorized against the allowlist). The decision is
+  enforced (deny cancels the tool — the missing half that made enabling it
+  wedge the session, finding F6). Channels that can't answer **fail closed**
+  (deny with a clear message), as does a timeout (`approval.timeout_seconds`,
+  default 120s). `approval.enabled` stays `false` by default — it is now safe
+  to turn on.
 - **`/ws/chat` authentication (S1)** — the chat WebSocket requires the shared
   `dashboard.auth_token` when one is set, rejected before `accept()` (close
   1008). Token sources: `?token=`, `Authorization: Bearer`, `aethon_dash`
