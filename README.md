@@ -538,7 +538,7 @@ channels:
 | `workspace_only` | bool | `false` | When true, confine file tools to `~/.aethon/workspace`; when false (default), allow anywhere under `$HOME` except blocked system/credential paths. |
 | `require_approval` | list[str] | `["shell", "file_write", "send_message"]` | Reserved; not currently enforced. Approval gating is configured in the `approval` section. |
 | `blocked_commands` | list[str] | `["rm -rf /", "sudo", "mkfs"]` | Shell command substrings that are blocked. |
-| `allowed_senders` | dict[str, list[str]] | `{}` | Per-channel allowlist of sender identifiers. |
+| `allowed_senders` | dict[str, list[str]] | `{}` | Per-channel allowlist of sender identifiers. **Default-deny on network channels:** an empty list for `telegram`/`discord`/`slack`/`whatsapp` rejects every sender (the reply and a startup ERROR name this key). `cli`/`webchat` stay open (WebChat is token-gated instead). |
 
 #### `session`
 
@@ -971,7 +971,7 @@ AETHON is **local-first** and ships safe defaults:
 - **File-access sandbox:** by default, file tools may read/write anywhere under your home directory **except** a blocklist of system and credential paths (`/etc`, `/usr`, `/bin`, `~/.ssh`, `~/.gnupg`, `~/.aethon/credentials`, …). Set `security.workspace_only: true` to confine file tools strictly to `~/.aethon/workspace`.
 - **Blocked commands:** the security hook refuses shell commands containing any `security.blocked_commands` entry (default `rm -rf /`, `sudo`, `mkfs`, plus a built-in danger list).
 - **Approval gating:** an optional interrupt-based hook can require approval for the actions in `approval.requires_approval` (default `shell`, `file_write`) — it is **off by default** (`approval.enabled: false`). *(The `security.require_approval` field is reserved and not currently enforced.)*
-- **Sender allowlists:** `security.allowed_senders` can restrict who may message each channel.
+- **Sender allowlists (default deny):** `security.allowed_senders.<channel>` restricts who may message each channel. On the network channels (`telegram`, `discord`, `slack`, `whatsapp`) an **empty allowlist rejects everyone** — enabling a bot requires listing its allowed sender ids; the rejection reply and a startup ERROR name the exact config key.
 - **Secret masking:** the dashboard `GET /api/config` dump masks sensitive keys (`api_key`, `token`, `bot_token`, `app_token`, `secret`, `password`) to `***`.
 - **Memory guard:** the memory guard hook blocks secrets from being written to long-term memory.
 - **Webhook verification:** set `webhook.secret` to require an HMAC-SHA256 `X-Aethon-Signature` on incoming webhooks. Webhooks **fail closed**: an empty secret on a non-loopback bind disables the `/webhook/*` routes (Docker: set `AETHON_WEBHOOK_SECRET`).

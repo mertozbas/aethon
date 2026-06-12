@@ -4,6 +4,7 @@ import pytest
 
 from aethon.config import AethonConfig
 from aethon.gateway.netsec import (
+    allowlist_gaps,
     check_bind_security,
     is_loopback_host,
     origin_allowed,
@@ -108,3 +109,32 @@ def test_origin_configured_allowlist_passes():
 def test_origin_allowlist_normalizes_trailing_slash_and_case():
     allowed = ["https://Chat.Example.com/"]
     assert origin_allowed("https://chat.example.com", "x", allowed) is True
+
+
+# --- allowlist_gaps (S5) ------------------------------------------------------
+
+
+def test_allowlist_gaps_disabled_bots_silent():
+    assert allowlist_gaps(AethonConfig()) == []
+
+
+def test_allowlist_gaps_enabled_bot_empty_allowlist():
+    """Covers the wizard-skip path: bot enabled, restrict-confirm declined."""
+    cfg = AethonConfig()
+    cfg.channels.telegram.enabled = True
+    assert allowlist_gaps(cfg) == ["telegram"]
+
+
+def test_allowlist_gaps_populated_allowlist_ok():
+    cfg = AethonConfig()
+    cfg.channels.telegram.enabled = True
+    cfg.security.allowed_senders = {"telegram": ["123"]}
+    assert allowlist_gaps(cfg) == []
+
+
+def test_allowlist_gaps_multiple_channels():
+    cfg = AethonConfig()
+    cfg.channels.telegram.enabled = True
+    cfg.channels.whatsapp.enabled = True
+    cfg.security.allowed_senders = {"telegram": ["123"]}
+    assert allowlist_gaps(cfg) == ["whatsapp"]

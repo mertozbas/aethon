@@ -155,6 +155,24 @@ def _wizard_channels() -> tuple[dict, dict]:
                 default=True,
             ):
                 allowed.setdefault("slack", []).append(slack_dest)
+    if click.confirm(
+        "  Enable WhatsApp? (experimental — pairs via QR code at first start)",
+        default=False,
+    ):
+        channels["whatsapp"] = {"enabled": True}
+        chat = click.prompt(
+            "    Your WhatsApp number for proactive sends "
+            "(digits only, e.g. 905551112233; empty = skip)",
+            default="",
+        ).strip()
+        if chat:
+            channels["whatsapp"]["chat"] = chat
+            if click.confirm(
+                "    Restrict the bot to only respond to this number? "
+                "(recommended — it has shell/tool access)",
+                default=True,
+            ):
+                allowed.setdefault("whatsapp", []).append(chat)
     return channels, allowed
 
 

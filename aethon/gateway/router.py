@@ -14,6 +14,13 @@ from aethon.config import AethonConfig
 
 logger = logging.getLogger("aethon.router")
 
+# Channels reachable by arbitrary network senders — an EMPTY allowlist means
+# DENY ALL on these (Phase 9A / S5, deliberately breaking). The set must stay
+# exactly this: "cli"/"webchat" are local surfaces (webchat is token-gated, S1)
+# and the "webhook:*" pseudo-channels self-authenticate via HMAC (S3) — adding
+# any of them here would brick those paths (their sender ids are fixed).
+DEFAULT_DENY_CHANNELS = frozenset({"telegram", "discord", "slack", "whatsapp"})
+
 
 class MessageRouter:
     """Route messages between channels and agent runtime."""
@@ -33,12 +40,25 @@ class MessageRouter:
         Returns:
             Outbound response message, or None if rejected.
         """
-        # 1. Sender validation
+        # 1. Sender validation — reply with a short, fixed message instead of a
+        # silent drop, so a locked-out owner learns the exact config key
+        # (ChannelAdapter.on_message delivers any returned OutboundMessage).
         if not self._is_allowed(message):
             logger.warning(
-                f"REJECTED: {message.sender_id} on {message.channel}"
+                f"REJECTED: {message.sender_id} on {message.channel} "
+                f"(security.allowed_senders.{message.channel})"
             )
-            return None
+            return OutboundMessage(
+                channel=message.channel,
+                recipient_id=message.sender_id,
+                text=(
+                    "Yetkisiz gönderici: bu bot izin listesiyle korunuyor. "
+                    f"Bot sahibi, '{message.sender_id}' kimliğini yapılandırmada "
+                    f"security.allowed_senders.{message.channel} listesine "
+                    "ekleyerek erişim verebilir."
+                ),
+                raw=message.raw,
+            )
 
         # 2. Resolve session
         session_id = self._resolve_session(message)
@@ -95,11 +115,16 @@ class MessageRouter:
         )
 
     def _is_allowed(self, message: InboundMessage) -> bool:
-        """Check if sender is allowed on this channel."""
+        """Check if sender is allowed on this channel.
+
+        Network channels (DEFAULT_DENY_CHANNELS) deny everyone when their
+        allowlist is empty; local/self-authenticating channels keep the old
+        empty-allowlist-equals-open behavior.
+        """
         channel_allowed = self.allowed_senders.get(message.channel, [])
-        if not channel_allowed:
-            return True  # Empty allowlist = everyone allowed
-        return message.sender_id in channel_allowed
+        if channel_allowed:
+            return message.sender_id in channel_allowed
+        return message.channel not in DEFAULT_DENY_CHANNELS
 
     def _resolve_session(self, message: InboundMessage) -> str:
         """Build session ID from message metadata."""

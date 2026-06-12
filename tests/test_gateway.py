@@ -86,6 +86,34 @@ async def test_gateway_insecure_bind_skips_refusal(monkeypatch, caplog):
     assert any("--insecure-bind" in r.message for r in caplog.records)
 
 
+@pytest.mark.asyncio
+async def test_gateway_logs_error_for_enabled_bot_with_empty_allowlist(
+    monkeypatch, caplog
+):
+    """S5: bot enabled + empty allowlist -> boot ERROR naming the config key
+    (the bot still starts; default-deny makes it safe but useless)."""
+    import logging
+
+    from aethon.channels.webchat import WebChatAdapter
+
+    async def _noop_start(self):
+        return None
+
+    monkeypatch.setattr(WebChatAdapter, "start", _noop_start)
+    config = _config()
+    config.channels.cli.enabled = False
+    config.channels.telegram.enabled = True  # no allowlist configured
+    config.scheduler.enabled = False
+    config.dashboard.enabled = False
+    config.webhook.enabled = False
+    gateway = AethonGateway(config)
+    with caplog.at_level(logging.ERROR, logger="aethon.gateway"):
+        await gateway.start()
+    assert any(
+        "security.allowed_senders.telegram" in r.message for r in caplog.records
+    )
+
+
 def test_gateway_disabled_channels_no_adapter():
     """Disabled channels don't get adapters."""
     config = _config(

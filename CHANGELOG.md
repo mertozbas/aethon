@@ -33,6 +33,16 @@ deny by default on every network surface, fail closed at startup. Design doc:
   `0.0.0.0`); README documents a reverse-proxy/TLS recipe.
 
 ### Changed
+- **BREAKING: default-deny sender authorization on network channels (S5)** —
+  an empty `security.allowed_senders.<channel>` now means **reject all** for
+  `telegram`/`discord`/`slack`/`whatsapp` (previously: allow everyone).
+  Existing bot setups must add their sender ids, e.g.
+  `security.allowed_senders.telegram: ["123456"]` — the rejection reply and a
+  startup ERROR both name the exact key. `cli`/`webchat` keep the local
+  exception (WebChat is token-gated by S1 instead); `webhook:*`
+  pseudo-channels are unaffected (HMAC-gated by S3). Rejected senders now get
+  a short fixed reply instead of a silent drop. The wizard gains a WhatsApp
+  step (enable + default chat + allowlist), completing channel parity.
 - **HTTP auth middleware inverted to deny-by-default (S1)** — with a token set,
   ALL routes on the shared app are protected (including `/api/status`, the
   FastAPI `/docs`/`/openapi.json`, and unknown paths → 401); the old
@@ -161,8 +171,6 @@ from *trusting* the agent's word to *verifying* it. Design doc:
   so a single huge command can't overflow the model context.
 - The runtime forces strands-tools into non-interactive mode and quiets benign provider
   log noise, so tool output no longer corrupts the CLI.
-
-## [Unreleased]
 
 ### Removed
 - **Meridian provider removed.** AETHON no longer ships or defaults to the Meridian

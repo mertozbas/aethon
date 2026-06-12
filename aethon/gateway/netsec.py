@@ -96,6 +96,22 @@ def origin_allowed(origin: str | None, host_header: str, allowed_origins: list[s
     return bool(netloc) and netloc == (host_header or "").strip().lower()
 
 
+def allowlist_gaps(config) -> list[str]:
+    """Enabled network bots whose ``security.allowed_senders.<channel>`` is empty.
+
+    Under default-deny (S5) such a bot rejects every sender — safe, but
+    certainly a misconfiguration. Callers turn the returned channel names into
+    loud startup output naming the exact config key.
+    """
+    network_channels = ("telegram", "discord", "slack", "whatsapp")
+    return [
+        name
+        for name in network_channels
+        if getattr(config.channels, name).enabled
+        and not config.security.allowed_senders.get(name)
+    ]
+
+
 def is_loopback_host(host: str) -> bool:
     """True when ``host`` is a loopback bind (127.0.0.0/8, ::1, localhost).
 

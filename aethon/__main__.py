@@ -112,12 +112,19 @@ def start(config: str, insecure_bind: bool):
 
     # Fail closed before anything else: an exposed bind without auth is refused
     # at boot, not discovered at attack time (Phase 9A / S4).
-    from aethon.gateway.netsec import check_bind_security
+    from aethon.gateway.netsec import allowlist_gaps, check_bind_security
 
     bind_ok, bind_msg = check_bind_security(cfg)
     if not bind_ok and not insecure_bind:
         console.print(f"[red]Refusing to start:[/] {bind_msg}")
         return
+
+    # Default-deny senders (S5): warn up front when a bot would reject everyone.
+    for channel in allowlist_gaps(cfg):
+        console.print(
+            f"[yellow]Warning:[/] {channel} has no "
+            f"security.allowed_senders.{channel} — every sender will be rejected."
+        )
 
     _ensure_workspace(cfg)
     _setup_file_logging(cfg)

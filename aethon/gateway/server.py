@@ -73,13 +73,22 @@ class AethonGateway:
 
         # Fail closed BEFORE any side effect (recorder, adapters, scheduler):
         # an exposed bind without auth must never come up (Phase 9A / S4).
-        from aethon.gateway.netsec import check_bind_security
+        from aethon.gateway.netsec import allowlist_gaps, check_bind_security
 
         bind_ok, bind_msg = check_bind_security(self.config)
         if not bind_ok:
             if not self._insecure_bind:
                 raise RuntimeError(bind_msg)
             logger.warning(f"--insecure-bind: {bind_msg}")
+
+        # Default-deny senders (S5): a bot without an allowlist rejects ALL
+        # senders — safe, but shout the exact config key at boot, not silence.
+        for channel in allowlist_gaps(self.config):
+            logger.error(
+                f"{channel}: enabled with an EMPTY allowlist — every sender "
+                f"will be rejected. Add allowed sender ids to "
+                f"security.allowed_senders.{channel} in config.yaml."
+            )
 
         # Start session recording (if enabled) before any channels accept messages.
         if self._recorder:
