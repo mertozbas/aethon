@@ -72,8 +72,11 @@ async def test_gateway_insecure_bind_skips_refusal(monkeypatch, caplog):
     async def _noop_start(self):
         return None
 
-    # Keep the exposed-bind config but never bind a real socket.
+    # Keep the exposed-bind config but never bind a real socket. Mark the noop
+    # as fire-and-return so the supervisor doesn't treat its clean return as an
+    # unexpected stop and restart it (the new H3 behavior).
     monkeypatch.setattr(WebChatAdapter, "start", _noop_start)
+    monkeypatch.setattr(WebChatAdapter, "blocking", False)
     config = _config()
     config.channels.webchat.host = "0.0.0.0"
     config.channels.cli.enabled = False
@@ -100,6 +103,7 @@ async def test_gateway_logs_error_for_enabled_bot_with_empty_allowlist(
         return None
 
     monkeypatch.setattr(WebChatAdapter, "start", _noop_start)
+    monkeypatch.setattr(WebChatAdapter, "blocking", False)
     config = _config()
     config.channels.cli.enabled = False
     config.channels.telegram.enabled = True  # no allowlist configured
@@ -165,19 +169,64 @@ async def test_supervisor_cli_clean_exit_triggers_shutdown():
 
 
 @pytest.mark.asyncio
-async def test_supervisor_network_clean_exit_does_not_shutdown():
-    """A network bot returning does NOT bring the gateway down (only its channel ends)."""
+async def test_supervisor_blocking_bot_clean_exit_restarts_not_shutdown():
+    """A blocking network bot returning unexpectedly is RESTARTED under the retry
+    budget (a lone bot's transient stop must not tear the gateway down), and only
+    degrades after the budget — it never sets the shutdown event (H3 review)."""
+    import asyncio as _asyncio
+
+    gateway = AethonGateway(_config())
+    gateway._shutdown_event = _asyncio.Event()
+    gateway._degraded_channels = []
+    gateway._MAX_CHANNEL_RETRIES = 2  # speed up the test
+
+    calls = {"n": 0}
+
+    class _CleanBot:  # blocking=True by default → return is "unexpected"
+        async def start(self):
+            calls["n"] += 1
+            return
+
+    import aethon.gateway.server as srv
+
+    async def _instant_sleep(_):
+        return None
+
+    orig_sleep = srv.asyncio.sleep
+    srv.asyncio.sleep = _instant_sleep
+    try:
+        await gateway._supervise("telegram", _CleanBot())
+    finally:
+        srv.asyncio.sleep = orig_sleep
+
+    assert calls["n"] == 3  # initial + 2 restarts, then degrade
+    assert "telegram" in gateway._degraded_channels
+    assert not gateway._shutdown_event.is_set()  # never brought the gateway down
+
+
+@pytest.mark.asyncio
+async def test_supervisor_fire_and_return_adapter_exits_cleanly():
+    """A non-blocking adapter (blocking=False, e.g. WhatsApp) handing off to a
+    background client returns once — no restart, no degrade, no shutdown."""
     import asyncio as _asyncio
 
     gateway = AethonGateway(_config())
     gateway._shutdown_event = _asyncio.Event()
     gateway._degraded_channels = []
 
-    class _CleanBot:
-        async def start(self):
-            return
+    calls = {"n": 0}
 
-    await gateway._supervise("telegram", _CleanBot())
+    class _BackgroundBot:
+        blocking = False
+
+        async def start(self):
+            calls["n"] += 1
+            return  # handed off to a background client
+
+    await gateway._supervise("whatsapp", _BackgroundBot())
+
+    assert calls["n"] == 1  # not restarted
+    assert "whatsapp" not in gateway._degraded_channels
     assert not gateway._shutdown_event.is_set()
 
 

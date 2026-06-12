@@ -118,6 +118,12 @@ class ApprovalRequest:
 class ChannelAdapter(ABC):
     """Base class for all channel adapters."""
 
+    #: Whether ``start()`` blocks for the channel's lifetime (a polling loop or
+    #: server). The supervisor treats a clean return from a blocking channel as
+    #: an unexpected stop and restarts it; a non-blocking channel (one that hands
+    #: off to a background client and returns) is done when ``start()`` returns.
+    blocking: bool = True
+
     def __init__(self, config, router):
         self.config = config
         self.router = router

@@ -309,12 +309,6 @@ class AethonGateway:
         while not self._shutdown_event.is_set():
             try:
                 await adapter.start()
-                # Clean return. The interactive CLI returning means the user
-                # quit → bring the gateway down. A network bot looping forever
-                # shouldn't return; if it does, just end that channel.
-                if name == "cli":
-                    self._shutdown_event.set()
-                return
             except asyncio.CancelledError:
                 raise
             except Exception as e:
@@ -324,18 +318,40 @@ class AethonGateway:
                     f"{type(e).__name__}: {e}",
                     exc_info=True,
                 )
-                if attempt > self._MAX_CHANNEL_RETRIES:
-                    self._degraded_channels.append(name)
-                    logger.error(
-                        f"Channel '{name}' DEGRADED — gave up after "
-                        f"{attempt} attempts. The rest of AETHON keeps running."
-                    )
+            else:
+                # Clean return.
+                if name == "cli":
+                    # The interactive CLI returning means the user quit → bring
+                    # the gateway down.
+                    self._shutdown_event.set()
                     return
-                try:
-                    await asyncio.sleep(delay)
-                except asyncio.CancelledError:
-                    raise
-                delay = min(delay * 2, self._BACKOFF_CEILING)
+                if not getattr(adapter, "blocking", True):
+                    # A fire-and-return adapter (e.g. WhatsApp) handed off to a
+                    # background client; the channel is up and the supervisor's
+                    # job is done — not a failure.
+                    return
+                # A blocking bot's start() returning is unexpected (a transient
+                # stop). Restart it under the retry budget instead of ending the
+                # channel, so a lone bot's hiccup can't tear the gateway down.
+                attempt += 1
+                logger.warning(
+                    f"Channel '{name}' returned unexpectedly (attempt "
+                    f"{attempt}); restarting with backoff."
+                )
+
+            # Shared retry/degrade path: a crash OR an unexpected clean return.
+            if attempt > self._MAX_CHANNEL_RETRIES:
+                self._degraded_channels.append(name)
+                logger.error(
+                    f"Channel '{name}' DEGRADED — gave up after "
+                    f"{attempt} attempts. The rest of AETHON keeps running."
+                )
+                return
+            try:
+                await asyncio.sleep(delay)
+            except asyncio.CancelledError:
+                raise
+            delay = min(delay * 2, self._BACKOFF_CEILING)
 
     def _signal_handler(self):
         """Called on SIGINT/SIGTERM — triggers graceful shutdown."""

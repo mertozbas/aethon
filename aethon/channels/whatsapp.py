@@ -14,6 +14,10 @@ logger = logging.getLogger("aethon.whatsapp")
 class WhatsAppAdapter(ChannelAdapter):
     """WhatsApp adapter (neonize — experimental)."""
 
+    # neonize's client connects in the background; start() schedules it and
+    # returns rather than blocking, so a clean return is expected (not a stop).
+    blocking = False
+
     def __init__(self, config, router):
         super().__init__(config, router)
         self.client = None
