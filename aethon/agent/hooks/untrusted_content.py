@@ -45,13 +45,15 @@ class UntrustedContentHookProvider(HookProvider):
     def _mark(self, event: AfterToolCallEvent) -> None:
         try:
             name = event.tool_use.get("name")
-        except Exception:
+        except Exception as e:
+            logger.warning(f"UntrustedContent: malformed tool_use, skipping: {e}")
             return
         if name not in self.tools:
             return
         try:
             content = event.result.get("content")
-        except Exception:
+        except Exception as e:
+            logger.warning(f"UntrustedContent: malformed result for {name}: {e}")
             return
         if not isinstance(content, list):
             return
