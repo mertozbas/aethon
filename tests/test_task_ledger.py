@@ -79,6 +79,17 @@ def test_snapshot_compact_markdown(ledger):
     assert "done when: rapor gonderildi" in snap
 
 
+def test_snapshot_shows_priority_and_dependencies(ledger):
+    """The plan is a visible ledger diff: the snapshot surfaces each task's
+    priority and what it waits on (C2)."""
+    ledger.create("Setup", priority="high")
+    ledger.create("Build", priority="critical", depends_on=["T1"])
+    snap = ledger.snapshot()
+    assert "(open, high) Setup" in snap
+    assert "(open, critical) Build" in snap
+    assert "after: T1" in snap
+
+
 def test_corrupt_file_degrades_gracefully(ledger, tmp_path):
     (tmp_path / "TASKS.json").write_text("{bozuk json", encoding="utf-8")
     assert ledger.list() == []

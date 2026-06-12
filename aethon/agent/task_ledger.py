@@ -313,10 +313,17 @@ class TaskLedger:
             # Flatten defensively on render too — pre-sanitization files (or
             # hand edits) must not be able to fabricate prompt layers.
             title = self._flatten(str(task.get("title", "")))
-            line = f"- [{task['id']}] ({task['status']}) {title}"
+            # Surface priority + dependencies so a planned project tree is a
+            # visible plan in the prompt, not just a flat to-do list (C2).
+            prio = self._flatten(str(task.get("priority", "medium")))
+            line = f"- [{task['id']}] ({task['status']}, {prio}) {title}"
             if task.get("acceptance_criteria"):
                 criteria = self._flatten(str(task["acceptance_criteria"]))
                 line += f" — done when: {criteria}"
+            deps = task.get("depends_on") or []
+            if deps:
+                clean = ", ".join(self._flatten(str(d)) for d in deps)
+                line += f" — after: {clean}"
             lines.append(line)
         if len(pending) > max_tasks:
             lines.append(f"- … and {len(pending) - max_tasks} more")
