@@ -7,14 +7,16 @@ define, list, and remove custom specialists that persist across sessions
 
 from strands import tool
 
-from aethon.agent.specialists import DYNAMIC_TOOL_ALLOWLIST
+from aethon.agent.specialists import DYNAMIC_TOOL_ALLOWLIST, SAFE_DYNAMIC_TOOLS
 
 
-def create_manage_specialists_tool(factory, *, allow_shell: bool = False):
+def create_manage_specialists_tool(factory, *, allow_powerful: bool = False):
     """Create a manage_specialists tool bound to a SpecialistFactory.
 
-    ``allow_shell`` gates whether a custom specialist may be granted the ``shell``
-    tool (the one capability that can mutate / reach out); off by default.
+    ``allow_powerful`` gates whether a custom specialist may be granted a powerful
+    tool (shell/python_repl/file_write/editor/http_request — anything that can run
+    code, mutate files, or reach the network); off by default. The factory also
+    enforces this at tool resolution, so this is the clear-error UX layer.
     """
 
     @tool
@@ -62,10 +64,12 @@ def create_manage_specialists_tool(factory, *, allow_shell: bool = False):
                     f"Error: tool(s) not allowed: {', '.join(unknown)}. "
                     f"Allowed: {', '.join(sorted(DYNAMIC_TOOL_ALLOWLIST))}"
                 )
-            if "shell" in requested and not allow_shell:
+            powerful = [t for t in requested if t not in SAFE_DYNAMIC_TOOLS]
+            if powerful and not allow_powerful:
                 return (
-                    "Error: shell-bearing specialists are disabled "
-                    "(set core_loop.allow_shell_specialists to enable)."
+                    f"Error: powerful tool(s) {', '.join(powerful)} are disabled "
+                    f"(set core_loop.allow_powerful_specialists to enable). Safe "
+                    f"tools: {', '.join(sorted(SAFE_DYNAMIC_TOOLS))}."
                 )
             key = factory.add_specialist(name, system_prompt, requested)
             return f"Specialist created: {key} (tools: {', '.join(requested) or 'think'})"

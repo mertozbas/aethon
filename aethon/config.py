@@ -225,7 +225,8 @@ class CoreLoopConfig(BaseModel):
     receipt_enabled: bool = True             # deliver a proof-of-work receipt when a run ends
     # C5 dynamic specialists — let the agent define + persist custom specialists.
     dynamic_specialists: bool = False        # opt-in; exposes the manage_specialists tool
-    allow_shell_specialists: bool = False    # may a dynamic specialist be granted `shell`?
+    allow_powerful_specialists: bool = False  # may a dynamic specialist hold a powerful
+                                              # tool (shell/python_repl/file_write/editor/http_request)?
     intake_enabled: bool = False
     intake_work_phrases: list[str] = Field(
         default_factory=lambda: [

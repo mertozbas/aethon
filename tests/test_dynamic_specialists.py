@@ -12,8 +12,10 @@ from aethon.agent.specialists import (
 )
 
 
-def _factory(tmp_path):
-    return SpecialistFactory(EchoModel(), workspace=str(tmp_path))
+def _factory(tmp_path, allow_powerful=False):
+    return SpecialistFactory(
+        EchoModel(), workspace=str(tmp_path), allow_powerful=allow_powerful
+    )
 
 
 def test_add_specialist_persists_and_registers(tmp_path):
@@ -91,7 +93,7 @@ def test_manage_specialists_create_and_list(tmp_path):
     from aethon.tools.specialist_tool import create_manage_specialists_tool
 
     f = _factory(tmp_path)
-    tool = create_manage_specialists_tool(f, allow_shell=False)
+    tool = create_manage_specialists_tool(f, allow_powerful=False)
     out = tool._tool_func(action="create", name="DB Guru", system_prompt="dbs",
                           tools="file_read, think")
     assert "dbguru" in out
@@ -104,23 +106,53 @@ def test_manage_specialists_create_and_list(tmp_path):
 def test_manage_specialists_rejects_unknown_tool(tmp_path):
     from aethon.tools.specialist_tool import create_manage_specialists_tool
 
-    tool = create_manage_specialists_tool(_factory(tmp_path), allow_shell=False)
+    tool = create_manage_specialists_tool(_factory(tmp_path), allow_powerful=False)
     out = tool._tool_func(action="create", name="x", system_prompt="p",
                           tools="file_read, os.system")
     assert "not allowed" in out and "os.system" in out
 
 
-def test_manage_specialists_shell_gated(tmp_path):
+def test_manage_specialists_powerful_gated(tmp_path):
+    import strands_tools
     from aethon.tools.specialist_tool import create_manage_specialists_tool
 
-    f = _factory(tmp_path)
-    blocked = create_manage_specialists_tool(f, allow_shell=False)
-    out = blocked._tool_func(action="create", name="sh1", system_prompt="p", tools="shell")
-    assert "shell-bearing" in out and "sh1" not in f.list_specialists()
+    # allow_powerful=False on both factory + tool: shell AND python_repl refused.
+    f = _factory(tmp_path, allow_powerful=False)
+    blocked = create_manage_specialists_tool(f, allow_powerful=False)
+    for bad in ("shell", "python_repl", "file_write"):
+        out = blocked._tool_func(action="create", name=f"x{bad}", system_prompt="p", tools=bad)
+        assert "powerful" in out.lower()
+    assert f.list_specialists().get("xshell") is None
 
-    allowed = create_manage_specialists_tool(f, allow_shell=True)
-    out = allowed._tool_func(action="create", name="sh2", system_prompt="p", tools="shell")
-    assert "sh2" in f.list_specialists()
+    # allow_powerful=True on both: the powerful tool is actually granted.
+    f2 = _factory(tmp_path, allow_powerful=True)
+    allowed = create_manage_specialists_tool(f2, allow_powerful=True)
+    allowed._tool_func(action="create", name="sh2", system_prompt="p", tools="shell")
+    assert strands_tools.shell in f2._dynamic["sh2"]["tools"]
+
+
+def test_load_path_enforces_powerful_gate(tmp_path):
+    """Review fix (HIGH): a persisted/crafted specialist with a powerful tool must
+    NOT load that tool when allow_powerful is off — the gate is at resolution, so
+    config drift or a hand-written JSON can't smuggle shell/python_repl in."""
+    import strands_tools
+
+    d = tmp_path / "specialists"
+    d.mkdir()
+    (d / "evil.json").write_text(
+        json.dumps({"name": "evil", "system_prompt": "x",
+                    "tools": ["shell", "python_repl", "file_read"]}),
+        encoding="utf-8",
+    )
+    # allow_powerful=False → shell + python_repl dropped on load; file_read kept.
+    f = _factory(tmp_path, allow_powerful=False)
+    tools = f._dynamic["evil"]["tools"]
+    assert strands_tools.shell not in tools and strands_tools.python_repl not in tools
+    assert strands_tools.file_read in tools
+
+    # allow_powerful=True → the powerful tools load (the user opted in).
+    f2 = _factory(tmp_path, allow_powerful=True)
+    assert strands_tools.shell in f2._dynamic["evil"]["tools"]
 
 
 def test_manage_specialists_remove(tmp_path):

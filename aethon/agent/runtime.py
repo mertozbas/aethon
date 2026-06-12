@@ -132,6 +132,7 @@ class AethonRuntime:
                     hooks_factory=self._get_specialist_hooks,
                     sandbox=self._sandbox,
                     workspace=config.paths.workspace,
+                    allow_powerful=config.core_loop.allow_powerful_specialists,
                 )
                 set_specialist_factory(self.specialist_factory)
                 logger.info("Multi-agent: active")
@@ -346,7 +347,7 @@ class AethonRuntime:
                 tools.append(
                     create_manage_specialists_tool(
                         self.specialist_factory,
-                        allow_shell=self.config.core_loop.allow_shell_specialists,
+                        allow_powerful=self.config.core_loop.allow_powerful_specialists,
                     )
                 )
         if self._context_updater:

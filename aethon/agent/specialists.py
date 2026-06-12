@@ -30,6 +30,13 @@ DYNAMIC_TOOL_ALLOWLIST = {
     "python_repl": python_repl, "http_request": http_request,
     "calculator": calculator,
 }
+# The always-safe subset (read-only / pure compute). Everything else in the
+# allowlist is "powerful" — it can execute code, mutate files, or reach the
+# network (shell AND python_repl can run arbitrary code; file_write/editor
+# mutate; http_request reaches out) — so a dynamic specialist may only be granted
+# those when allow_powerful is on (the gate is enforced at tool RESOLUTION, which
+# both create and disk-load go through — a hand-written JSON can't smuggle them).
+SAFE_DYNAMIC_TOOLS = {"file_read", "think", "current_time", "calculator"}
 
 
 SPECIALIST_CONFIGS = {
@@ -104,9 +111,12 @@ class SpecialistFactory:
 
     def __init__(
         self, model, session_config=None, hooks_factory=None, sandbox=None,
-        workspace=None,
+        workspace=None, allow_powerful=False,
     ):
         self.model = model
+        # Whether a dynamic specialist may hold a powerful tool (shell, python_repl,
+        # file_write, editor, http_request). Enforced at tool resolution below.
+        self._allow_powerful = allow_powerful
         self._cache: dict[str, Agent] = {}
         self._summary_ratio = getattr(session_config, "summary_ratio", 0.3)
         self._preserve_recent = getattr(
@@ -143,13 +153,23 @@ class SpecialistFactory:
             return None
         tools = []
         for tn in spec.get("tools") or []:
-            cb = DYNAMIC_TOOL_ALLOWLIST.get(str(tn))
-            if cb is not None:
-                tools.append(cb)
-            else:
+            tn = str(tn)
+            cb = DYNAMIC_TOOL_ALLOWLIST.get(tn)
+            if cb is None:
                 logger.warning(
                     f"Dynamic specialist {key!r}: tool {tn!r} not in allowlist — dropped."
                 )
+                continue
+            if tn not in SAFE_DYNAMIC_TOOLS and not self._allow_powerful:
+                # The load-path gate: a persisted/crafted powerful tool is dropped
+                # unless allow_powerful is on — config drift and hand-written JSON
+                # can't grant a capability the config forbids.
+                logger.warning(
+                    f"Dynamic specialist {key!r}: powerful tool {tn!r} requires "
+                    f"allow_powerful_specialists — dropped."
+                )
+                continue
+            tools.append(cb)
         if not tools:
             tools = [think]  # a specialist always has at least one (safe) tool
         prompt = str(spec.get("system_prompt", "")).strip() or (
