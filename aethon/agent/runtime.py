@@ -68,6 +68,15 @@ class AethonRuntime:
         self._context_updater = None
         self._mcp_loader = None
         self._event_bus = None
+        # Execution sandbox (S7) — a per-session docker shell when enabled.
+        self._sandbox = None
+        if getattr(config.security, "sandbox", "none") == "docker":
+            from aethon.tools.shell_sandbox import DockerSandbox
+
+            self._sandbox = DockerSandbox(
+                config.security, str(Path(config.paths.workspace).expanduser())
+            )
+            logger.info("Execution sandbox: docker")
         # Per-session CompletionGate instances (R6) — read after each turn so a
         # success claim with no verification evidence doesn't return clean.
         self._completion_gates: dict[str, object] = {}
@@ -274,9 +283,18 @@ class AethonRuntime:
         self.agents.pop(session_id, None)
         self._completion_gates.pop(session_id, None)
 
-    def _get_tools(self) -> list:
-        """Tool list — includes memory, delegate, context, messaging, scheduler, MCP tools."""
-        tools = [file_read, file_write, editor, shell, think, current_time]
+    def _get_tools(self, session_id: str | None = None) -> list:
+        """Tool list — includes memory, delegate, context, messaging, scheduler, MCP tools.
+
+        When the docker sandbox is enabled (S7) and a session_id is given, the
+        host `shell` is swapped for a per-session containerized shell.
+        """
+        shell_tool = shell
+        if session_id is not None and self._sandbox is not None:
+            from aethon.tools.shell_sandbox import make_sandboxed_shell
+
+            shell_tool = make_sandboxed_shell(session_id, self._sandbox)
+        tools = [file_read, file_write, editor, shell_tool, think, current_time]
         if self.memory:
             from aethon.tools.memory_tool import create_memory_tool
 
@@ -766,7 +784,7 @@ class AethonRuntime:
         self.agents[session_id] = Agent(
             model=self.model,
             system_prompt=system_prompt,
-            tools=self._get_tools(),
+            tools=self._get_tools(session_id),
             session_manager=session_mgr,
             conversation_manager=conv_mgr,
             hooks=hooks,

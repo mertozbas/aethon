@@ -14,6 +14,15 @@ deny by default on every network surface, fail closed at startup. Design doc:
 `docs/development/PHASE-9A-SECURITY.md`.
 
 ### Added
+- **Execution sandbox foundation (S7, staged)** — new `security.sandbox`:
+  `none` (default, host execution under the command blocklist) or `docker`. In
+  `docker` mode the `shell` tool runs in a disposable per-session container
+  (workspace mounted at `/workspace`, no host home, no host network by default,
+  `--memory`/`--cpus`/`--pids-limit` caps) instead of on the host — so bypassing
+  the substring blocklist no longer matters, the blast radius is a throwaway
+  container. Refuses to start if `docker` is selected but unavailable (fail
+  closed); containers are torn down on shutdown. File tools stay host-side in
+  this version (documented).
 - **Untrusted-content marking (S9)** — results from external-content tools
   (`scraper`, `http_request`, `jsonrpc`, `use_github`) and webhook payloads are
   wrapped in `[UNTRUSTED EXTERNAL CONTENT]` delimiters via an advisory

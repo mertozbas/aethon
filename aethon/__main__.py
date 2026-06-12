@@ -169,11 +169,18 @@ def start(config: str, insecure_bind: bool):
 
     # Fail closed before anything else: an exposed bind without auth is refused
     # at boot, not discovered at attack time (Phase 9A / S4).
-    from aethon.gateway.netsec import allowlist_gaps, check_bind_security
+    from aethon.gateway.netsec import (
+        allowlist_gaps, check_bind_security, check_sandbox,
+    )
 
     bind_ok, bind_msg = check_bind_security(cfg)
     if not bind_ok and not insecure_bind:
         console.print(f"[red]Refusing to start:[/] {bind_msg}")
+        return
+
+    sandbox_ok, sandbox_msg = check_sandbox(cfg)
+    if not sandbox_ok:
+        console.print(f"[red]Refusing to start:[/] {sandbox_msg}")
         return
 
     # Default-deny senders (S5): warn up front when a bot would reject everyone.

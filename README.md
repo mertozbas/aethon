@@ -540,6 +540,11 @@ channels:
 | `blocked_commands` | list[str] | `["rm -rf /", "sudo", "mkfs"]` | Shell command substrings that are blocked. |
 | `allowed_senders` | dict[str, list[str]] | `{}` | Per-channel allowlist of sender identifiers. **Default-deny on network channels:** an empty list for `telegram`/`discord`/`slack`/`whatsapp` rejects every sender (the reply and a startup ERROR name this key). `cli`/`webchat` stay open (WebChat is token-gated instead). |
 | `mark_untrusted_content` | bool | `true` | Wrap results from external-content tools (`scraper`, `http_request`, `jsonrpc`, `use_github`) and webhook payloads in `[UNTRUSTED EXTERNAL CONTENT]` markers so the model treats them as data, not instructions. Honest marking, **not** an injection detector. |
+| `sandbox` | str | `"none"` | Execution sandbox for the `shell` tool. `none` = host execution under the command blocklist. `docker` = run `shell` in a per-session container (workspace mounted at `/workspace`, no host home, no host network, resource caps) — refuses to start if Docker is unavailable. File tools stay host-side in this version. |
+| `sandbox_image` | str | `"python:3.12-slim"` | Container image for `sandbox: docker`. |
+| `sandbox_network` | str | `"none"` | Container `--network` (default no host/network access). |
+| `sandbox_memory` / `sandbox_cpus` / `sandbox_pids_limit` | str/str/int | `"512m"` / `"1.0"` / `256` | Per-container resource caps. |
+| `sandbox_timeout` | int | `60` | Seconds per sandboxed shell command. |
 
 #### `session`
 

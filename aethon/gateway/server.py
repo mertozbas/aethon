@@ -73,13 +73,20 @@ class AethonGateway:
 
         # Fail closed BEFORE any side effect (recorder, adapters, scheduler):
         # an exposed bind without auth must never come up (Phase 9A / S4).
-        from aethon.gateway.netsec import allowlist_gaps, check_bind_security
+        from aethon.gateway.netsec import (
+            allowlist_gaps, check_bind_security, check_sandbox,
+        )
 
         bind_ok, bind_msg = check_bind_security(self.config)
         if not bind_ok:
             if not self._insecure_bind:
                 raise RuntimeError(bind_msg)
             logger.warning(f"--insecure-bind: {bind_msg}")
+
+        # Fail closed when the docker sandbox is configured but unavailable (S7).
+        sandbox_ok, sandbox_msg = check_sandbox(self.config)
+        if not sandbox_ok:
+            raise RuntimeError(sandbox_msg)
 
         # Default-deny senders (S5): a bot without an allowlist rejects ALL
         # senders — safe, but shout the exact config key at boot, not silence.
@@ -317,6 +324,14 @@ class AethonGateway:
                 logger.info("MCP servers stopped")
             except Exception as e:
                 logger.warning(f"MCP stop error: {e}")
+
+        # Tear down sandbox containers (S7)
+        if getattr(self.runtime, "_sandbox", None):
+            try:
+                self.runtime._sandbox.cleanup()
+                logger.info("Sandbox containers removed")
+            except Exception as e:
+                logger.warning(f"Sandbox cleanup error: {e}")
 
         # Stop each adapter with a timeout
         for name, adapter in self.adapters.items():

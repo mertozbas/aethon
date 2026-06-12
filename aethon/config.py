@@ -117,6 +117,21 @@ class SecurityConfig(BaseModel):
     # the model treats them as data, not instructions (Phase 9A / S9). This is
     # honest marking, NOT an injection detector. On by default (cheap, advisory).
     mark_untrusted_content: bool = True
+    # Execution sandbox for the `shell` tool (Phase 9A / S7).
+    #   "none"   — shell runs on the host under the blocklist (current default).
+    #   "docker" — shell runs in a per-session container (workspace mounted, no
+    #              host home, no host network by default, resource caps). The
+    #              real boundary: bypassing the blocklist no longer matters when
+    #              the blast radius is a disposable container. File tools stay
+    #              host-side in this version (documented). Refuses to start if
+    #              docker is selected but unavailable (fail closed).
+    sandbox: str = "none"
+    sandbox_image: str = "python:3.12-slim"
+    sandbox_network: str = "none"  # docker --network; "none" = no host/network access
+    sandbox_memory: str = "512m"   # docker --memory cap
+    sandbox_cpus: str = "1.0"      # docker --cpus cap
+    sandbox_pids_limit: int = 256  # docker --pids-limit cap
+    sandbox_timeout: int = 60      # seconds per shell command
 
 
 class MemoryConfig(BaseModel):

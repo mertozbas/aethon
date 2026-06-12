@@ -148,6 +148,25 @@ def is_loopback_host(host: str) -> bool:
         return False
 
 
+def check_sandbox(config) -> tuple[bool, str]:
+    """Refuse to start when the docker sandbox is selected but unavailable (S7).
+
+    Falling back to host execution would silently defeat the boundary the user
+    asked for — fail closed instead.
+    """
+    if getattr(config.security, "sandbox", "none") != "docker":
+        return True, ""
+    from aethon.tools.shell_sandbox import docker_available
+
+    if docker_available():
+        return True, ""
+    return False, (
+        "security.sandbox is 'docker' but the docker CLI was not found on PATH. "
+        "Install/start Docker, or set security.sandbox: none (host execution "
+        "under the command blocklist)."
+    )
+
+
 def check_bind_security(config) -> tuple[bool, str]:
     """Refuse a non-loopback HTTP bind without a shared auth token.
 
