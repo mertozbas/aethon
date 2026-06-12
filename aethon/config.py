@@ -196,15 +196,41 @@ class ApprovalConfig(BaseModel):
 class CoreLoopConfig(BaseModel):
     """Autonomous core loop (Phase 10).
 
-    Currently holds the plan→ledger pipeline knob (C2); intake/pulse/iteration
-    caps (C1/C3/C4) attach here as those stitches land. ``plan_approval`` is, as
-    of C2, RECORDED and surfaced in the plan summary only — there is no executor
-    yet to enforce it. Once the C3 executor lands it will gate whether execution
-    waits for the user to approve a freshly-planned project; the plan itself is
-    always written to the ledger (a visible diff) regardless.
+    Holds the plan→ledger pipeline knob (C2) and the intake classifier (C1);
+    pulse/iteration caps (C3/C4) attach here as those stitches land.
+    ``plan_approval`` is, as of C2, RECORDED and surfaced in the plan summary
+    only — there is no executor yet to enforce it. Once the C3 executor lands it
+    will gate whether execution waits for the user to approve a freshly-planned
+    project; the plan itself is always written to the ledger (a visible diff)
+    regardless.
+
+    ``intake_enabled`` turns on C1: a clear unit of work is classified, opened as
+    a planned project, and acknowledged, instead of being answered as a normal
+    chat turn. Off by default (advisory/opt-in) so ordinary chat is untouched;
+    the classifier is deliberately high-bar, and the ``*_phrases`` give the user
+    an explicit override either way.
     """
 
     plan_approval: bool = False
+    intake_enabled: bool = False
+    intake_work_phrases: list[str] = Field(
+        default_factory=lambda: [
+            "bunu bir iş olarak ele al",
+            "bir proje olarak ele al",
+            "bunu projelendir",
+            "treat as work",
+            "treat this as a project",
+        ]
+    )
+    intake_chat_phrases: list[str] = Field(
+        default_factory=lambda: [
+            "sadece soru",
+            "sadece sohbet",
+            "just a question",
+            "just chatting",
+            "just asking",
+        ]
+    )
 
 
 class TelemetryConfig(BaseModel):
