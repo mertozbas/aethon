@@ -116,6 +116,17 @@ def test_cli_doctor_accepts_env_ref_key(tmp_path, monkeypatch):
     assert "stored literally" not in result.output
 
 
+def test_cli_doctor_survives_malformed_yaml(tmp_path):
+    """S8 review: a malformed config must not crash doctor (YAMLError caught)."""
+    cfg = tmp_path / "config.yaml"
+    # Valid enough for AethonConfig.load (which tolerates it), but the raw
+    # re-read for the literal-key check must not raise. Write broken YAML and
+    # confirm doctor still exits 0.
+    cfg.write_text("model: [unclosed\n")
+    result = CliRunner().invoke(main, ["doctor", "-c", str(cfg)])
+    assert result.exit_code == 0, result.output
+
+
 def test_cli_init_writes_openai_config(tmp_path, monkeypatch):
     import aethon.setup_wizard as wiz
 

@@ -43,7 +43,19 @@ def doctor(config: str):
         console.print("[yellow]No config file yet — run [bold]aethon init[/].[/]\n")
         return
 
-    cfg = AethonConfig.load(config)
+    # Diagnosing a BROKEN config is doctor's job — don't crash on malformed YAML.
+    try:
+        cfg = AethonConfig.load(config)
+    except Exception as e:
+        console.print(f"  [red]Config failed to load:[/] {type(e).__name__}: {e}")
+        console.print(
+            "  Fix the YAML (or re-run [bold]aethon init[/]). "
+            "Still checking file permissions below.\n"
+        )
+        _report_path_permissions(cfg_path)
+        console.print()
+        return
+
     console.print(f"  Provider: [green]{cfg.model.provider}[/]")
     console.print(f"  Model:    [green]{cfg.model.model_id}[/]")
 
@@ -60,8 +72,8 @@ def doctor(config: str):
     console.print()
 
 
-def _report_secrets_hygiene(cfg: AethonConfig, cfg_path: Path) -> None:
-    """Flag world-/group-readable config and credential paths (S8)."""
+def _report_path_permissions(cfg_path: Path, credentials: Path | None = None) -> None:
+    """Flag world-/group-readable config / home / credential paths (S8)."""
     import stat
 
     def _check(label: str, p: Path) -> None:
@@ -79,7 +91,13 @@ def _report_secrets_hygiene(cfg: AethonConfig, cfg_path: Path) -> None:
     console.print("  [bold]Secrets hygiene:[/]")
     _check("config.yaml", cfg_path)
     _check("~/.aethon", cfg_path.parent)
-    _check("credentials/", Path(cfg.paths.credentials).expanduser())
+    if credentials is not None:
+        _check("credentials/", credentials)
+
+
+def _report_secrets_hygiene(cfg: AethonConfig, cfg_path: Path) -> None:
+    """Permission report + a nudge away from a literally-stored API key (S8)."""
+    _report_path_permissions(cfg_path, Path(cfg.paths.credentials).expanduser())
 
     # Check the RAW file (loaded cfg already resolved ${ENV_VAR} to its value).
     import yaml
@@ -87,7 +105,7 @@ def _report_secrets_hygiene(cfg: AethonConfig, cfg_path: Path) -> None:
     try:
         with open(cfg_path) as f:
             raw = yaml.safe_load(f) or {}
-    except OSError:
+    except (OSError, yaml.YAMLError):
         raw = {}
     raw_key = ((raw.get("model") or {}).get("api_key") or "")
     if raw_key and not (raw_key.startswith("${") and raw_key.endswith("}")):

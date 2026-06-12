@@ -482,13 +482,17 @@ class AethonConfig(BaseModel):
         a config that may carry plaintext keys is never world-/group-readable.
         """
         path = Path(config_path).expanduser()
+        # Only tighten a directory WE create — never clobber the perms of a
+        # pre-existing (possibly shared) directory a custom --config points at.
+        parent_existed = path.parent.exists()
         path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
             yaml.safe_dump(data, f, sort_keys=False, allow_unicode=True)
         # Best-effort: chmod is a no-op on filesystems that don't support it.
         try:
             os.chmod(path, 0o600)
-            os.chmod(path.parent, 0o700)
+            if not parent_existed:
+                os.chmod(path.parent, 0o700)
         except OSError:
             pass
         return path

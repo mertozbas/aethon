@@ -70,13 +70,27 @@ def test_config_env_resolve_nested():
 
 
 def test_config_write_is_owner_only(tmp_path):
-    """S8: a written config (may carry plaintext keys) is 0600, its dir 0700."""
+    """S8: a written config (may carry plaintext keys) is 0600, a dir WE create 0700."""
     import stat
 
-    path = tmp_path / "nest" / "config.yaml"
+    path = tmp_path / "nest" / "config.yaml"  # 'nest' does not exist yet
     AethonConfig.write({"model": {"api_key": "sk-secret"}}, str(path))
     assert stat.S_IMODE(path.stat().st_mode) == 0o600
     assert stat.S_IMODE(path.parent.stat().st_mode) == 0o700
+
+
+def test_config_write_does_not_clobber_existing_dir_perms(tmp_path):
+    """S8: writing into a PRE-EXISTING (possibly shared) dir must not chmod it."""
+    import os
+    import stat
+
+    shared = tmp_path / "shared"
+    shared.mkdir()
+    os.chmod(shared, 0o755)  # an intentional, looser mode the user chose
+    AethonConfig.write({"model": {}}, str(shared / "config.yaml"))
+    # The file is still locked down, but the existing dir is left untouched.
+    assert stat.S_IMODE((shared / "config.yaml").stat().st_mode) == 0o600
+    assert stat.S_IMODE(shared.stat().st_mode) == 0o755
 
 
 def test_config_load_from_yaml(tmp_path):
