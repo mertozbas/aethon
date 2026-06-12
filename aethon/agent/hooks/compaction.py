@@ -19,6 +19,19 @@ Invariants: the most recent N turns (including the active one) are never touched
 toolUse/toolResult pairing is preserved (only the result text is rewritten, never
 removed); thinking / redacted_thinking blocks are left bit-for-bit (Claude/Bedrock
 require it). Advisory — a compaction failure never breaks a turn.
+
+Two deliberate design choices, reviewed and kept:
+
+* **In-memory only, not persisted.** Compaction edits ``agent.messages`` (what
+  the model sees), not the session file — so the disk keeps the FULL output as an
+  audit trail, and a reload simply re-compacts before the first model call. The
+  model never carries the bulk; the record is never lost.
+* **The trigger is the cost/benefit gate.** Editing an old message invalidates
+  the provider cache for the suffix after it, so a batch pass costs one
+  reprocess. Running only once a large ``trigger_chars`` of old bulk has piled up
+  means that one-time cost is amortised over many subsequent cheap turns — a net
+  win for the long conversations this exists for, and simply never fires for
+  short ones.
 """
 
 from __future__ import annotations
@@ -76,7 +89,9 @@ def compact_messages(
     so the provider message cache is disturbed rarely. The last
     ``keep_last_n_turns`` turns are left untouched.
     """
-    if not messages:
+    if not messages or keep_last_n_turns <= 0:
+        # keep < 1 would let boundary index past the end (IndexError) and could
+        # compact the active turn — refuse rather than risk it.
         return 0
     turns = _parse_turns(messages)
     if len(turns) <= keep_last_n_turns:

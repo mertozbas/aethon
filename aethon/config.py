@@ -531,9 +531,10 @@ class SessionConfig(BaseModel):
     # Off by default (opt-in); compacts in batches so it disturbs the provider
     # message cache rarely, not every turn.
     compact_enabled: bool = False
-    compact_keep_last_n_turns: int = 4    # never touch the most recent N turns
-    compact_min_chars: int = 800          # only compact a result bigger than this
-    compact_trigger_chars: int = 16000    # only run a pass once this much old bulk has piled up
+    # Positive-only (fail loud at load on a bad value, H8).
+    compact_keep_last_n_turns: int = Field(default=4, ge=1)   # never touch the most recent N turns
+    compact_min_chars: int = Field(default=800, ge=1)         # only compact a result bigger than this
+    compact_trigger_chars: int = Field(default=16000, ge=1)   # run a pass once this much old bulk piles up
 
 
 class PathsConfig(BaseModel):

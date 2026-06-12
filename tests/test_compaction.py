@@ -120,6 +120,32 @@ def test_short_conversation_not_compacted():
     assert compact_messages(msgs, keep_last_n_turns=4, min_chars=1, trigger_chars=1) == 0
 
 
+def test_non_positive_keep_is_safe_no_indexerror():
+    """Review fix: keep_last_n_turns <= 0 must not IndexError (or compact the
+    active turn) — it returns 0."""
+    msgs = _conversation(5, BIG)
+    before = _result_texts(msgs)
+    assert compact_messages(msgs, keep_last_n_turns=0, min_chars=1, trigger_chars=1) == 0
+    assert compact_messages(msgs, keep_last_n_turns=-3, min_chars=1, trigger_chars=1) == 0
+    assert _result_texts(msgs) == before
+
+
+def test_config_rejects_non_positive_compaction_params():
+    """Review fix (H8): a bad value fails loud at config load, not silently."""
+    import pytest
+    from pydantic import ValidationError
+
+    from aethon.config import SessionConfig
+
+    for bad in (
+        {"compact_keep_last_n_turns": 0},
+        {"compact_min_chars": 0},
+        {"compact_trigger_chars": -1},
+    ):
+        with pytest.raises(ValidationError):
+            SessionConfig(**bad)
+
+
 def test_hook_registers_before_model_call():
     from strands.hooks.events import BeforeModelCallEvent
 

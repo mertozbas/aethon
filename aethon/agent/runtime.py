@@ -581,7 +581,10 @@ class AethonRuntime:
         # Reliability hooks (Phase 8): PostEditVerify (R7) + CompletionGate (R6).
         # E2 history compaction (Phase 10) — trim old, large tool outputs out of
         # the model's input each turn (opt-in). Registered before the model-call
-        # guards so the compacted history is what they (and the model) see.
+        # guards so the compacted history is what they (and the model) see. This
+        # lives in the MAIN agent hook list, so it covers the main + scheduler +
+        # executor sessions but NOT specialists (they build via
+        # _get_specialist_hooks) — the planner's structured output stays untouched.
         if getattr(self.config.session, "compact_enabled", False):
             try:
                 from aethon.agent.hooks.compaction import CompactionHookProvider
