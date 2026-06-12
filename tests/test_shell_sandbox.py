@@ -21,19 +21,41 @@ class _Proc:
 
 def test_container_name_is_docker_safe():
     # session ids carry colons (channel:sender) — illegal in container names.
-    assert _container_name("telegram:12345") == "aethon-shell-telegram-12345"
-    assert _container_name("webchat:local") == "aethon-shell-webchat-local"
+    name = _container_name("telegram:12345")
+    assert name.startswith("aethon-shell-telegram-12345-")
+    assert ":" not in name
+
+
+def test_container_name_no_collision():
+    """Distinct sessions that sanitize to the same prefix must NOT collide."""
+    a = _container_name("discord:9#9")
+    b = _container_name("discord:9-9")
+    assert a != b  # the hash suffix of the full id keeps them distinct
 
 
 def test_run_argv_confines_the_container():
     cfg = SecurityConfig(sandbox="docker")
     argv = _run_argv(cfg, "aethon-shell-x", "/ws")
+    joined = " ".join(argv)
     assert argv[:3] == ["docker", "run", "-d"]
     assert "--network" in argv and "none" in argv          # no host network
     assert "--memory" in argv and "512m" in argv           # resource caps
     assert "--pids-limit" in argv
     assert "-v" in argv and "/ws:/workspace" in argv        # workspace mounted
-    assert "/root" not in " ".join(argv)                    # no host home mount
+    assert "/root" not in joined                            # no host home mount
+
+
+def test_run_argv_is_hardened():
+    cfg = SecurityConfig(sandbox="docker")
+    joined = " ".join(_run_argv(cfg, "c", "/ws"))
+    assert "--cap-drop ALL" in joined
+    assert "--security-opt no-new-privileges" in joined
+    assert "--read-only" in joined
+    assert "--label aethon-sandbox=1" in joined
+    # Runs as a non-root host user where the platform supports it.
+    import os
+    if hasattr(os, "getuid"):
+        assert f"--user {os.getuid()}:{os.getgid()}" in joined
 
 
 def test_exec_argv():
@@ -53,9 +75,9 @@ def test_sandbox_runs_command_via_docker_exec():
     result = sb.run("telegram:1", "echo hello")
     assert result["status"] == "success"
     assert "hello" in result["content"][0]["text"]
-    # First call started the container; second exec'd into it.
+    # One `run` started the container, then `exec` ran the command in it.
     assert calls[0][1] == "run"
-    assert calls[1][:3] == ["docker", "exec", "aethon-shell-telegram-1"]
+    assert calls[1][:2] == ["docker", "exec"]
 
 
 def test_sandbox_reuses_container():
@@ -64,12 +86,50 @@ def test_sandbox_reuses_container():
     def fake_run(argv, timeout):
         if argv[1] == "run":
             runs["run"] += 1
-        return _Proc(returncode=0, stdout="ok")
+        return _Proc(returncode=0, stdout="")
 
     sb = DockerSandbox(SecurityConfig(sandbox="docker"), "/ws", runner=fake_run)
     sb.run("s1", "echo a")
     sb.run("s1", "echo b")
     assert runs["run"] == 1  # container created once, reused
+
+
+def test_dead_container_is_recreated():
+    """A container that died is recreated once instead of erroring forever."""
+    seq = {"runs": 0, "execs": 0}
+
+    def fake_run(argv, timeout):
+        if argv[1] == "run":
+            seq["runs"] += 1
+            return _Proc(returncode=0)
+        if argv[1] == "exec":
+            seq["execs"] += 1
+            if seq["execs"] == 1:  # first exec hits a dead container
+                return _Proc(returncode=1, stderr="Error: No such container: x")
+            return _Proc(returncode=0, stdout="recovered")
+        return _Proc(returncode=0)
+
+    sb = DockerSandbox(SecurityConfig(sandbox="docker"), "/ws", runner=fake_run)
+    result = sb.run("s1", "echo a")
+    assert result["status"] == "success"
+    assert "recovered" in result["content"][0]["text"]
+    assert seq["runs"] == 2  # recreated after the dead container
+
+
+def test_reap_orphans_removes_labeled_containers():
+    """A previous crashed run's labeled containers are removed (called at boot)."""
+    removed = []
+
+    def fake_run(argv, timeout):
+        if argv[1] == "ps":
+            return _Proc(returncode=0, stdout="abc123\ndef456\n")
+        if argv[1] == "rm":
+            removed.extend(argv[3:])
+        return _Proc(returncode=0)
+
+    sb = DockerSandbox(SecurityConfig(sandbox="docker"), "/ws", runner=fake_run)
+    sb.reap_orphans()
+    assert removed == ["abc123", "def456"]
 
 
 def test_sandbox_failed_start_is_hard_error():
@@ -117,7 +177,7 @@ def test_cleanup_removes_containers():
     sb = DockerSandbox(SecurityConfig(sandbox="docker"), "/ws", runner=fake_run)
     sb.run("s1", "echo a")
     sb.cleanup()
-    assert removed == ["aethon-shell-s1"]
+    assert len(removed) == 1 and removed[0].startswith("aethon-shell-s1-")
 
 
 # --- startup gate + tool swap ----------------------------------------------

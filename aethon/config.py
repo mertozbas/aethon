@@ -132,6 +132,9 @@ class SecurityConfig(BaseModel):
     sandbox_cpus: str = "1.0"      # docker --cpus cap
     sandbox_pids_limit: int = 256  # docker --pids-limit cap
     sandbox_timeout: int = 60      # seconds per shell command
+    # Read-only container rootfs (writable /tmp + the workspace mount). Disable
+    # if an in-container step must write outside /workspace (e.g. pip install).
+    sandbox_read_only: bool = True
 
 
 class MemoryConfig(BaseModel):

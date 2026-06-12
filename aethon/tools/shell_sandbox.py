@@ -12,13 +12,18 @@ existing path rules (documented in SECURITY.md). Broader confinement is future
 work.
 """
 
+import hashlib
 import logging
+import os
 import re
 import shutil
 import subprocess
 from typing import Any, Callable
 
 logger = logging.getLogger("aethon.sandbox")
+
+# Marks every container we create so orphans from a crashed run can be reaped.
+SANDBOX_LABEL = "aethon-sandbox=1"
 
 
 def docker_available() -> bool:
@@ -27,25 +32,50 @@ def docker_available() -> bool:
 
 
 def _container_name(session_id: str) -> str:
-    """A docker-safe container name for a session (names allow [a-zA-Z0-9_.-])."""
-    safe = re.sub(r"[^a-zA-Z0-9_.-]", "-", session_id)[:200]
-    return f"aethon-shell-{safe or 'default'}"
+    """A collision-free, docker-safe container name for a session.
+
+    A readable sanitized prefix PLUS a hash of the FULL id, so two distinct
+    sessions that sanitize to the same prefix (e.g. ``a:b`` and ``a-b``) still
+    get distinct containers — no cross-session shell access.
+    """
+    safe = re.sub(r"[^a-zA-Z0-9_.-]", "-", session_id)[:48]
+    digest = hashlib.sha256(session_id.encode()).hexdigest()[:12]
+    return f"aethon-shell-{safe or 'x'}-{digest}"
 
 
 def _run_argv(cfg, name: str, workspace: str) -> list[str]:
-    """`docker run` argv that starts a long-lived, confined session container."""
-    return [
+    """`docker run` argv that starts a long-lived, confined session container.
+
+    Least privilege: runs as the host user (so workspace files stay owned by the
+    user, not root), drops all capabilities, forbids privilege escalation, and
+    optionally a read-only rootfs with a writable /tmp + the workspace mount.
+    """
+    argv = [
         "docker", "run", "-d", "--rm",
         "--name", name,
+        "--label", SANDBOX_LABEL,
         "--network", cfg.sandbox_network,
         "--memory", cfg.sandbox_memory,
         "--cpus", str(cfg.sandbox_cpus),
         "--pids-limit", str(cfg.sandbox_pids_limit),
+        "--cap-drop", "ALL",
+        "--security-opt", "no-new-privileges",
+    ]
+    # Run as the host user where the platform supports it (Linux/macOS), so the
+    # container cannot create root-owned files in the bind-mounted workspace.
+    getuid = getattr(os, "getuid", None)
+    getgid = getattr(os, "getgid", None)
+    if getuid and getgid:
+        argv += ["--user", f"{getuid()}:{getgid()}"]
+    if getattr(cfg, "sandbox_read_only", True):
+        argv += ["--read-only", "--tmpfs", "/tmp"]
+    argv += [
         "-v", f"{workspace}:/workspace",
         "-w", "/workspace",
         cfg.sandbox_image,
         "sleep", "infinity",
     ]
+    return argv
 
 
 def _exec_argv(name: str, command: str) -> list[str]:
@@ -62,6 +92,19 @@ class DockerSandbox:
         # Injectable for tests; defaults to subprocess.run.
         self._run = runner or self._default_run
         self._started: set[str] = set()
+
+    def reap_orphans(self) -> None:
+        """Force-remove any labeled containers left by a previous (crashed) run."""
+        try:
+            proc = self._run(
+                ["docker", "ps", "-aq", "--filter", f"label={SANDBOX_LABEL}"], 30
+            )
+            ids = [x for x in (getattr(proc, "stdout", "") or "").split() if x]
+            if ids:
+                self._run(["docker", "rm", "-f", *ids], 30)
+                logger.info(f"Reaped {len(ids)} orphan sandbox container(s)")
+        except Exception as e:
+            logger.warning(f"Sandbox orphan reap error: {e}")
 
     @staticmethod
     def _default_run(argv, timeout):
@@ -91,6 +134,12 @@ class DockerSandbox:
         try:
             name = self._ensure_container(session_id)
             proc = self._run(_exec_argv(name, command), self.cfg.sandbox_timeout)
+            # Self-heal: a container that died (crash/OOM) leaves a stale entry —
+            # recreate once instead of erroring on every later command.
+            if _is_dead_container(proc):
+                self._started.discard(name)
+                name = self._ensure_container(session_id)
+                proc = self._run(_exec_argv(name, command), self.cfg.sandbox_timeout)
         except subprocess.TimeoutExpired:
             return _result(
                 f"Command timed out after {self.cfg.sandbox_timeout}s.", error=True
@@ -112,6 +161,14 @@ class DockerSandbox:
 
 def _result(text: str, error: bool = False) -> dict[str, Any]:
     return {"status": "error" if error else "success", "content": [{"text": text}]}
+
+
+def _is_dead_container(proc) -> bool:
+    """True when `docker exec` failed because the container is gone/stopped."""
+    if getattr(proc, "returncode", 0) == 0:
+        return False
+    err = (getattr(proc, "stderr", "") or "").lower()
+    return "no such container" in err or "is not running" in err
 
 
 def make_sandboxed_shell(session_id: str, sandbox: "DockerSandbox"):

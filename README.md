@@ -545,6 +545,7 @@ channels:
 | `sandbox_network` | str | `"none"` | Container `--network` (default no host/network access). |
 | `sandbox_memory` / `sandbox_cpus` / `sandbox_pids_limit` | str/str/int | `"512m"` / `"1.0"` / `256` | Per-container resource caps. |
 | `sandbox_timeout` | int | `60` | Seconds per sandboxed shell command. |
+| `sandbox_read_only` | bool | `true` | Read-only container rootfs (writable `/tmp` + the workspace mount). Disable if an in-container step must write outside `/workspace`. The container also runs as the host user with `--cap-drop ALL` and `no-new-privileges`. |
 
 #### `session`
 

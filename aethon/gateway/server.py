@@ -87,6 +87,9 @@ class AethonGateway:
         sandbox_ok, sandbox_msg = check_sandbox(self.config)
         if not sandbox_ok:
             raise RuntimeError(sandbox_msg)
+        # Clear any sandbox containers leaked by a previously-crashed run.
+        if getattr(self.runtime, "_sandbox", None):
+            self.runtime._sandbox.reap_orphans()
 
         # Default-deny senders (S5): a bot without an allowlist rejects ALL
         # senders — safe, but shout the exact config key at boot, not silence.
