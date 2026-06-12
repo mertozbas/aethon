@@ -7,10 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Phase 9B Sprint 1 — Liveness
+### Phase 9B — Robustness, Liveness & Token Economy (H1-H11, E0-E1)
 
-Makes AETHON feel alive and stop failing silently. Design doc:
-`docs/development/PHASE-9B-ROBUSTNESS.md`.
+Makes AETHON feel alive, survive always-on use, and measure + cache its token
+spend. Design doc: `docs/development/PHASE-9B-ROBUSTNESS.md`.
+
+### Changed
+- **Prompt cache architecture (E1)** — `compose()` now orders layers by
+  volatility: a stable prefix (personality, environment, preferences, SOP list,
+  Operating Rules, delegation, session) first, then the volatile suffix
+  (context, open tasks, handoff, learnings, time) last. Provider prompt caching
+  keys on the unchanged prefix → cached-input discount (Anthropic ~90%, OpenAI
+  ~50%). The recent-logs layer is dropped from the default prompt (it changed
+  every turn and poisoned the cache; opt in with `prompt.include_recent_logs`),
+  and `CONTEXT`/`LEARNINGS` injection is capped. A regression test pins the
+  stable prefix byte-stable across composes.
 
 ### Fixed
 - **Disk retention (H7)** — session-reset backups (`cleared/batch_*`) grew

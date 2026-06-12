@@ -107,11 +107,53 @@ def test_compose_recent_logs(tmp_path):
     logs.mkdir()
     (logs / "aethon.log").write_text("2026-01-01 INFO aethon.x: started\n")
     composer = SystemPromptComposer(
-        str(workspace), config=PromptConfig(), logs_dir=str(logs)
+        str(workspace),
+        config=PromptConfig(include_recent_logs=True),  # E1: now opt-in
+        logs_dir=str(logs),
     )
     prompt = composer.compose()
     assert "Recent Activity Logs" in prompt
     assert "started" in prompt
+
+
+def test_recent_logs_off_by_default(tmp_path):
+    """E1: recent logs are dropped from the default prompt (cache stability)."""
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    logs = tmp_path / "logs"
+    logs.mkdir()
+    (logs / "aethon.log").write_text("2026-01-01 INFO aethon.x: secret-marker\n")
+    composer = SystemPromptComposer(str(workspace), config=PromptConfig(), logs_dir=str(logs))
+    assert "secret-marker" not in composer.compose()
+
+
+def test_stable_prefix_is_byte_stable(workspace_dir):
+    """E1: two composes with unchanged sources produce an identical stable
+    prefix (everything before the volatile suffix), so provider prompt caching
+    keys on it. Only the trailing volatile layers (Time) differ."""
+    composer = SystemPromptComposer(str(workspace_dir))
+    a = composer.compose("sess-1")
+    b = composer.compose("sess-1")
+    # The stable prefix is everything up to the first volatile layer.
+    a_prefix = a.split("## Current Context")[0].split("## Time")[0]
+    b_prefix = b.split("## Current Context")[0].split("## Time")[0]
+    assert a_prefix == b_prefix
+    # The stable prefix holds the stable layers; volatile markers are NOT in it.
+    assert "## Personality" in a_prefix
+    assert "## Operating Rules" in a_prefix
+    assert "## Agent Delegation" in a_prefix
+    assert "## Time" not in a_prefix
+
+
+def test_context_appears_after_stable_layers(tmp_path):
+    """E1 ordering: volatile CONTEXT comes AFTER the stable Operating Rules."""
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "SOUL.md").write_text("kişilik")
+    (workspace / "CONTEXT.md").write_text("şu an X yapıyoruz")
+    prompt = SystemPromptComposer(str(workspace)).compose()
+    assert prompt.index("## Operating Rules") < prompt.index("## Current Context")
+    assert prompt.index("## Current Context") < prompt.index("## Time")
 
 
 def test_compose_shell_history_off_by_default(workspace_dir):

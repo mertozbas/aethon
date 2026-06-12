@@ -108,29 +108,56 @@ class SystemPromptComposer:
         Returns:
             Combined system prompt string.
         """
-        layers = []
+        # E1 — order layers by VOLATILITY for provider prompt caching: the stable
+        # prefix (personality, environment, prefs, SOPs, rules, delegation) comes
+        # first so providers cache it; the volatile suffix (learnings, context,
+        # tasks, handoff, time) comes last so a per-turn change only invalidates
+        # the small tail, not the cached prefix.
+        stable: list[str] = []
+        volatile: list[str] = []
+
+        # --- stable prefix ---
 
         # 1. SOUL.md — Personality
         soul_path = self.workspace / "SOUL.md"
         if soul_path.exists():
-            layers.append(f"## Personality\n{soul_path.read_text(encoding='utf-8')}")
+            stable.append(f"## Personality\n{soul_path.read_text(encoding='utf-8')}")
 
-        # 2. Environment awareness
+        # 2. Environment awareness (machine-stable for the session)
         if self._flag("include_environment", True):
-            layers.append(self._get_environment_info())
+            stable.append(self._get_environment_info())
 
         # 3. TOOLS.md — User preferences
         tools_path = self.workspace / "TOOLS.md"
         if tools_path.exists():
-            layers.append(f"## User Preferences\n{tools_path.read_text(encoding='utf-8')}")
+            stable.append(f"## User Preferences\n{tools_path.read_text(encoding='utf-8')}")
 
-        # 4. CONTEXT.md — Current context
+        # 4. Recent shell history (off by default — privacy; stable-ish if on)
+        if self._flag("include_shell_history", False):
+            from aethon.agent.shell_context import format_shell_context
+
+            shell_ctx = format_shell_context(self._flag("shell_history_lines", 50))
+            if shell_ctx:
+                stable.append(shell_ctx)
+
+        # 5. Self-awareness (optional; default off)
+        if self._flag("include_self_awareness", False) or os.environ.get(
+            "AETHON_SELF_AWARE", ""
+        ).lower() == "true":
+            self_aware = self._get_self_awareness()
+            if self_aware:
+                stable.append(self_aware)
+
+        # --- volatile suffix (built below, appended after the stable layers) ---
+
+        # CONTEXT.md — the agent's scratchpad (changes via update_context). Capped
+        # so it can't bloat the prompt or the cache tail.
         context_path = self.workspace / "CONTEXT.md"
         if context_path.exists():
-            layers.append(f"## Current Context\n{context_path.read_text(encoding='utf-8')}")
+            ctx = context_path.read_text(encoding="utf-8")
+            volatile.append(f"## Current Context\n{ctx[-4000:]}")
 
-        # 4.5 Open tasks — durable task ledger snapshot (survives cache
-        # eviction, session resets and restarts)
+        # Open tasks — durable task ledger snapshot.
         if self._flag("include_tasks", True):
             tasks_path = self.workspace / "TASKS.json"
             if tasks_path.exists():
@@ -141,51 +168,36 @@ class SystemPromptComposer:
                 except Exception:
                     snapshot = ""
                 if snapshot:
-                    layers.append(
+                    volatile.append(
                         "## Open Tasks\n"
                         "Durable task ledger (manage with the manage_tasks tool; "
                         "complete tasks with verification evidence):\n" + snapshot
                     )
 
-        # 4.7 HANDOFF.md — checkpoint written on session resets
+        # HANDOFF.md — checkpoint written on session resets.
         if self._flag("include_handoff", True):
             handoff_path = self.workspace / "HANDOFF.md"
             if handoff_path.exists():
                 text = handoff_path.read_text(encoding="utf-8").strip()
                 if text:
-                    layers.append(f"## Handoff (session checkpoints)\n{text[-2000:]}")
+                    volatile.append(f"## Handoff (session checkpoints)\n{text[-2000:]}")
 
-        # 5. LEARNINGS.md — Persistent learnings
+        # LEARNINGS.md — persistent learnings (append-only; capped to the newest).
         if self._flag("include_learnings", True):
             learnings_path = self.workspace / "LEARNINGS.md"
             if learnings_path.exists():
                 text = learnings_path.read_text(encoding="utf-8").strip()
                 if text:
-                    layers.append(f"## Learnings\n{text}")
+                    volatile.append(f"## Learnings\n{text[-4000:]}")
 
-        # 6. Recent shell history (off by default — privacy)
-        if self._flag("include_shell_history", False):
-            from aethon.agent.shell_context import format_shell_context
-
-            shell_ctx = format_shell_context(self._flag("shell_history_lines", 50))
-            if shell_ctx:
-                layers.append(shell_ctx)
-
-        # 7. Recent activity logs
-        if self._flag("include_recent_logs", True):
+        # Recent activity logs — OFF by default (E1): they change every turn and
+        # poison the cache for little orientation value. Opt in for debugging.
+        if self._flag("include_recent_logs", False):
             recent_logs = self._get_recent_logs(self._flag("log_lines", 50))
             if recent_logs:
-                layers.append(recent_logs)
+                volatile.append(recent_logs)
 
-        # 7.5 Self-awareness (optional; default off; opt-in via flag or env)
-        if self._flag("include_self_awareness", False) or os.environ.get(
-            "AETHON_SELF_AWARE", ""
-        ).lower() == "true":
-            self_aware = self._get_self_awareness()
-            if self_aware:
-                layers.append(self_aware)
-
-        # 8. SOP list — from the SOPRunner registry when wired; otherwise a
+        # SOP list — from the SOPRunner registry when wired; otherwise a
         # standalone fallback that mirrors its discovery.
         sop_names = []
         if self.sop_runner is not None:
@@ -206,7 +218,7 @@ class SystemPromptComposer:
                         sop_names.append(name)
         if sop_names:
             sop_list = "\n".join(f"- /{name}" for name in sop_names)
-            layers.append(
+            stable.append(
                 f"## Available SOP Commands\n"
                 f"When the user types a command starting with /, an SOP is triggered:\n{sop_list}"
             )
@@ -215,7 +227,7 @@ class SystemPromptComposer:
         # not workspace prose, so every install gets it and it survives
         # workspace resets.
         if self._flag("include_operating_rules", True):
-            layers.append(
+            stable.append(
                 "## Operating Rules\n"
                 "Non-negotiable working policies:\n"
                 "1. Definition of Done: work is done only when verified. Run the "
@@ -245,7 +257,7 @@ class SystemPromptComposer:
             )
 
         # 9. Agent delegation instructions
-        layers.append(
+        stable.append(
             "## Agent Delegation\n"
             "For complex tasks, use the specialist agents:\n"
             "- ask_coder: Coding tasks (writing code, testing, debugging)\n"
@@ -255,11 +267,11 @@ class SystemPromptComposer:
             "Handle simple tasks yourself. For complex tasks, delegate to the right specialist."
         )
 
-        # 10. Session info
+        # 10. Session info (constant for the session — end of the stable prefix)
         if session_id:
-            layers.append(f"## Active Session\n{session_id}")
+            stable.append(f"## Active Session\n{session_id}")
 
-        # 11. Timestamp
-        layers.append(f"## Time\n{datetime.now().isoformat()}")
+        # 11. Timestamp — most volatile (changes every turn), so it goes LAST.
+        volatile.append(f"## Time\n{datetime.now().isoformat()}")
 
-        return "\n\n---\n\n".join(layers)
+        return "\n\n---\n\n".join(stable + volatile)

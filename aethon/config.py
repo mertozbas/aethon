@@ -376,7 +376,9 @@ class PromptConfig(BaseModel):
 
     include_environment: bool = True
     include_shell_history: bool = False  # privacy — opt-in
-    include_recent_logs: bool = True
+    # Off by default (E1): recent logs change every turn and poison the prompt
+    # cache for little orientation value. Opt in for debugging.
+    include_recent_logs: bool = False
     include_learnings: bool = True
     include_self_awareness: bool = False  # embed key source files — opt-in
     include_tasks: bool = True  # task-ledger snapshot (## Open Tasks)
