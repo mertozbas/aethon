@@ -526,6 +526,14 @@ class SessionConfig(BaseModel):
     conversation_manager: str = "summarizing"
     summary_ratio: float = 0.3
     preserve_recent_messages: int = 10
+    # E2 history compaction (Phase 10) — replace old, large tool outputs in the
+    # model's input with a compact marker so long-horizon turns stay affordable.
+    # Off by default (opt-in); compacts in batches so it disturbs the provider
+    # message cache rarely, not every turn.
+    compact_enabled: bool = False
+    compact_keep_last_n_turns: int = 4    # never touch the most recent N turns
+    compact_min_chars: int = 800          # only compact a result bigger than this
+    compact_trigger_chars: int = 16000    # only run a pass once this much old bulk has piled up
 
 
 class PathsConfig(BaseModel):

@@ -579,6 +579,24 @@ class AethonRuntime:
                 degraded_hooks.append("AnglicizationGuard")
                 logger.warning(f"AnglicizationGuard startup error: {e}")
         # Reliability hooks (Phase 8): PostEditVerify (R7) + CompletionGate (R6).
+        # E2 history compaction (Phase 10) — trim old, large tool outputs out of
+        # the model's input each turn (opt-in). Registered before the model-call
+        # guards so the compacted history is what they (and the model) see.
+        if getattr(self.config.session, "compact_enabled", False):
+            try:
+                from aethon.agent.hooks.compaction import CompactionHookProvider
+
+                hooks.append(
+                    CompactionHookProvider(
+                        keep_last_n_turns=self.config.session.compact_keep_last_n_turns,
+                        min_chars=self.config.session.compact_min_chars,
+                        trigger_chars=self.config.session.compact_trigger_chars,
+                    )
+                )
+            except Exception as e:
+                degraded_hooks.append("Compaction")
+                logger.warning(f"Compaction startup error: {e}")
+
         # Advisory by default; reliability.strict flips them to hard gates.
         rel_cfg = getattr(self.config, "reliability", None)
         verify_hook = None
