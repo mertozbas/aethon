@@ -212,6 +212,11 @@ class CoreLoopConfig(BaseModel):
     """
 
     plan_approval: bool = False
+    # C3 executor (bounded autonomy — the runaway guards are load-bearing).
+    executor_enabled: bool = False           # opt-in; off by default
+    executor_max_iterations: int = 20        # hard cap on task turns per project run
+    executor_max_task_attempts: int = 3      # give up on a task after N no-progress turns
+    executor_stop_on_budget: bool = True     # halt between tasks once the E0 ceiling is breached
     intake_enabled: bool = False
     intake_work_phrases: list[str] = Field(
         default_factory=lambda: [
