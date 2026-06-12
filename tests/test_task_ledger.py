@@ -302,6 +302,65 @@ def test_c2_broken_dependency_keeps_task_blocked(ledger):
     assert ledger.available_tasks() == []
 
 
+# --- Phase 10 C2 review fixes ---
+
+
+def test_c2_dropped_dependency_unblocks_dependents(ledger):
+    """Review fix: a 'dropped' (cancelled) dependency must not block dependents
+    forever — it's out of the workflow, so it satisfies the dependency."""
+    ledger.create("Önkoşul")                       # T1 (no deps)
+    ledger.create("Bağımlı", depends_on=["T1"])    # T2 blocked on T1
+    assert [t["id"] for t in ledger.available_tasks()] == ["T1"]  # T2 blocked
+    ledger.update("T1", status="dropped")          # cancel T1
+    # T1 is now out of the workflow; T2's dependency is satisfied.
+    assert [t["id"] for t in ledger.available_tasks()] == ["T2"]
+
+
+def test_c2_non_dict_entries_are_dropped_not_crashed(tmp_path, caplog):
+    """Review fix: a stray non-dict entry in TASKS.json must be ignored (with a
+    warning), not crash every .get() downstream."""
+    import logging
+
+    bad = ["oops", None, 42, {
+        "id": "T1", "title": "Gerçek", "acceptance_criteria": "", "status": "open",
+        "evidence": "", "plan_origin": "", "created": "x", "updated": "x",
+    }]
+    (tmp_path / "TASKS.json").write_text(json.dumps(bad), encoding="utf-8")
+    ledger = TaskLedger(str(tmp_path))
+    with caplog.at_level(logging.WARNING, logger="aethon.tasks"):
+        tasks = ledger.list()
+    assert [t["id"] for t in tasks] == ["T1"]      # only the real task
+    assert ledger.snapshot()                        # no crash
+    assert any("non-dict" in r.message for r in caplog.records)
+
+
+def test_c2_normalize_fixes_explicit_null_fields(tmp_path):
+    """Review fix: a hand-edited task with explicit null C2 fields normalizes to
+    safe defaults on read (not left as None → 'None' in the prompt / sort crash)."""
+    legacy = [{
+        "id": "T1", "title": "İş", "acceptance_criteria": "", "status": "open",
+        "evidence": "", "plan_origin": "", "created": "x", "updated": "x",
+        "priority": None, "depends_on": None, "parent_id": None, "due": None,
+    }]
+    (tmp_path / "TASKS.json").write_text(json.dumps(legacy), encoding="utf-8")
+    ledger = TaskLedger(str(tmp_path))
+    t = ledger.get("T1")
+    assert t["priority"] == "medium"
+    assert t["depends_on"] == []
+    assert t["parent_id"] == "" and t["due"] == ""
+    # available_tasks must sort without a None-priority crash.
+    assert [x["id"] for x in ledger.available_tasks()] == ["T1"]
+
+
+def test_c2_unknown_dependency_error_is_bounded(ledger):
+    """Review fix: a huge depends_on of unknown ids yields a bounded error, not
+    a 60KB echo."""
+    problems = ledger.dependency_problems("", [f"T{i}" for i in range(5000)])
+    assert len(problems) == 1
+    assert "and 4990 more" in problems[0]
+    assert len(problems[0]) < 300
+
+
 def test_ledger_text_is_flattened_against_prompt_injection(tmp_path):
     """Review fix: ledger text reaches the system prompt — embedded newlines
     must not be able to fabricate prompt layers or operating rules."""

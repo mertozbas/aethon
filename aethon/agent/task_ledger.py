@@ -53,8 +53,18 @@ class TaskLedger:
         try:
             data = json.loads(self.tasks_file.read_text(encoding="utf-8"))
             if isinstance(data, list):
+                # Drop non-dict entries (a hand edit can leave a stray string or
+                # null in an otherwise-valid list) — they would crash every
+                # .get() downstream. Fail loud about the loss (review fix).
+                valid = [t for t in data if isinstance(t, dict)]
+                dropped = len(data) - len(valid)
+                if dropped:
+                    logger.warning(
+                        "Task ledger had %d non-dict entr%s; ignoring them.",
+                        dropped, "y" if dropped == 1 else "ies",
+                    )
                 # Backfill C2 fields on read so old ledgers load seamlessly.
-                return [self._normalize(t) if isinstance(t, dict) else t for t in data]
+                return [self._normalize(t) for t in valid]
             raise ValueError(f"expected a JSON list, got {type(data).__name__}")
         except Exception as e:
             # Quarantine instead of returning [] — the next create() would
@@ -121,11 +131,18 @@ class TaskLedger:
 
     @classmethod
     def _normalize(cls, task: dict) -> dict:
-        """Fill in any missing Phase 10 C2 fields with safe defaults so a
-        pre-Phase-10 TASKS.json (or a hand edit) never KeyErrors downstream."""
+        """Fill in any missing/null Phase 10 C2 fields and coerce their types so
+        a pre-Phase-10 TASKS.json or a hand edit (a missing key, an explicit
+        ``null``, a non-list depends_on, a bogus priority) never crashes the
+        sort/render path downstream (review fix). Operates on the ephemeral dict
+        _load() just built, so the in-place fill is never shared across reads."""
         for key, default in _C2_DEFAULTS.items():
-            if key not in task:
+            if task.get(key) is None:  # missing OR explicit null
                 task[key] = list(default) if isinstance(default, list) else default
+        if not isinstance(task.get("depends_on"), list):
+            task["depends_on"] = cls._clean_depends_on(task.get("depends_on"))
+        if task.get("priority") not in VALID_PRIORITIES:
+            task["priority"] = cls._clean_priority(task.get("priority"))
         return task
 
     # ---- operations ----
@@ -256,13 +273,20 @@ class TaskLedger:
         Empty list means the edge is sound.
         """
         depends_on = self._clean_depends_on(depends_on)
+        # Reads an atomic _load() snapshot (lock-free, like every other query
+        # here); validation is advisory — the executor's available_tasks() is the
+        # real, fail-safe gate. A caller validate-then-write is not transactional.
         tasks = self._load()
         ids = {t.get("id") for t in tasks}
         problems = []
         unknown = [d for d in depends_on if d not in ids]
         if unknown:
+            # Bound the message — a depends_on with thousands of bad ids must not
+            # echo back as a 60KB error (review fix).
+            shown = ", ".join(unknown[:10])
+            extra = f" … and {len(unknown) - 10} more" if len(unknown) > 10 else ""
             problems.append(
-                f"depends_on references unknown task(s): {', '.join(unknown)}"
+                f"depends_on references unknown task(s): {shown}{extra}"
             )
         if task_id and task_id in depends_on:
             problems.append(f"a task cannot depend on itself ({task_id})")
@@ -285,7 +309,10 @@ class TaskLedger:
         a single ``_load()`` snapshot so the read is internally consistent.
         """
         tasks = self._load()
-        done = {t.get("id") for t in tasks if t.get("status") == "done"}
+        # A dependency is satisfied once it is 'done' OR 'dropped' (an explicitly
+        # cancelled task is out of the workflow — leaving it to block dependents
+        # forever would deadlock the project). Read fix.
+        done = {t.get("id") for t in tasks if t.get("status") in ("done", "dropped")}
         available = []
         for t in tasks:
             if t.get("status") not in ("open", "in_progress"):
