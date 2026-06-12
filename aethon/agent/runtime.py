@@ -4,6 +4,7 @@ Creates and manages Strands Agent instances per session.
 """
 
 import asyncio
+import concurrent.futures
 import logging
 import os
 import platform
@@ -823,7 +824,15 @@ class AethonRuntime:
                     # R10 applies to SOP turns too — they were running
                     # against a stale system prompt on cached agents.
                     self._refresh_volatile_prompt(agent, session_id)
-                    sop_reply = self.sop_runner.run_sop(sop_name, agent, sop_input)
+                    # Route SOP turns through the interrupt resolver too, so a
+                    # gated tool inside a SOP asks for approval (or fails closed)
+                    # rather than being silently dropped (S6).
+                    sop_reply = self.sop_runner.run_sop(
+                        sop_name, agent, sop_input,
+                        invoke=lambda a, p: self._run_with_interrupts(
+                            a, message, session_id, p
+                        ),
+                    )
                     # Gate SOP replies too — otherwise a pending DoD note
                     # would leak into the next unrelated turn.
                     return self._apply_completion_gate(agent, session_id, sop_reply)
@@ -943,7 +952,10 @@ class AethonRuntime:
         future = asyncio.run_coroutine_threadsafe(ask(request), loop)
         try:
             decision = future.result(timeout=timeout)
-        except asyncio.TimeoutError:
+        except concurrent.futures.TimeoutError:
+            # run_coroutine_threadsafe(...).result() raises THIS, not
+            # asyncio.TimeoutError (they are only aliased on Python ≥3.11; the
+            # project floor is 3.10, where they are distinct classes).
             future.cancel()
             logger.warning(
                 f"Approval timed out after {timeout}s on {message.channel} — "

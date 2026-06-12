@@ -59,8 +59,14 @@ class SOPRunner:
         """Get SOP content by name."""
         return self._sops.get(name)
 
-    def run_sop(self, name: str, agent: Agent, user_input: str = "") -> str:
-        """Execute a SOP on the given agent."""
+    def run_sop(self, name: str, agent: Agent, user_input: str = "", invoke=None) -> str:
+        """Execute a SOP on the given agent.
+
+        ``invoke(agent, prompt)`` is the agent-invocation strategy; callers pass
+        the runtime's interrupt-aware runner so a gated tool inside a SOP is
+        resolved (approved or fail-closed denied) instead of being silently
+        dropped (Phase 9A / S6). Defaults to a raw ``agent(prompt)`` call.
+        """
         sop_content = self.get_sop(name)
         if not sop_content:
             return f"SOP not found: {name}"
@@ -72,7 +78,7 @@ class SOPRunner:
             f"</agent-sop>"
         )
 
-        result = agent(prompt)
+        result = invoke(agent, prompt) if invoke is not None else agent(prompt)
 
         try:
             content = result.message["content"]

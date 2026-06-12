@@ -525,7 +525,7 @@ def test_sop_replies_are_gated(runtime_config):
         def is_sop_command(self, text):
             return True, "rapor", ""
 
-        def run_sop(self, name, agent, user_input=""):
+        def run_sop(self, name, agent, user_input="", invoke=None):
             # Simulates the gate firing on AfterInvocationEvent inside
             # run_sop's agent(prompt) call.
             runtime._completion_gates["sop-session"]._pending_note = (
@@ -542,6 +542,38 @@ def test_sop_replies_are_gated(runtime_config):
     assert "[Completion Gate] nag" in reply
     # Consumed — nothing leaks into the next turn.
     assert runtime._completion_gates["sop-session"]._pending_note is None
+
+
+def test_sop_turn_routes_gated_tool_through_interrupts(runtime_config, monkeypatch):
+    """S6 regression: a gated tool inside a SOP is resolved via the interrupt
+    loop (approved/denied), not silently dropped."""
+    runtime = AethonRuntime(runtime_config)
+    captured = {}
+
+    class _StubSOP:
+        def is_sop_command(self, text):
+            return True, "demo", ""
+
+        def run_sop(self, name, agent, user_input="", invoke=None):
+            captured["invoke"] = invoke
+            # Drive a fake interrupting agent through the runtime's invoke —
+            # this is exactly what a real SOP that calls a gated tool produces.
+            result = invoke(_FakeAgent(rounds=1), "sop-prompt")
+            return runtime._extract_text(result)
+
+    runtime.sop_runner = _StubSOP()
+    decisions = []
+    monkeypatch.setattr(
+        runtime, "_resolve_approval_decision",
+        lambda m, s, itr: decisions.append((m.channel, s)) or {"approved": True, "reason": ""},
+    )
+    reply = runtime._try_process(
+        InboundMessage(channel="cli", sender_id="u", sender_name="u", text="/demo"),
+        "cli:u", allow_retry=False,
+    )
+    assert captured["invoke"] is not None           # SOP got the interrupt-aware invoke
+    assert decisions == [("cli", "cli:u")]           # the interrupt was resolved via the channel
+    assert "tamam" in reply
 
 
 def test_stale_gate_note_discarded_at_turn_start(runtime_config):

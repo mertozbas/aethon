@@ -83,8 +83,24 @@ class AethonScheduler:
             # deadlocked any send_message the SOP made (the tool waits on a
             # loop that is blocked waiting on the tool).
             loop = asyncio.get_running_loop()
+            # Route a gated tool inside the scheduled SOP through the interrupt
+            # resolver against the delivery channel — it pings that channel for
+            # approval if it can answer, else fails closed (S6). Never silently
+            # drops the action.
+            from aethon.channels.base import InboundMessage
+
+            cron_msg = InboundMessage(
+                channel=channel or "scheduler",
+                sender_id=recipient or "cron",
+                sender_name="Scheduler",
+                text="",
+            )
+
+            def _invoke(a, p):
+                return self.runtime._run_with_interrupts(a, cron_msg, "scheduler:cron", p)
+
             result = await loop.run_in_executor(
-                None, self.sop_runner.run_sop, sop_name, agent
+                None, self.sop_runner.run_sop, sop_name, agent, "", _invoke
             )
 
             if channel:
