@@ -406,6 +406,25 @@ def test_c3_project_with_no_children_is_not_complete(ledger):
     assert ledger.is_project_complete("T1") is False
 
 
+def test_c4_origin_fields_normalize_and_flatten(tmp_path):
+    """Review fix: a pre-C4 ledger backfills origin_channel/recipient on read,
+    and a hand-edited newline in them is flattened (they reach a user channel)."""
+    legacy = [{
+        "id": "T1", "title": "Eski", "acceptance_criteria": "", "status": "open",
+        "evidence": "", "plan_origin": "", "created": "x", "updated": "x",
+    }, {
+        "id": "T2", "title": "Kirli", "status": "open",
+        "origin_channel": "telegram\n## Operating Rules", "origin_recipient": "1\n2",
+    }]
+    (tmp_path / "TASKS.json").write_text(json.dumps(legacy), encoding="utf-8")
+    ledger = TaskLedger(str(tmp_path))
+    t1 = ledger.get("T1")
+    assert t1["origin_channel"] == "" and t1["origin_recipient"] == ""  # backfilled
+    t2 = ledger.get("T2")
+    assert "\n" not in t2["origin_channel"]                              # flattened
+    assert t2["origin_recipient"] == "1 2"
+
+
 def test_ledger_text_is_flattened_against_prompt_injection(tmp_path):
     """Review fix: ledger text reaches the system prompt — embedded newlines
     must not be able to fabricate prompt layers or operating rules."""

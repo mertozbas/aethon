@@ -24,14 +24,18 @@ VALID_STATUSES = ("open", "in_progress", "done", "dropped")
 VALID_PRIORITIES = ("critical", "high", "medium", "low")
 _PRIORITY_RANK = {p: i for i, p in enumerate(VALID_PRIORITIES)}
 
-# Optional Phase 10 C2 fields. Kept separate from the original flat schema so the
-# additive (migration-safe) expansion stays auditable. Defaults are filled in on
-# read by _normalize(), so a pre-Phase-10 TASKS.json loads without KeyErrors.
+# Optional Phase 10 fields (C2/C3/C4). Kept separate from the original flat
+# schema so the additive (migration-safe) expansion stays auditable. Defaults are
+# filled in on read by _normalize(), so a pre-Phase-10 TASKS.json loads without
+# KeyErrors.
 _C2_DEFAULTS = {
-    "parent_id": "",      # the project (parent task) this task belongs to
-    "depends_on": [],     # ids that must be 'done' before this task is available
+    "parent_id": "",        # the project (parent task) this task belongs to
+    "depends_on": [],       # ids that must be 'done' before this task is available
     "priority": "medium",
-    "due": "",            # optional ISO timestamp/free-text deadline note
+    "due": "",              # optional ISO timestamp/free-text deadline note
+    "executor_attempts": 0,  # C3: durable per-task executor try counter
+    "origin_channel": "",    # C4: channel the project was requested from
+    "origin_recipient": "",  # C4: recipient to deliver pulses/receipt to
 }
 
 
@@ -143,6 +147,11 @@ class TaskLedger:
             task["depends_on"] = cls._clean_depends_on(task.get("depends_on"))
         if task.get("priority") not in VALID_PRIORITIES:
             task["priority"] = cls._clean_priority(task.get("priority"))
+        # C4 origin fields reach a user channel (pulse/receipt) — flatten so a
+        # hand-edited newline can't fabricate message structure (review fix).
+        for key in ("origin_channel", "origin_recipient"):
+            if task.get(key):
+                task[key] = cls._flatten(str(task[key]))
         return task
 
     # ---- operations ----
