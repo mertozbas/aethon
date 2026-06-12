@@ -66,6 +66,14 @@ deny by default on every network surface, fail closed at startup. Design doc:
   `0.0.0.0`); README documents a reverse-proxy/TLS recipe.
 
 ### Changed
+- **SECURITY.md truth pass (S10)** — `docs/development/SECURITY.md` rewritten to
+  match the code: the phantom "Layer 5: Content Filtering" (a hook that never
+  existed) is removed, the real layers (S1-S9 + Phase 8 hooks) are documented,
+  and the **explicit non-goals** are stated plainly (no injection detection;
+  `sandbox: none` residual risk; file tools not yet sandboxed; single-user trust
+  model; the blocklist is a tripwire, not a boundary). Advertising a protection
+  that does not exist is itself a risk — the doc no longer claims more than the
+  code does.
 - **BREAKING: default-deny sender authorization on network channels (S5)** —
   an empty `security.allowed_senders.<channel>` now means **reject all** for
   `telegram`/`discord`/`slack`/`whatsapp` (previously: allow everyone).
