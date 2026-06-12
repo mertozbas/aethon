@@ -311,6 +311,62 @@ async def test_executor_no_origin_skips_delivery(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_executor_empty_project_is_not_complete(tmp_path):
+    """Review fix (honesty): a project with no children must never report
+    'complete' — there is nothing finished to deliver."""
+    led, pid = _project(tmp_path)                     # parent, zero children
+    result = await ProjectExecutor(_FakeRuntime(led, _config(), _complete_current)).run(pid)
+    assert result["reason"] == "empty"
+
+
+@pytest.mark.asyncio
+async def test_executor_receipt_marks_truncated_evidence(tmp_path):
+    """Review fix (honesty): long evidence is truncated, but the cut is MARKED so
+    a FAIL/error at the tail can't be silently hidden."""
+    led, pid = _project_with_origin(tmp_path)
+    led.create("A", parent_id=pid)
+    long_ev = "ok " * 200 + "DEPLOYMENT FAILED"      # > 300 chars, FAIL at the end
+
+    async def _complete_long(msg, sid, ledger):
+        m = re.search(r"\[(T\d+)\]", msg.text)
+        if m:
+            ledger.complete(m.group(1), evidence=long_ev)
+
+    ex = ProjectExecutor(_FakeRuntime(led, _config(), _complete_long))
+    sent = _capture(ex)
+    await ex.run(pid)
+
+    receipt = [s for s in sent if "Bitti" in s[2]][-1][2]
+    assert "kırpıldı" in receipt                       # truncation is explicit
+
+
+@pytest.mark.asyncio
+async def test_executor_resume_does_not_repulse_done_tasks(tmp_path):
+    """seen_done is rebuilt from the ledger, so a resumed run pulses only NEW
+    completions — never the tasks finished by an earlier run."""
+    led, pid = _project_with_origin(tmp_path)
+    led.create("A", parent_id=pid)
+    led.create("B", parent_id=pid)
+    capped = _config()
+    capped.core_loop.pulse_every_n_tasks = 1
+    capped.core_loop.executor_max_iterations = 1
+
+    ex1 = ProjectExecutor(_FakeRuntime(led, capped, _complete_current))
+    sent1 = _capture(ex1)
+    await ex1.run(pid)
+    assert len([s for s in sent1 if "görev bitti" in s[2]]) == 1   # T2
+
+    # Resume on a fresh ledger — must pulse only the newly-finished T3.
+    led2 = TaskLedger(str(tmp_path))
+    resume_cfg = _config()
+    resume_cfg.core_loop.pulse_every_n_tasks = 1
+    ex2 = ProjectExecutor(_FakeRuntime(led2, resume_cfg, _complete_current))
+    sent2 = _capture(ex2)
+    await ex2.run(pid)
+    assert len([s for s in sent2 if "görev bitti" in s[2]]) == 1   # T3, not T2 again
+
+
+@pytest.mark.asyncio
 async def test_ambient_executor_noop_when_disabled(tmp_path):
     from aethon.agent.ambient import AmbientModeManager
 

@@ -15,12 +15,16 @@ limit so a task the agent can't finish can't spin forever.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 
 from aethon.channels.base import InboundMessage
 
 logger = logging.getLogger("aethon.executor")
+
+# A hung adapter.send must not stall the executor — bound the delivery wait.
+_DELIVER_TIMEOUT = 10.0
 
 
 def _flat(value) -> str:
@@ -83,7 +87,9 @@ class ProjectExecutor:
             if not available:
                 # Decide why from the durable ledger state.
                 kids = led.children(parent_id)
-                if any(k.get("status") in ("open", "in_progress") for k in kids):
+                if not kids:
+                    reason = "empty"       # nothing planned — never claim success
+                elif any(k.get("status") in ("open", "in_progress") for k in kids):
                     reason = "blocked"     # open tasks with unsatisfiable deps
                 elif any(k.get("status") == "dropped" for k in kids):
                     reason = "partial"     # finished, but some tasks were dropped
@@ -196,10 +202,14 @@ class ProjectExecutor:
             "blocked": f"⛔ Takıldı — '{title}' (bağımlılıklar çözülemedi):",
             "cap": f"⏸️ Durduruldu — '{title}' (iterasyon sınırı):",
             "budget": f"⏸️ Durduruldu — '{title}' (token bütçesi aşıldı):",
+            "empty": f"ℹ️ '{title}' — görev yok.",
         }
         lines = [headers.get(summary["reason"], f"'{title}':")]
         for k in done:
-            ev = _flat(k.get("evidence", ""))[:300] or "(kanıt yok)"
+            ev = _flat(k.get("evidence", ""))
+            # Mark truncation explicitly — a silently cut tail could hide a
+            # FAIL/error at the end of the evidence (review fix).
+            ev = (ev[:300] + " …(kırpıldı)") if len(ev) > 300 else (ev or "(kanıt yok)")
             lines.append(f"- ✓ [{k['id']}] {_flat(k.get('title', ''))} — kanıt: {ev}")
         for k in dropped:
             lines.append(f"- ✗ [{k['id']}] {_flat(k.get('title', ''))} (tamamlanamadı)")
@@ -239,10 +249,18 @@ class ProjectExecutor:
             )
             return
         try:
-            await gw.adapters[channel].send(
-                OutboundMessage(
-                    channel=channel, recipient_id=recipient or "default", text=text
-                )
+            await asyncio.wait_for(
+                gw.adapters[channel].send(
+                    OutboundMessage(
+                        channel=channel, recipient_id=recipient or "default", text=text
+                    )
+                ),
+                timeout=_DELIVER_TIMEOUT,
+            )
+        except asyncio.TimeoutError:
+            logger.warning(
+                f"Executor delivery to {channel} timed out after "
+                f"{_DELIVER_TIMEOUT}s; message dropped."
             )
         except Exception as e:
             logger.warning(
