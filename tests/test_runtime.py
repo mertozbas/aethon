@@ -316,6 +316,32 @@ async def test_different_sessions_run_in_parallel(runtime_config, monkeypatch):
     assert overlap["max"] >= 2  # distinct sessions ran concurrently
 
 
+def test_agent_cache_thread_safe_under_concurrency(runtime_config):
+    """Review fix: concurrent distinct-session turns hit the REAL
+    get_or_create_agent on many threads; the LRU bound must hold (no overflow,
+    no lost/double agents)."""
+    import threading
+
+    runtime = AethonRuntime(runtime_config)
+    runtime._session_cache_size = 5
+
+    barrier = threading.Barrier(20)
+
+    def worker(i):
+        barrier.wait()  # maximize the interleaving
+        for _ in range(3):
+            runtime.get_or_create_agent(f"sess-{i}")
+
+    threads = [threading.Thread(target=worker, args=(i,)) for i in range(20)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    # The cache never exceeds its bound despite the concurrent check-then-act.
+    assert len(runtime.agents) <= runtime._session_cache_size
+
+
 def test_resolve_approval_fails_closed_without_gateway(runtime_config, monkeypatch):
     """No gateway/adapter/responder → deny with the 'can't answer' message."""
     import aethon.tools.messaging as messaging

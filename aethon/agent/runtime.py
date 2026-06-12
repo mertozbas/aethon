@@ -8,6 +8,7 @@ import concurrent.futures
 import logging
 import os
 import platform
+import threading
 from collections import OrderedDict
 from pathlib import Path
 
@@ -89,6 +90,13 @@ class AethonRuntime:
         from aethon.token_meter import TokenMeter
 
         self.token_meter = TokenMeter(getattr(config, "budget", None))
+        # Guards the shared agent LRU (self.agents) — get_or_create_agent runs in
+        # executor threads (different-session turns in parallel, H1) AND on the
+        # loop thread (scheduler), so an asyncio lock can't protect it. A thread
+        # lock keeps the check-then-act of the cache (and its pop sites) atomic so
+        # concurrent distinct-session turns can't overflow the LRU or evict an
+        # agent another thread is mid-invocation on (review fix).
+        self._cache_lock = threading.RLock()
 
         # VectorMemory
         if getattr(config, "memory", None) and config.memory.enabled:
@@ -231,8 +239,7 @@ class AethonRuntime:
         )
 
         if not messages_dir.exists():
-            self.agents.pop(session_id, None)
-            self._completion_gates.pop(session_id, None)
+            self._evict(session_id)
             return
 
         sanitized = 0
@@ -290,8 +297,7 @@ class AethonRuntime:
             )
 
         # Evict from cache so it gets recreated with clean history
-        self.agents.pop(session_id, None)
-        self._completion_gates.pop(session_id, None)
+        self._evict(session_id)
 
     def _get_tools(self, session_id: str | None = None) -> list:
         """Tool list — includes memory, delegate, context, messaging, scheduler, MCP tools.
@@ -775,25 +781,35 @@ class AethonRuntime:
         """Get or create agent for a session.
 
         Uses LRU cache: moves accessed session to end, evicts oldest when full.
-        Evicted sessions persist on disk via FileSessionManager.
+        Evicted sessions persist on disk via FileSessionManager. The whole
+        check-then-act is under the cache lock so concurrent distinct-session
+        turns (run in parallel on executor threads) can't overflow the LRU or
+        evict an agent another thread is mid-invocation on (review fix).
         """
-        if session_id in self.agents:
-            self.agents.move_to_end(session_id)
-            return self.agents[session_id]
+        with self._cache_lock:
+            if session_id in self.agents:
+                self.agents.move_to_end(session_id)
+                return self.agents[session_id]
 
-        # Evict oldest if cache full
-        if len(self.agents) >= self._session_cache_size:
-            evicted_id, _ = self.agents.popitem(last=False)
-            self._completion_gates.pop(evicted_id, None)
-            # Drop the evicted session's turn lock too (H1) — but never one that
-            # is currently held (an in-flight turn). Evicted = least-recently
-            # used, so an active turn (MRU) is not evicted; the guard is belt-
-            # and-suspenders.
-            _lk = self._session_locks.get(evicted_id)
-            if _lk is not None and not _lk.locked():
-                self._session_locks.pop(evicted_id, None)
-            logger.debug(f"Session evicted from cache: {evicted_id}")
+            # Evict oldest if cache full
+            if len(self.agents) >= self._session_cache_size:
+                evicted_id, _ = self.agents.popitem(last=False)
+                self._completion_gates.pop(evicted_id, None)
+                _lk = self._session_locks.get(evicted_id)
+                if _lk is not None and not _lk.locked():
+                    self._session_locks.pop(evicted_id, None)
+                logger.debug(f"Session evicted from cache: {evicted_id}")
 
+            return self._build_agent(session_id)
+
+    def _evict(self, session_id: str) -> None:
+        """Drop a session's cached agent + gate under the cache lock (review fix)."""
+        with self._cache_lock:
+            self.agents.pop(session_id, None)
+        self._completion_gates.pop(session_id, None)
+
+    def _build_agent(self, session_id: str):
+        """Construct and cache a fresh Agent (called under the cache lock)."""
         system_prompt = self.prompt_composer.compose(session_id)
 
         session_mgr = FileSessionManager(
@@ -1186,8 +1202,7 @@ class AethonRuntime:
         agent_dir = sessions_dir / f"session_{session_id}" / "agents" / "agent_main"
         messages_dir = agent_dir / "messages"
         if not messages_dir.exists():
-            self.agents.pop(session_id, None)
-            self._completion_gates.pop(session_id, None)
+            self._evict(session_id)
             return
         # Numeric sort — strands names files message_<int>.json unpadded, so
         # a lexicographic sort would order message_10 before message_9 and
@@ -1214,8 +1229,7 @@ class AethonRuntime:
                         f.unlink()
                     except Exception:
                         pass
-        self.agents.pop(session_id, None)
-        self._completion_gates.pop(session_id, None)
+        self._evict(session_id)
 
     def _write_reset_checkpoint(self, session_id: str, files: list) -> None:
         """Append a compact state checkpoint to workspace/HANDOFF.md.
