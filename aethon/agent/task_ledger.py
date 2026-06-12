@@ -250,6 +250,35 @@ class TaskLedger:
         """Tasks belonging to a project (parent task)."""
         return [t for t in self._load() if t.get("parent_id") == parent_id]
 
+    def active_project(self) -> str | None:
+        """The id of the most recent project (parent task) that still has
+        open/in_progress children — what the C3 executor should work next.
+        ``None`` when no project has unfinished work. Most-recent = highest
+        numeric id among such parents (ids are assigned in creation order).
+        """
+        open_parents = {
+            t.get("parent_id")
+            for t in self._load()
+            if t.get("status") in ("open", "in_progress") and t.get("parent_id")
+        }
+        if not open_parents:
+            return None
+
+        def _num(pid: str) -> int:
+            tail = str(pid)[1:]
+            return int(tail) if tail.isdigit() else -1
+
+        return max(open_parents, key=_num)
+
+    def is_project_complete(self, parent_id: str) -> bool:
+        """True when a project has children and none are still open/in_progress
+        (every child is done or dropped). A project with no children is NOT
+        complete — there is nothing finished to deliver."""
+        kids = self.children(parent_id)
+        if not kids:
+            return False
+        return not any(k.get("status") in ("open", "in_progress") for k in kids)
+
     @staticmethod
     def _reaches(start: str, target: str, adj: dict) -> bool:
         """Whether ``target`` is reachable from ``start``'s out-edges in the

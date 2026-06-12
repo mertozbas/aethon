@@ -370,6 +370,42 @@ def test_c2_unknown_dependency_error_is_bounded(ledger):
     assert len(problems[0]) < 300
 
 
+# --- Phase 10 C3: active-project + completion helpers ---
+
+
+def test_c3_active_project_picks_most_recent_with_open_children(ledger):
+    ledger.create("Proje A")                       # T1
+    ledger.create("A1", parent_id="T1")            # T2
+    ledger.complete("T2", evidence="ok")           # A fully done
+    ledger.create("Proje B")                       # T3
+    ledger.create("B1", parent_id="T3")            # T4 open
+    # A is complete (no open children); B has an open child → B is active.
+    assert ledger.active_project() == "T3"
+
+
+def test_c3_active_project_none_when_all_done(ledger):
+    ledger.create("Proje")                          # T1
+    ledger.create("alt", parent_id="T1")            # T2
+    ledger.complete("T2", evidence="ok")
+    assert ledger.active_project() is None
+
+
+def test_c3_is_project_complete(ledger):
+    ledger.create("Proje")                          # T1
+    ledger.create("a", parent_id="T1")              # T2
+    ledger.create("b", parent_id="T1")              # T3
+    assert ledger.is_project_complete("T1") is False
+    ledger.complete("T2", evidence="ok")
+    assert ledger.is_project_complete("T1") is False
+    ledger.update("T3", status="dropped")           # dropped counts as not-open
+    assert ledger.is_project_complete("T1") is True
+
+
+def test_c3_project_with_no_children_is_not_complete(ledger):
+    ledger.create("Boş proje")                      # T1, no children
+    assert ledger.is_project_complete("T1") is False
+
+
 def test_ledger_text_is_flattened_against_prompt_injection(tmp_path):
     """Review fix: ledger text reaches the system prompt — embedded newlines
     must not be able to fabricate prompt layers or operating rules."""
