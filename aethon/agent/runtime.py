@@ -1130,7 +1130,13 @@ class AethonRuntime:
 
         from aethon.tools.delegate import plan_into_ledger
 
-        result = plan_into_ledger(message.text)
+        # Remember where the work came from so C4 can pulse + deliver the receipt
+        # back to this channel/sender.
+        result = plan_into_ledger(
+            message.text,
+            origin_channel=message.channel,
+            origin_recipient=message.sender_id,
+        )
         if not result:
             # Classified as work but no project could be opened — don't claim to
             # have started one; let the normal turn answer instead.

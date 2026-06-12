@@ -44,6 +44,18 @@ def test_persist_plan_builds_dependency_ordered_tree(ledger):
     assert [t["id"] for t in ledger.available_tasks("T1")] == ["T3", "T4"]
 
 
+def test_persist_plan_stamps_origin_on_project(ledger):
+    """C4: the originating channel + recipient are stamped on the parent project
+    so the executor can deliver pulses/receipt back."""
+    plan = PlanSchema(project_title="X", tasks=[PlanTask(title="a")])
+    result = persist_plan(
+        ledger, plan, origin_channel="telegram", origin_recipient="12345"
+    )
+    proj = ledger.get(result["project_id"])
+    assert proj["origin_channel"] == "telegram"
+    assert proj["origin_recipient"] == "12345"
+
+
 def test_persist_plan_empty_returns_none(ledger):
     assert persist_plan(ledger, PlanSchema(project_title="boş", tasks=[])) is None
     assert ledger.list() == []

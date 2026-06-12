@@ -36,7 +36,14 @@ class PlanSchema(BaseModel):
     tasks: list[PlanTask] = Field(default_factory=list)
 
 
-def persist_plan(ledger, plan: PlanSchema, *, plan_approval: bool = False) -> dict | None:
+def persist_plan(
+    ledger,
+    plan: PlanSchema,
+    *,
+    plan_approval: bool = False,
+    origin_channel: str = "",
+    origin_recipient: str = "",
+) -> dict | None:
     """Write a ``PlanSchema`` into the ledger as a parent project + child tasks
     with mapped dependencies. Returns ``{project_id, task_ids, summary}`` or
     ``None`` when the plan has no tasks (the caller then falls back to free text).
@@ -46,6 +53,10 @@ def persist_plan(ledger, plan: PlanSchema, *, plan_approval: bool = False) -> di
     and set them. A child whose dependencies don't validate (unknown ref / cycle)
     keeps its other fields — the plan still lands; only the bad edge is dropped
     (advisory, logged), never the whole plan.
+
+    ``origin_channel``/``origin_recipient`` are stamped on the parent so the C3
+    executor can deliver pulses and the proof-of-work receipt back to where the
+    work was requested.
     """
     tasks = list(plan.tasks or [])
     if not tasks:
@@ -57,6 +68,12 @@ def persist_plan(ledger, plan: PlanSchema, *, plan_approval: bool = False) -> di
         priority="high",
     )
     project_id = project["id"]
+    if origin_channel:
+        ledger.update(
+            project_id,
+            origin_channel=origin_channel,
+            origin_recipient=origin_recipient,
+        )
 
     # Pass 1 — create children without dependencies; record position → real id.
     pos_to_id: dict[str, str] = {}

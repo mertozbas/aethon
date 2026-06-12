@@ -115,6 +115,10 @@ def test_intake_work_message_opens_project(runtime_config):
     assert "Blog API" in reply            # the plan summary
     # A project actually landed in the ledger.
     assert any(t["title"] == "Blog API" for t in runtime._task_ledger.list())
+    # C4: the originating channel + sender were stamped on the project.
+    proj = next(t for t in runtime._task_ledger.list() if t["title"] == "Blog API")
+    assert proj["origin_channel"] == "cli"
+    assert proj["origin_recipient"] == "u"
 
 
 def test_intake_meters_planner_tokens(runtime_config):

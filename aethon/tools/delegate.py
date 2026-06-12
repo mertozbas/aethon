@@ -79,14 +79,17 @@ def ask_analyst(data_task: str) -> str:
     return _extract_text(result)
 
 
-def plan_into_ledger(planning_task: str) -> dict | None:
+def plan_into_ledger(
+    planning_task: str, *, origin_channel: str = "", origin_recipient: str = ""
+) -> dict | None:
     """Run the planner for a task and persist a STRUCTURED plan into the ledger.
 
     Returns the ``persist_plan`` result (``{project_id, task_ids, summary}``) or
     ``None`` when the pipeline isn't wired or the planner produced no structured
     tasks (a provider that can't force structured output). Shared by the
     ask_planner tool and the C1 intake branch so both open a project the same way
-    (no double-creation — persist_plan owns the parent task).
+    (no double-creation — persist_plan owns the parent task). ``origin_*`` are
+    stamped on the project so the C3 executor can deliver pulses/receipt back.
     """
     if not _specialist_factory or _plan_ledger is None:
         return None
@@ -100,7 +103,10 @@ def plan_into_ledger(planning_task: str) -> dict | None:
         outcome = planner(planning_task, structured_output_model=PlanSchema)
         plan = getattr(outcome, "structured_output", None)
         if plan and plan.tasks:
-            return persist_plan(_plan_ledger, plan, plan_approval=_plan_approval)
+            return persist_plan(
+                _plan_ledger, plan, plan_approval=_plan_approval,
+                origin_channel=origin_channel, origin_recipient=origin_recipient,
+            )
     except Exception as e:
         logger.warning(
             f"plan_into_ledger failed ({type(e).__name__}: {e})."
