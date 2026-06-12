@@ -135,7 +135,10 @@ class TelegramAdapter(ChannelAdapter):
         self.dp = None
         # S6 approval: pending futures keyed by a SHORT token (Telegram caps
         # callback_data at 64 bytes; the strands interrupt id is far longer).
+        # _pending_owner binds each token to the requesting user so a different
+        # allowlisted user can't answer someone else's approval.
         self._pending: dict[str, asyncio.Future] = {}
+        self._pending_owner: dict[str, str] = {}
 
     async def start(self) -> None:
         from aiogram import Bot, Dispatcher, types, F
@@ -308,6 +311,7 @@ class TelegramAdapter(ChannelAdapter):
         loop = asyncio.get_running_loop()
         fut: asyncio.Future = loop.create_future()
         self._pending[token] = fut
+        self._pending_owner[token] = str(request.recipient_id)
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[[
                 InlineKeyboardButton(text="✅ Onayla", callback_data=f"apr:{token}:1"),
@@ -323,6 +327,7 @@ class TelegramAdapter(ChannelAdapter):
             return await fut
         finally:
             self._pending.pop(token, None)
+            self._pending_owner.pop(token, None)
 
     def _approval_decision_from_callback(self, data: str, presser_id):
         """Resolve a pending approval from a callback query.
@@ -337,6 +342,11 @@ class TelegramAdapter(ChannelAdapter):
         token, dec = parts[1], parts[2]
         allowed = self.config.security.allowed_senders.get("telegram") or []
         if allowed and str(presser_id) not in allowed:
+            return (False, None)
+        # Bind to the requesting user: even an allowlisted bystander in the same
+        # chat must not answer someone else's pending approval.
+        owner = self._pending_owner.get(token)
+        if owner is not None and str(presser_id) != owner:
             return (False, None)
         decision = dec == "1"
         fut = self._pending.get(token)

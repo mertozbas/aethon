@@ -218,6 +218,22 @@ def test_callback_rejects_unauthorized_presser():
     loop.close()
 
 
+def test_callback_rejects_different_allowlisted_user():
+    """Even an allowlisted bystander can't answer another user's pending approval."""
+    adapter = _adapter(allowed=["42", "43"])
+    loop = asyncio.new_event_loop()
+    fut = loop.create_future()
+    adapter._pending["tok4"] = fut
+    adapter._pending_owner["tok4"] = "42"  # owned by user 42
+    authorized, decision = adapter._approval_decision_from_callback("apr:tok4:1", 43)
+    assert authorized is False           # user 43 is allowlisted but not the owner
+    assert not fut.done()
+    # The owner themselves can answer.
+    authorized2, decision2 = adapter._approval_decision_from_callback("apr:tok4:1", 42)
+    assert authorized2 is True and decision2 is True
+    loop.close()
+
+
 @pytest.mark.asyncio
 async def test_ask_approval_sends_keyboard_and_awaits():
     """ask_approval sends an inline keyboard and resolves on the callback."""
