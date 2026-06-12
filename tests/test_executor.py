@@ -85,18 +85,73 @@ async def test_executor_respects_iteration_cap(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_executor_stops_when_stuck(tmp_path):
+async def test_executor_drops_stuck_task_durably(tmp_path):
+    """Review fix (runaway): a task the agent can't finish is dropped after its
+    attempt limit — DURABLY (status='dropped'), so it leaves available_tasks and
+    can't be retried on a later tick or after a restart with a reset counter."""
     led, pid = _project(tmp_path)
     led.create("hard", parent_id=pid)                    # T2
     config = _config()
     config.core_loop.executor_max_task_attempts = 2
 
-    rt = _FakeRuntime(led, config, _noop)
+    result = await ProjectExecutor(_FakeRuntime(led, config, _noop)).run(pid)
+    assert result["reason"] == "partial"
+    assert result["dropped"] == ["T2"]
+    assert result["iterations"] == 2                     # 2 attempts, then dropped
+    assert led.get("T2")["status"] == "dropped"          # durable
+    assert led.get("T2")["executor_attempts"] == 2       # counter persisted
+
+
+@pytest.mark.asyncio
+async def test_executor_attempt_limit_survives_reinvocation(tmp_path):
+    """The attempt limit is GLOBAL, not per-run: a stuck task is not re-attempted
+    on a fresh executor (the in-memory-counter-reset runaway hole)."""
+    led, pid = _project(tmp_path)
+    led.create("hard", parent_id=pid)                    # T2
+    config = _config()
+    config.core_loop.executor_max_task_attempts = 2
+
+    # First run drops T2 after 2 attempts.
+    await ProjectExecutor(_FakeRuntime(led, config, _noop)).run(pid)
+    assert led.get("T2")["status"] == "dropped"
+
+    # A brand-new executor + fresh ledger (a restart) must NOT re-attempt it.
+    led2 = TaskLedger(str(tmp_path))
+    calls = {"n": 0}
+
+    async def _count(msg, sid, ledger):
+        calls["n"] += 1
+
+    r2 = await ProjectExecutor(_FakeRuntime(led2, config, _count)).run(pid)
+    assert calls["n"] == 0                               # dropped task never re-run
+    assert r2["iterations"] == 0
+    assert r2["reason"] == "partial"                     # remembers the drop
+
+
+@pytest.mark.asyncio
+async def test_executor_does_not_revert_concurrently_completed_task(tmp_path, monkeypatch):
+    """Review fix (concurrency): if a task is completed between the
+    available_tasks read and the in_progress write, the executor must not revert
+    it to in_progress."""
+    led, pid = _project(tmp_path)
+    led.create("A", parent_id=pid)                       # T2, open
+
+    rt = _FakeRuntime(led, _config(), _noop)
+    real_get = led.get
+
+    def racing_get(task_id):
+        # Simulate a user turn completing T2 right at the executor's re-check.
+        task = real_get(task_id)
+        if task_id == "T2" and task and task.get("status") != "done":
+            led.complete("T2", evidence="concurrent user")
+        return real_get(task_id)
+
+    monkeypatch.setattr(led, "get", racing_get)
     result = await ProjectExecutor(rt).run(pid)
 
-    assert result["reason"] == "stuck"
-    assert result["stuck"] == "T2"
-    assert result["iterations"] == 2                     # 2 attempts, then give up
+    fresh = TaskLedger(str(tmp_path))
+    assert fresh.get("T2")["status"] == "done"           # guard prevented a revert
+    assert result["iterations"] == 0                     # never drove a turn on it
 
 
 @pytest.mark.asyncio

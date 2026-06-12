@@ -197,7 +197,9 @@ class TaskLedger:
     # Fields the original flat schema allowed update() to set.
     _UPDATABLE = ("title", "acceptance_criteria", "status", "evidence", "plan_origin")
     # Phase 10 C2 additions (separate tuple so the expansion stays auditable).
-    _UPDATABLE_C2 = ("parent_id", "priority", "due")
+    # ``executor_attempts`` (C3) is a durable per-task try counter the executor
+    # bumps so its attempt limit survives re-invocations and restarts.
+    _UPDATABLE_C2 = ("parent_id", "priority", "due", "executor_attempts")
 
     def update(self, task_id: str, **fields) -> dict | None:
         """Update title/acceptance_criteria/status/evidence/plan_origin and the
