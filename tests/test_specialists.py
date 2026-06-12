@@ -77,6 +77,44 @@ def test_specialist_configs_complete():
         assert len(config["tools"]) > 0
 
 
+# --- S7 review fix: specialists must not escape the sandbox -----------------
+
+
+def test_specialist_shell_unsandboxed_without_sandbox(model):
+    """No sandbox → coder keeps the plain host shell."""
+    from strands_tools import shell
+
+    factory = SpecialistFactory(model)
+    tools = factory._sandboxed_tools("coder", SPECIALIST_CONFIGS["coder"]["tools"])
+    assert shell in tools
+
+
+def test_specialist_shell_sandboxed_when_enabled(model):
+    """Sandbox on → the coder's host shell is swapped for the sandboxed one."""
+    from strands_tools import shell
+    from aethon.config import SecurityConfig
+    from aethon.tools.shell_sandbox import DockerSandbox
+
+    sandbox = DockerSandbox(SecurityConfig(sandbox="docker"), "/ws", runner=lambda *a: None)
+    factory = SpecialistFactory(model, sandbox=sandbox)
+    tools = factory._sandboxed_tools("coder", SPECIALIST_CONFIGS["coder"]["tools"])
+    assert shell not in tools                       # host shell removed
+    names = [getattr(t, "tool_name", getattr(t, "__name__", "")) for t in tools]
+    assert "shell" in names                         # replaced by a sandboxed shell
+
+
+def test_specialist_without_shell_untouched(model):
+    """A specialist that has no shell (researcher) is unchanged by sandboxing."""
+    from aethon.config import SecurityConfig
+    from aethon.tools.shell_sandbox import DockerSandbox
+
+    sandbox = DockerSandbox(SecurityConfig(sandbox="docker"), "/ws", runner=lambda *a: None)
+    factory = SpecialistFactory(model, sandbox=sandbox)
+    before = SPECIALIST_CONFIGS["researcher"]["tools"]
+    after = factory._sandboxed_tools("researcher", before)
+    assert after == list(before)
+
+
 def test_specialists_have_conversation_manager(factory):
     """R8 regression: specialists are process-cached and reused for every
     delegation — without a conversation manager their history grows unbounded

@@ -112,3 +112,11 @@ def test_hook_registered_before_output_guard(tmp_path):
     assert names.index("UntrustedContentHookProvider") < names.index(
         "ToolOutputGuardHookProvider"
     )
+
+
+def test_specialist_hooks_include_marking(tmp_path):
+    """S9 review fix: the researcher's http_request must be marked too — the
+    specialist hook set includes the untrusted-content hook."""
+    rt = _runtime(tmp_path)
+    names = {h.__class__.__name__ for h in rt._get_specialist_hooks()}
+    assert "UntrustedContentHookProvider" in names

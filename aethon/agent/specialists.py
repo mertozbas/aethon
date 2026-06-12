@@ -64,7 +64,7 @@ SPECIALIST_CONFIGS = {
 class SpecialistFactory:
     """Create and cache specialist agents."""
 
-    def __init__(self, model, session_config=None, hooks_factory=None):
+    def __init__(self, model, session_config=None, hooks_factory=None, sandbox=None):
         self.model = model
         self._cache: dict[str, Agent] = {}
         self._summary_ratio = getattr(session_config, "summary_ratio", 0.3)
@@ -75,6 +75,9 @@ class SpecialistFactory:
         # specialists edit files with their own tools, so they must not
         # bypass the security/reliability layer the main agent runs under.
         self._hooks_factory = hooks_factory
+        # Execution sandbox (S7) — when set, a specialist's `shell` runs in a
+        # per-specialist container too, so delegation can't escape the sandbox.
+        self._sandbox = sandbox
 
     def get(self, specialist_name: str) -> Agent:
         """Get or create a specialist agent."""
@@ -84,10 +87,11 @@ class SpecialistFactory:
                 raise ValueError(f"Unknown specialist: {specialist_name}")
 
             hooks = self._hooks_factory() if self._hooks_factory else []
+            tools = self._sandboxed_tools(specialist_name, config["tools"])
             self._cache[specialist_name] = Agent(
                 model=self.model,
                 system_prompt=config["system_prompt"],
-                tools=config["tools"],
+                tools=tools,
                 name=config["name"],
                 agent_id=specialist_name,
                 hooks=hooks,
@@ -104,6 +108,16 @@ class SpecialistFactory:
             logger.info(f"Specialist agent created: {config['name']}")
 
         return self._cache[specialist_name]
+
+    def _sandboxed_tools(self, specialist_name: str, tools: list) -> list:
+        """Swap a specialist's host `shell` for a per-specialist sandboxed shell
+        when the docker sandbox is on — so delegation can't escape it (S7)."""
+        if self._sandbox is None or shell not in tools:
+            return list(tools)
+        from aethon.tools.shell_sandbox import make_sandboxed_shell
+
+        sandboxed = make_sandboxed_shell(f"specialist:{specialist_name}", self._sandbox)
+        return [sandboxed if t is shell else t for t in tools]
 
     def get_all(self) -> dict[str, Agent]:
         """Get all specialist agents."""

@@ -113,6 +113,7 @@ class AethonRuntime:
                     self.model,
                     session_config=config.session,
                     hooks_factory=self._get_specialist_hooks,
+                    sandbox=self._sandbox,
                 )
                 set_specialist_factory(self.specialist_factory)
                 logger.info("Multi-agent: active")
@@ -718,6 +719,17 @@ class AethonRuntime:
                 )
             except Exception as e:
                 logger.error(f"Specialist PostEditVerify startup error: {e}")
+        # Untrusted-content marking (S9) — the researcher fetches web content via
+        # http_request; without this its results would reach the model unmarked.
+        if getattr(self.config.security, "mark_untrusted_content", True):
+            try:
+                from aethon.agent.hooks.untrusted_content import (
+                    UntrustedContentHookProvider,
+                )
+
+                hooks.append(UntrustedContentHookProvider())
+            except Exception as e:
+                logger.warning(f"Specialist UntrustedContent startup error: {e}")
         max_out = getattr(self.config.performance, "max_tool_output_chars", 0)
         if max_out and max_out > 0:
             try:
