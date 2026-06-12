@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Phase 9A Sprint 1 — Network security (S1-S5)
+
+Closes the remote-RCE-grade network findings of the seven-lens gap analysis:
+deny by default on every network surface, fail closed at startup. Design doc:
+`docs/development/PHASE-9A-SECURITY.md`.
+
+### Added
+- **`--insecure-bind` flag (S4)** — `aethon start` refuses a non-loopback
+  `channels.webchat.host` when `dashboard.auth_token` is empty (gateway raises
+  the same refusal as defense-in-depth). The flag opts out, intended only for
+  deployments behind their own authenticating reverse proxy. Docker:
+  `AETHON_DASHBOARD_TOKEN` is now effectively required (the container binds
+  `0.0.0.0`); README documents a reverse-proxy/TLS recipe.
+
+### Changed
+- **Startup output prints the real bind host (S4)** — `aethon start` and the
+  gateway no longer print hardcoded `http://127.0.0.1:…` URLs when bound
+  elsewhere.
+
 ### Phase 8 — Reliability Hardening (R1-R18)
 
 Derived from the hermes-strands autonomous-development audit: moves AETHON

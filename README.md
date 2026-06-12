@@ -250,9 +250,14 @@ The image is **headless** (web UI + dashboard + webhook + messaging bots; the in
 **Docker Compose (recommended):**
 
 ```bash
-OPENAI_API_KEY=sk-... docker compose up --build
-# open http://127.0.0.1:18790
+OPENAI_API_KEY=sk-... AETHON_DASHBOARD_TOKEN=$(openssl rand -hex 16) docker compose up --build
+# open http://127.0.0.1:18790  (WebChat/dashboard ask for the token on first use)
 ```
+
+> **`AETHON_DASHBOARD_TOKEN` is required.** The container binds `0.0.0.0`, so AETHON
+> refuses to start when the token resolves empty (fail-closed; check `docker logs aethon`
+> for the message). Only when an authenticating reverse proxy fronts the container may
+> you opt out with a Compose override: `command: ["aethon", "start", "--insecure-bind"]`.
 
 **Plain `docker run`:**
 
@@ -260,6 +265,7 @@ OPENAI_API_KEY=sk-... docker compose up --build
 docker build -t aethon .
 docker run -p 18790:18790 \
   -e OPENAI_API_KEY=sk-... \
+  -e AETHON_DASHBOARD_TOKEN=change-me \
   aethon
 ```
 
@@ -287,7 +293,30 @@ docker compose --profile local up --build
 - **Provider:** the seeded config defaults to `provider: openai` reading `OPENAI_API_KEY` from the environment; pass it with `-e OPENAI_API_KEY=…` (or `environment:` in Compose), or set `model.host` to an OpenAI-compatible base URL.
 - **Memory is disabled by default in the image** (it needs an Ollama embedding backend).
 - Healthcheck probes `http://127.0.0.1:18790/health` inside the container.
-- **Other providers:** switch `provider` in the config and supply the matching credentials (e.g. `ANTHROPIC_API_KEY` for `anthropic`). Set `AETHON_DASHBOARD_TOKEN` to enable dashboard auth when exposing beyond localhost.
+- **Other providers:** switch `provider` in the config and supply the matching credentials (e.g. `ANTHROPIC_API_KEY` for `anthropic`).
+- **`AETHON_DASHBOARD_TOKEN` is required** (the container binds beyond loopback; AETHON refuses to start without a token — see above).
+
+**Reverse proxy / TLS recipe** (recommended when exposing to the internet):
+
+```caddyfile
+# Caddy — automatic HTTPS; WebSockets proxied transparently
+chat.example.com {
+    reverse_proxy 127.0.0.1:18790
+}
+```
+
+```nginx
+# nginx — terminate TLS and forward WebSocket upgrades
+location / {
+    proxy_pass http://127.0.0.1:18790;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+}
+```
+
+Behind TLS the chat page automatically connects via `wss:`. Keep `AETHON_DASHBOARD_TOKEN` set even behind a proxy unless the proxy itself authenticates (then `--insecure-bind` is acceptable).
 
 ### Updating & uninstalling
 
@@ -471,7 +500,7 @@ channels:
 |---|---|---|---|
 | `enabled` | bool | `true` | Enable the web chat channel. |
 | `port` | int | `18790` | Web chat listen port. |
-| `host` | str | `"127.0.0.1"` | Bind address; loopback only by default. Set `0.0.0.0` to expose (also set `dashboard.auth_token`). |
+| `host` | str | `"127.0.0.1"` | Bind address; loopback only by default. Set `0.0.0.0` to expose — `dashboard.auth_token` is then **required** (startup refuses otherwise; `--insecure-bind` to override behind your own auth proxy). |
 
 **`channels.telegram`**
 
@@ -697,7 +726,7 @@ Useful endpoints on the same app/port:
 - `GET /api/status` → `{"status": "running", "version": "0.1.0"}` (not gated).
 - `GET /health` → `{"status": "ok"}` (deliberately ungated, for container/load-balancer probes).
 
-To expose WebChat on your network, set `channels.webchat.host: 0.0.0.0` — and also set `dashboard.auth_token` (see [Security](#security)).
+To expose WebChat on your network, set `channels.webchat.host: 0.0.0.0` — `dashboard.auth_token` is then **required**: AETHON refuses to start without it (see [Security](#security)).
 
 ### Dashboard
 
@@ -936,7 +965,7 @@ Also installed with the `launcher-macos` extra: **`aethon-menubar`** — a macOS
 
 AETHON is **local-first** and ships safe defaults:
 
-- **Loopback binding:** WebChat (and the dashboard/webhooks mounted on it) bind to `127.0.0.1` by default. To expose beyond localhost, set `channels.webchat.host: 0.0.0.0` **and** a `dashboard.auth_token`.
+- **Loopback binding:** WebChat (and the dashboard/webhooks mounted on it) bind to `127.0.0.1` by default. To expose beyond localhost, set `channels.webchat.host: 0.0.0.0` **and** a `dashboard.auth_token` — without the token AETHON **refuses to start** (fail closed; `--insecure-bind` overrides only behind your own authenticating proxy).
 - **Dashboard auth token:** when `dashboard.auth_token` is set, `/dashboard`, the protected `/api/*` prefixes, and `/ws/dashboard` require the token (via `aethon_dash` cookie, `Authorization: Bearer`, or `?token=`). `/api/status` and `/health` stay open for probes.
 - **File-access sandbox:** by default, file tools may read/write anywhere under your home directory **except** a blocklist of system and credential paths (`/etc`, `/usr`, `/bin`, `~/.ssh`, `~/.gnupg`, `~/.aethon/credentials`, …). Set `security.workspace_only: true` to confine file tools strictly to `~/.aethon/workspace`.
 - **Blocked commands:** the security hook refuses shell commands containing any `security.blocked_commands` entry (default `rm -rf /`, `sudo`, `mkfs`, plus a built-in danger list).
@@ -984,7 +1013,7 @@ It's **source-available** under PolyForm Noncommercial 1.0.0 — free for noncom
 Yes. Install the `ollama` extra, set `provider: ollama`, and use Ollama embeddings for memory. No cloud calls are required in that configuration.
 
 **How do I expose the Web UI on my network?**
-Set `channels.webchat.host: 0.0.0.0` and **also** set `dashboard.auth_token`. Then reach the dashboard with `?token=YOUR_TOKEN` to set the auth cookie.
+Set `channels.webchat.host: 0.0.0.0` and **also** set `dashboard.auth_token` (required — AETHON refuses to start exposed without it). Then reach the dashboard with `?token=YOUR_TOKEN` to set the auth cookie.
 
 **Which channels need extra installs?**
 Only **WhatsApp** (the `whatsapp` extra). CLI, WebChat, Telegram, Discord, and Slack all ship in the core install.

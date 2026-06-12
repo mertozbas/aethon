@@ -35,7 +35,9 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       # Anthropic API path: uncomment and switch provider to `anthropic` in your config.
       # ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      # Enable dashboard auth when exposing beyond localhost:
+      # REQUIRED: the container binds 0.0.0.0 — AETHON refuses to start without
+      # a token. Behind your own auth proxy you may instead override the command:
+      #   command: ["aethon", "start", "--insecure-bind"]
       AETHON_DASHBOARD_TOKEN: ${AETHON_DASHBOARD_TOKEN:-}
     restart: unless-stopped
 

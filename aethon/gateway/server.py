@@ -22,8 +22,11 @@ logger = logging.getLogger("aethon.gateway")
 class AethonGateway:
     """Main AETHON gateway server."""
 
-    def __init__(self, config: AethonConfig):
+    def __init__(self, config: AethonConfig, *, insecure_bind: bool = False):
         self.config = config
+        # Skip the non-loopback-bind auth refusal (S4) — for deployments behind
+        # their own authenticating reverse proxy. Never skips the webhook gate.
+        self._insecure_bind = insecure_bind
         self.runtime = AethonRuntime(config)
         self.event_bus = DashboardEventBus()
         self.router = MessageRouter(config, self.runtime, event_bus=self.event_bus)
@@ -68,6 +71,16 @@ class AethonGateway:
         coroutines = []
         self.loop = asyncio.get_running_loop()
 
+        # Fail closed BEFORE any side effect (recorder, adapters, scheduler):
+        # an exposed bind without auth must never come up (Phase 9A / S4).
+        from aethon.gateway.netsec import check_bind_security
+
+        bind_ok, bind_msg = check_bind_security(self.config)
+        if not bind_ok:
+            if not self._insecure_bind:
+                raise RuntimeError(bind_msg)
+            logger.warning(f"--insecure-bind: {bind_msg}")
+
         # Start session recording (if enabled) before any channels accept messages.
         if self._recorder:
             try:
@@ -90,7 +103,8 @@ class AethonGateway:
             self.adapters["webchat"] = WebChatAdapter(self.config, self.router)
             coroutines.append(self.adapters["webchat"].start())
             logger.info(
-                f"WebChat: http://127.0.0.1:{self.config.channels.webchat.port}"
+                f"WebChat: http://{self.config.channels.webchat.host}:"
+                f"{self.config.channels.webchat.port}"
             )
 
         if self.config.channels.cli.enabled:

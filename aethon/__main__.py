@@ -81,7 +81,13 @@ def mcp(config: str):
 
 @main.command()
 @click.option("--config", "-c", default="~/.aethon/config.yaml", help="Config file path")
-def start(config: str):
+@click.option(
+    "--insecure-bind",
+    is_flag=True,
+    help="Allow a non-loopback bind without dashboard.auth_token "
+    "(only behind your own authenticating reverse proxy).",
+)
+def start(config: str, insecure_bind: bool):
     """Start AETHON."""
     if not Path(config).expanduser().exists():
         console.print("[yellow]No config found — let's set up AETHON first.[/]")
@@ -104,6 +110,15 @@ def start(config: str):
 
     cfg = AethonConfig.load(config)
 
+    # Fail closed before anything else: an exposed bind without auth is refused
+    # at boot, not discovered at attack time (Phase 9A / S4).
+    from aethon.gateway.netsec import check_bind_security
+
+    bind_ok, bind_msg = check_bind_security(cfg)
+    if not bind_ok and not insecure_bind:
+        console.print(f"[red]Refusing to start:[/] {bind_msg}")
+        return
+
     _ensure_workspace(cfg)
     _setup_file_logging(cfg)
 
@@ -117,7 +132,9 @@ def start(config: str):
 
     console.print(f"  Provider: [green]{cfg.model.provider}[/]")
     console.print(f"  Model: [green]{cfg.model.model_id}[/]")
-    console.print(f"  WebChat: [green]http://127.0.0.1:{cfg.channels.webchat.port}[/]")
+    console.print(
+        f"  WebChat: [green]http://{cfg.channels.webchat.host}:{cfg.channels.webchat.port}[/]"
+    )
 
     # Embedding model check (for VectorMemory)
     if cfg.memory.enabled:
@@ -158,13 +175,15 @@ def start(config: str):
     # Dashboard status
     if cfg.dashboard.enabled and cfg.channels.webchat.enabled:
         console.print(
-            f"  Dashboard: [green]http://127.0.0.1:{cfg.channels.webchat.port}/dashboard[/]"
+            f"  Dashboard: [green]http://{cfg.channels.webchat.host}:"
+            f"{cfg.channels.webchat.port}/dashboard[/]"
         )
 
     # Webhook status
     if cfg.webhook.enabled and cfg.channels.webchat.enabled:
         console.print(
-            f"  Webhook: [green]http://127.0.0.1:{cfg.channels.webchat.port}/webhook/{{channel}}[/]"
+            f"  Webhook: [green]http://{cfg.channels.webchat.host}:"
+            f"{cfg.channels.webchat.port}/webhook/{{channel}}[/]"
         )
 
     # MCP status
@@ -178,7 +197,7 @@ def start(config: str):
 
     console.print()
 
-    gateway = AethonGateway(cfg)
+    gateway = AethonGateway(cfg, insecure_bind=insecure_bind)
     try:
         asyncio.run(gateway.start())
     except KeyboardInterrupt:

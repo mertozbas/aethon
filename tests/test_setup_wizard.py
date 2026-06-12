@@ -99,6 +99,46 @@ def test_cli_init_writes_openai_config(tmp_path, monkeypatch):
     assert loaded.memory.enabled is False
 
 
+def test_cli_start_refuses_nonloopback_bind_without_token(tmp_path):
+    """`aethon start` fails closed on an exposed bind without a token (S4)."""
+    cfg = tmp_path / "config.yaml"
+    AethonConfig.write(
+        {"channels": {"webchat": {"enabled": True, "host": "0.0.0.0"}}}, str(cfg)
+    )
+    result = CliRunner().invoke(main, ["start", "-c", str(cfg)])
+    assert result.exit_code == 0, result.output
+    assert "Refusing to start" in result.output
+    assert "dashboard.auth_token" in result.output
+
+
+def test_cli_start_insecure_bind_flag_skips_refusal(tmp_path, monkeypatch):
+    """--insecure-bind continues past the bind gate (then stops at the provider
+    check — a clean, deterministic exit that proves the gate was skipped)."""
+    import aethon.agent.model_factory as mf
+
+    monkeypatch.setattr(
+        mf, "check_model_availability", lambda mc: (False, "unavailable (test)")
+    )
+    cfg = tmp_path / "config.yaml"
+    AethonConfig.write(
+        {
+            "channels": {"webchat": {"enabled": True, "host": "0.0.0.0"}},
+            "memory": {"enabled": False},
+            # keep workspace/log side effects inside tmp_path
+            "paths": {
+                "workspace": str(tmp_path / "ws"),
+                "sessions": str(tmp_path / "sessions"),
+                "logs": str(tmp_path / "logs"),
+            },
+        },
+        str(cfg),
+    )
+    result = CliRunner().invoke(main, ["start", "-c", str(cfg), "--insecure-bind"])
+    assert result.exit_code == 0, result.output
+    assert "Refusing to start" not in result.output
+    assert "Provider not ready" in result.output
+
+
 def test_cli_init_enables_telegram_channel(tmp_path, monkeypatch):
     import aethon.setup_wizard as wiz
 

@@ -39,7 +39,10 @@ channels:
 memory:
   enabled: false
 
-# Empty token = no auth. Set AETHON_DASHBOARD_TOKEN before exposing beyond localhost.
+# REQUIRED: the container binds 0.0.0.0, so AETHON refuses to start when this
+# resolves empty. Set AETHON_DASHBOARD_TOKEN in the container environment, or —
+# only behind your own authenticating reverse proxy — override the command with
+# `aethon start --insecure-bind`.
 dashboard:
   enabled: true
   auth_token: ${AETHON_DASHBOARD_TOKEN}
