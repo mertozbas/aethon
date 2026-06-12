@@ -1227,17 +1227,48 @@ class AethonRuntime:
             try:
                 backup_root = agent_dir / "cleared"
                 backup_root.mkdir(exist_ok=True)
-                batch = backup_root / f"batch_{len(list(backup_root.glob('batch_*')))}"
-                batch.mkdir()
+                batch = self._next_batch_dir(backup_root)
                 for f in files:
                     f.rename(batch / f.name)  # preserve history for recovery
-            except Exception:
+            except Exception as e:
+                # Fail loud: the delete-instead-of-backup fallback exists only so
+                # an overflow can still be recovered when the backup genuinely
+                # can't be written — it must never be silent (it loses history).
+                logger.error(
+                    f"Session reset backup failed ({session_id}); clearing "
+                    f"history without a recoverable backup to break the "
+                    f"overflow: {type(e).__name__}: {e}"
+                )
                 for f in files:
                     try:
                         f.unlink()
                     except Exception:
                         pass
         self._evict(session_id)
+
+    def _next_batch_dir(self, backup_root: Path) -> Path:
+        """Allocate a fresh ``cleared/batch_N`` dir.
+
+        Numbered by max-existing+1 (NOT count): retention prunes the
+        lowest-numbered batches, so a count-based name shrinks after pruning and
+        collides with a surviving ``batch_N`` — that collision used to raise and
+        divert into the delete-instead-of-backup path, silently losing session
+        history. The while-loop keeps the allocation collision-proof even if a
+        same-numbered dir somehow already exists.
+        """
+        nums = [
+            int(p.name.split("_")[-1])
+            for p in backup_root.glob("batch_*")
+            if p.is_dir() and p.name.split("_")[-1].isdigit()
+        ]
+        n = (max(nums) + 1) if nums else 0
+        while True:
+            batch = backup_root / f"batch_{n}"
+            try:
+                batch.mkdir()
+                return batch
+            except FileExistsError:
+                n += 1
 
     def _write_reset_checkpoint(self, session_id: str, files: list) -> None:
         """Append a compact state checkpoint to workspace/HANDOFF.md.
