@@ -198,11 +198,9 @@ class WebChatAdapter(ChannelAdapter):
         # interrupt id. WebChat is single local user, so one active socket.
         self._socket: WebSocket | None = None
         self._pending: dict[str, asyncio.Future] = {}
-        # Serialize turns: all webchat turns resolve to the same "webchat:local"
-        # session and thus the SAME cached agent, whose interrupt/conversation
-        # state is not concurrency-safe. The receive loop still runs free (so an
-        # in-turn approval answer is read); only the agent invocation is gated.
-        self._turn_lock = asyncio.Lock()
+        # Turn serialization now lives at the runtime per session_id (H1), which
+        # gates all "webchat:local" turns; the receive loop stays free (tasks
+        # await the runtime lock, not the loop) so an in-turn approval is read.
         self._turn_tasks: set = set()
         self._setup_routes()
 
@@ -296,14 +294,14 @@ class WebChatAdapter(ChannelAdapter):
         """Process one turn and send the reply (run as a task so the receive
         loop stays free to read an in-turn approval answer).
 
-        Turns are serialized on ``_turn_lock`` so two overlapping messages never
+        Two overlapping messages are serialized by the runtime's per-session
+        lock (H1) — both webchat turns resolve to "webchat:local" — so they can't
         race the shared agent; an in-turn approval still resolves because the
         receive loop (not the turn) reads the answer.
         """
         try:
             try:
-                async with self._turn_lock:
-                    response = await self.router.handle(inbound)
+                response = await self.router.handle(inbound)
             except (WebSocketDisconnect, asyncio.CancelledError):
                 raise
             except Exception as e:

@@ -12,6 +12,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Makes AETHON feel alive and stop failing silently. Design doc:
 `docs/development/PHASE-9B-ROBUSTNESS.md`.
 
+### Fixed
+- **Per-session turn serialization (H1)** — two messages to the same session
+  could race the same cached Agent across executor threads and corrupt its
+  session file. `runtime.process` now holds a per-`session_id` `asyncio.Lock`
+  for the whole turn, so same-session turns serialize while different sessions
+  stay parallel. Supersedes (and replaces) the WebChat-only turn lock added in
+  Phase 9A.
+
 ### Added
 - **Progress indicators (H5)** — long turns no longer look identical to a crash:
   Telegram shows `typing…` (refreshed every ~4s) and Discord shows its typing

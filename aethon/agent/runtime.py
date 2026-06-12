@@ -80,6 +80,11 @@ class AethonRuntime:
         # Per-session CompletionGate instances (R6) — read after each turn so a
         # success claim with no verification evidence doesn't return clean.
         self._completion_gates: dict[str, object] = {}
+        # Per-session turn locks (H1) — at most one turn per session_id at a
+        # time, so two messages to one session can't race the same Agent and
+        # corrupt its session file. Different sessions stay parallel. Created
+        # lazily on the event loop; pruned (when unheld) as sessions are evicted.
+        self._session_locks: dict[str, "asyncio.Lock"] = {}
 
         # VectorMemory
         if getattr(config, "memory", None) and config.memory.enabled:
@@ -776,6 +781,13 @@ class AethonRuntime:
         if len(self.agents) >= self._session_cache_size:
             evicted_id, _ = self.agents.popitem(last=False)
             self._completion_gates.pop(evicted_id, None)
+            # Drop the evicted session's turn lock too (H1) — but never one that
+            # is currently held (an in-flight turn). Evicted = least-recently
+            # used, so an active turn (MRU) is not evicted; the guard is belt-
+            # and-suspenders.
+            _lk = self._session_locks.get(evicted_id)
+            if _lk is not None and not _lk.locked():
+                self._session_locks.pop(evicted_id, None)
             logger.debug(f"Session evicted from cache: {evicted_id}")
 
         system_prompt = self.prompt_composer.compose(session_id)
@@ -1244,9 +1256,16 @@ class AethonRuntime:
         """Process message asynchronously.
 
         Strands Agent.__call__() is synchronous, so we run it in a thread executor
-        to avoid blocking the asyncio event loop.
+        to avoid blocking the asyncio event loop. A per-session lock (H1) serializes
+        turns for one session_id — concurrent same-session messages can't race the
+        shared Agent / session file — while different sessions run in parallel.
         """
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(
-            None, self._process_sync, message, session_id
-        )
+        lock = self._session_locks.get(session_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._session_locks[session_id] = lock
+        async with lock:
+            loop = asyncio.get_event_loop()
+            return await loop.run_in_executor(
+                None, self._process_sync, message, session_id
+            )

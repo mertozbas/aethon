@@ -257,6 +257,65 @@ def test_run_with_interrupts_caps_runaway(runtime_config, monkeypatch):
     assert len(agent.calls) == MAX_INTERRUPT_ROUNDS + 2
 
 
+# --- H1: per-session serialization -----------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_session_lock_serializes_same_session(runtime_config, monkeypatch):
+    """Two concurrent turns for ONE session run sequentially; different sessions
+    run in parallel."""
+    import asyncio
+
+    runtime = AethonRuntime(runtime_config)
+    state = {"active": {}, "max": {}}
+
+    def fake_sync(message, session_id):
+        # Runs in the executor thread; record peak concurrency per session.
+        import time
+
+        state["active"][session_id] = state["active"].get(session_id, 0) + 1
+        state["max"][session_id] = max(
+            state["max"].get(session_id, 0), state["active"][session_id]
+        )
+        time.sleep(0.03)
+        state["active"][session_id] -= 1
+        return "ok"
+
+    monkeypatch.setattr(runtime, "_process_sync", fake_sync)
+    msg = InboundMessage(channel="cli", sender_id="u", sender_name="u", text="hi")
+
+    # Same session twice + a different session once, all concurrent.
+    await asyncio.gather(
+        runtime.process(msg, "s1"),
+        runtime.process(msg, "s1"),
+        runtime.process(msg, "s2"),
+    )
+    assert state["max"]["s1"] == 1  # same session never overlapped
+    assert state["max"]["s2"] == 1
+
+
+@pytest.mark.asyncio
+async def test_different_sessions_run_in_parallel(runtime_config, monkeypatch):
+    import asyncio
+
+    runtime = AethonRuntime(runtime_config)
+    overlap = {"active": 0, "max": 0}
+
+    def fake_sync(message, session_id):
+        import time
+
+        overlap["active"] += 1
+        overlap["max"] = max(overlap["max"], overlap["active"])
+        time.sleep(0.03)
+        overlap["active"] -= 1
+        return "ok"
+
+    monkeypatch.setattr(runtime, "_process_sync", fake_sync)
+    msg = InboundMessage(channel="cli", sender_id="u", sender_name="u", text="hi")
+    await asyncio.gather(*(runtime.process(msg, f"s{i}") for i in range(4)))
+    assert overlap["max"] >= 2  # distinct sessions ran concurrently
+
+
 def test_resolve_approval_fails_closed_without_gateway(runtime_config, monkeypatch):
     """No gateway/adapter/responder → deny with the 'can't answer' message."""
     import aethon.tools.messaging as messaging

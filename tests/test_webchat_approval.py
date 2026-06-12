@@ -84,27 +84,8 @@ def test_plain_text_not_intercepted():
     assert adapter._maybe_resolve_approval('{"type":"approval","id":"zzz","decision":true}') is True
 
 
-@pytest.mark.asyncio
-async def test_turns_are_serialized():
-    """Two overlapping webchat turns must not run the shared agent concurrently
-    (they share one 'webchat:local' session/agent — S6 race fix)."""
-    state = {"active": 0, "max": 0}
-
-    class _Router:
-        async def handle(self, message):
-            state["active"] += 1
-            state["max"] = max(state["max"], state["active"])
-            await asyncio.sleep(0.02)  # hold the turn so overlap would show
-            state["active"] -= 1
-            return None
-
-    adapter = WebChatAdapter(AethonConfig(), _Router())
-    ws = _FakeWS()
-    inbound = type("M", (), {})()
-    t1 = asyncio.ensure_future(adapter._run_turn(ws, inbound))
-    t2 = asyncio.ensure_future(adapter._run_turn(ws, inbound))
-    await asyncio.gather(t1, t2)
-    assert state["max"] == 1  # never two agent turns at once
+# Note: webchat-turn serialization is now the runtime's job (H1, per session_id);
+# see tests/test_runtime.py::test_session_lock_serializes_same_session.
 
 
 @pytest.mark.asyncio
