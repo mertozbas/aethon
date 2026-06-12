@@ -44,6 +44,10 @@ class AethonScheduler:
         self.runtime = runtime
         self.default_channel = default_channel
         self._jobs_meta: dict[str, dict] = {}
+        # Serialize ALL scheduled execution (review fix): every scheduled turn
+        # uses the one "scheduler:cron" agent, so two jobs firing in the same
+        # window would otherwise race that agent + its session file.
+        self._run_lock = asyncio.Lock()
         if store_path:
             self._store_path = Path(store_path).expanduser()
         else:
@@ -74,7 +78,7 @@ class AethonScheduler:
                 f"delivery will likely fail. Set a recipient (e.g. a chat/channel id)."
             )
         self.scheduler.add_job(
-            self._run_sop,
+            self._run_config_sop,
             trigger=self._trigger(cron=cron),
             id=job_id,
             args=[sop_name, ch, recipient],
@@ -132,16 +136,24 @@ class AethonScheduler:
         if not meta:
             return
         try:
-            if meta.get("prompt"):
-                await self._run_prompt(meta["prompt"], meta["channel"], meta["recipient"])
-            else:
-                await self._run_sop(meta["sop_name"], meta["channel"], meta["recipient"])
+            async with self._run_lock:
+                if meta.get("prompt"):
+                    await self._run_prompt(meta["prompt"], meta["channel"], meta["recipient"])
+                else:
+                    await self._run_sop(meta["sop_name"], meta["channel"], meta["recipient"])
         finally:
             # A one-shot (DateTrigger) is spent after it fires — drop it.
             if meta.get("run_at"):
                 self._jobs_meta.pop(job_id, None)
                 if meta.get("persistent"):
                     self._persist()
+
+    async def _run_config_sop(self, sop_name: str, channel: str, recipient: str = "") -> None:
+        """Config-defined cron SOP entrypoint, serialized against every other
+        scheduled turn so two jobs firing in the same window can't race the
+        shared "scheduler:cron" agent and its session file (review fix)."""
+        async with self._run_lock:
+            await self._run_sop(sop_name, channel, recipient)
 
     async def _run_sop(self, sop_name: str, channel: str, recipient: str = "") -> None:
         """Execute a scheduled SOP and send the result to the channel."""

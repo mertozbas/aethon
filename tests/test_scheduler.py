@@ -113,6 +113,40 @@ def test_scheduler_custom_channel(scheduler):
 
 
 @pytest.mark.asyncio
+async def test_concurrent_scheduled_sops_serialize(mock_runtime, tmp_path):
+    """Two scheduled SOPs firing in the same window must not run concurrently:
+    they share the one 'scheduler:cron' agent + its session file, so _run_lock
+    serializes them (review fix). Without the lock both run_sop calls land in
+    the executor threadpool at once and max in-flight would be 2."""
+    import threading
+    import time
+
+    state = {"active": 0, "max": 0}
+    guard = threading.Lock()
+
+    class SlowRunner:
+        def run_sop(self, sop_name, agent, text, invoke):
+            with guard:
+                state["active"] += 1
+                state["max"] = max(state["max"], state["active"])
+            time.sleep(0.05)
+            with guard:
+                state["active"] -= 1
+            return "ok"
+
+    sched = AethonScheduler(
+        SlowRunner(), mock_runtime, "telegram",
+        store_path=str(tmp_path / "SCHEDULE.json"),
+    )
+    # channel="" → _deliver short-circuits; we only care about run overlap.
+    await asyncio.gather(
+        sched._run_config_sop("a", "", ""),
+        sched._run_config_sop("b", "", ""),
+    )
+    assert state["max"] == 1  # never two scheduled SOPs in flight at once
+
+
+@pytest.mark.asyncio
 async def test_scheduler_start_stop(scheduler):
     """Scheduler can start and stop in async context."""
     scheduler.start()
