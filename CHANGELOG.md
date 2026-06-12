@@ -7,12 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Phase 10 — The Core Loop (C2: plan → ledger pipeline)
+### Phase 10 — The Core Loop (C2: plan → ledger pipeline; C1: intake)
 
-First stitch of the autonomous core loop: work becomes a planned, dependency-
-ordered project in the ledger. Design doc: `docs/development/PHASE-10-CORE-LOOP.md`.
+First stitches of the autonomous core loop: a clear unit of work is recognized,
+opened as a planned, dependency-ordered project in the ledger, and acknowledged.
+Design doc: `docs/development/PHASE-10-CORE-LOOP.md`.
 
-#### Added
+#### Added — C1 intake (chat vs. work)
+- **Advisory work intake** — when `core_loop.intake_enabled` is on, a clear unit
+  of work is classified, opened as a planned project (reusing the C2 planner
+  pipeline), and acknowledged, instead of being answered as a normal chat turn.
+  Off by default — chat is untouched. The classifier is a transparent, high-bar
+  heuristic: a creation/build verb paired with a project/artifact noun, matched
+  as whole words (Turkish-aware), with explicit `intake_work_phrases` /
+  `intake_chat_phrases` overrides (chat wins). It is deliberately fail-safe —
+  intake off, a chat verdict, or a plan that can't be opened all fall through to
+  the untouched normal path, so ordinary chat is never hijacked. A cheap-tier
+  model classifier can slot in behind the same interface later.
+
+#### Added — C2 plan → ledger pipeline
 - **Task hierarchy + dependency ordering (C2)** — the flat task schema gains four
   optional, migration-safe fields: `parent_id` (the project a task belongs to),
   `depends_on` (ids that must be done first), `priority`
@@ -40,6 +53,15 @@ instead of crashing; `persist_plan` isolates each dependency edge so one failure
 can't orphan a half-plan; the planner→ledger wiring can't null an already-active
 ledger; unknown-dependency errors are length-bounded; and `ask_planner` moved off
 the deprecated structured-output API.
+
+#### Fixed (C1 adversarial review — round 1)
+End-of-stitch review (22 findings → 11 confirmed/partial); the two substantive
+HIGH issues fixed, each with a regression test. (1) Chat hijacking: the work
+heuristic fired on a creation verb alone ("build a stronger relationship"), so it
+now requires a verb *and* a project noun. (2) Budget bypass: intake returns
+early, so the planner's tokens went unmetered — they are now captured against the
+E0 budget. The rest were by-design (one shared single-user ledger) or pre-existing
+(specialist timeouts/metering, tracked for a later E0 pass).
 
 ### Phase 9B — Robustness, Liveness & Token Economy (H1-H11, E0-E1)
 
