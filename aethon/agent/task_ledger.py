@@ -233,6 +233,48 @@ class TaskLedger:
         """Tasks belonging to a project (parent task)."""
         return [t for t in self._load() if t.get("parent_id") == parent_id]
 
+    @staticmethod
+    def _reaches(start: str, target: str, adj: dict) -> bool:
+        """Whether ``target`` is reachable from ``start``'s out-edges in the
+        depends_on graph ``adj`` (used for cycle detection)."""
+        seen: set = set()
+        stack = list(adj.get(start, []))
+        while stack:
+            node = stack.pop()
+            if node == target:
+                return True
+            if node in seen:
+                continue
+            seen.add(node)
+            stack.extend(adj.get(node, []))
+        return False
+
+    def dependency_problems(self, task_id: str, depends_on: list[str]) -> list[str]:
+        """Human-readable problems with a proposed depends_on edge — unknown
+        references and dependency cycles — so the caller can reject a bad graph
+        at write time instead of deadlocking the executor later (gap analysis).
+        Empty list means the edge is sound.
+        """
+        depends_on = self._clean_depends_on(depends_on)
+        tasks = self._load()
+        ids = {t.get("id") for t in tasks}
+        problems = []
+        unknown = [d for d in depends_on if d not in ids]
+        if unknown:
+            problems.append(
+                f"depends_on references unknown task(s): {', '.join(unknown)}"
+            )
+        if task_id and task_id in depends_on:
+            problems.append(f"a task cannot depend on itself ({task_id})")
+        # A cycle can only be introduced against an existing task (a brand-new
+        # task isn't referenced by anything yet).
+        elif task_id and task_id in ids:
+            adj = {t.get("id"): list(t.get("depends_on") or []) for t in tasks}
+            adj[task_id] = list(depends_on)
+            if self._reaches(task_id, task_id, adj):
+                problems.append("depends_on would create a dependency cycle")
+        return problems
+
     def available_tasks(self, parent_id: str | None = None) -> list[dict]:
         """Open tasks whose dependencies are all satisfied (status 'done'),
         ordered most-urgent-first (Phase 10 C2; the C3 executor picks the head).

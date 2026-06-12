@@ -122,6 +122,61 @@ def test_tool_unknown_action(ledger):
     assert "Unknown action" in tool._tool_func(action="explode")
 
 
+# --- Phase 10 C2: tool-level project/dependency params + validation ---
+
+
+def test_tool_create_child_with_deps_and_priority(ledger):
+    tool = create_task_tool(ledger)
+    tool._tool_func(action="create", title="Proje")
+    tool._tool_func(action="create", title="Setup", parent_id="T1", priority="high")
+    out = tool._tool_func(
+        action="create", title="Build", parent_id="T1",
+        depends_on='["T2"]', priority="critical",
+    )
+    assert "[T3]" in out
+    t3 = ledger.get("T3")
+    assert t3["parent_id"] == "T1"
+    assert t3["depends_on"] == ["T2"]
+    assert t3["priority"] == "critical"
+
+
+def test_tool_depends_on_accepts_delimited_string(ledger):
+    tool = create_task_tool(ledger)
+    tool._tool_func(action="create", title="A")
+    tool._tool_func(action="create", title="B")
+    tool._tool_func(action="create", title="C", depends_on="T1, T2")
+    assert ledger.get("T3")["depends_on"] == ["T1", "T2"]
+
+
+def test_tool_rejects_unknown_dependency(ledger):
+    tool = create_task_tool(ledger)
+    out = tool._tool_func(action="create", title="Hayalet", depends_on="T999")
+    assert "Error" in out and "unknown" in out
+    assert ledger.list() == []  # not created
+
+
+def test_tool_rejects_unknown_parent(ledger):
+    tool = create_task_tool(ledger)
+    out = tool._tool_func(action="create", title="Yetim", parent_id="T999")
+    assert "Error" in out and "parent_id" in out
+
+
+def test_tool_rejects_invalid_priority(ledger):
+    tool = create_task_tool(ledger)
+    out = tool._tool_func(action="create", title="Is", priority="acil")
+    assert "Error" in out and "priority" in out
+
+
+def test_tool_rejects_dependency_cycle(ledger):
+    tool = create_task_tool(ledger)
+    tool._tool_func(action="create", title="A")
+    tool._tool_func(action="create", title="B", depends_on="T1")  # T2 → T1
+    # Now make T1 depend on T2 → cycle T1 → T2 → T1.
+    out = tool._tool_func(action="update", task_id="T1", depends_on="T2")
+    assert "Error" in out and "cycle" in out
+    assert ledger.get("T1")["depends_on"] == []  # update rejected
+
+
 def test_corrupt_file_is_quarantined_not_clobbered(tmp_path):
     """Review fix: a corrupt TASKS.json must be preserved (quarantined), not
     silently overwritten by the next create() with ids restarting at T1."""

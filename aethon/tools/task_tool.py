@@ -8,7 +8,27 @@ import json
 
 from strands import tool
 
-from aethon.agent.task_ledger import VALID_STATUSES, TaskLedger
+from aethon.agent.task_ledger import (
+    VALID_PRIORITIES,
+    VALID_STATUSES,
+    TaskLedger,
+)
+
+
+def _parse_depends_on(raw: str) -> list[str]:
+    """Parse the agent-supplied depends_on into a list of ids. Accepts a JSON
+    array (``["T1","T2"]``) or a comma/pipe-separated string (``T1, T2``)."""
+    raw = (raw or "").strip()
+    if not raw:
+        return []
+    if raw.startswith("["):
+        try:
+            data = json.loads(raw)
+            if isinstance(data, list):
+                return [str(d).strip() for d in data if str(d).strip()]
+        except (json.JSONDecodeError, ValueError):
+            pass  # fall through to delimiter parsing
+    return [part.strip() for part in raw.replace("|", ",").split(",") if part.strip()]
 
 
 def create_task_tool(ledger: TaskLedger):
@@ -23,6 +43,10 @@ def create_task_tool(ledger: TaskLedger):
         status: str = "",
         evidence: str = "",
         plan_origin: str = "",
+        parent_id: str = "",
+        depends_on: str = "",
+        priority: str = "",
+        due: str = "",
     ) -> str:
         """Manage the persistent task ledger (workspace/TASKS.json).
 
@@ -32,6 +56,10 @@ def create_task_tool(ledger: TaskLedger):
         complete tasks WITH verification evidence (e.g. test output). If you
         deviate from a planned task, say so and update the ledger first.
 
+        For a multi-task project, set parent_id to the project task's id and use
+        depends_on to order the work — a task only becomes available once every
+        task it depends on is done.
+
         Args:
             action: "create" | "update" | "complete" | "list"
             task_id: Task id for update/complete (e.g. "T3")
@@ -40,13 +68,30 @@ def create_task_tool(ledger: TaskLedger):
             status: New status for update — open|in_progress|done|dropped
             evidence: Verification evidence (complete; optionally update)
             plan_origin: Where the task came from (plan/user request)
+            parent_id: The project (parent task) this task belongs to
+            depends_on: Task ids that must be done first — JSON list or "T1,T2"
+            priority: critical | high | medium | low (default medium)
+            due: Optional deadline note (e.g. an ISO timestamp)
         """
         if action == "create":
             if not title:
                 return "Error: 'title' is required."
+            deps = _parse_depends_on(depends_on)
+            if priority and priority.lower() not in VALID_PRIORITIES:
+                return (
+                    f"Error: invalid priority {priority!r}. "
+                    f"Valid: {', '.join(VALID_PRIORITIES)}"
+                )
+            if parent_id and ledger.get(parent_id) is None:
+                return f"Error: parent_id references unknown task: {parent_id}"
+            problems = ledger.dependency_problems("", deps)
+            if problems:
+                return "Error: " + "; ".join(problems)
             task = ledger.create(
                 title, acceptance_criteria=acceptance_criteria,
                 plan_origin=plan_origin,
+                parent_id=parent_id, depends_on=deps,
+                priority=priority or "medium", due=due,
             )
             return f"Task created: [{task['id']}] {task['title']}"
 
@@ -58,6 +103,18 @@ def create_task_tool(ledger: TaskLedger):
                     f"Error: invalid status {status!r}. "
                     f"Valid: {', '.join(VALID_STATUSES)}"
                 )
+            if priority and priority.lower() not in VALID_PRIORITIES:
+                return (
+                    f"Error: invalid priority {priority!r}. "
+                    f"Valid: {', '.join(VALID_PRIORITIES)}"
+                )
+            if parent_id and ledger.get(parent_id) is None:
+                return f"Error: parent_id references unknown task: {parent_id}"
+            deps = _parse_depends_on(depends_on) if depends_on else None
+            if deps is not None:
+                problems = ledger.dependency_problems(task_id, deps)
+                if problems:
+                    return "Error: " + "; ".join(problems)
             task = ledger.update(
                 task_id,
                 title=title or None,
@@ -65,6 +122,10 @@ def create_task_tool(ledger: TaskLedger):
                 status=status or None,
                 evidence=evidence or None,
                 plan_origin=plan_origin or None,
+                parent_id=parent_id or None,
+                depends_on=deps,
+                priority=priority or None,
+                due=due or None,
             )
             if task is None:
                 return f"Task not found: {task_id}"
