@@ -7,12 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Phase 10 — The Core Loop (C1-C4 stitches; C5-C7 Tiny organs; E2/E4 token economy)
+### Phase 10 — The Core Loop (C1-C4 stitches; C5-C7 Tiny organs; E2/E3/E4 token economy)
 
 The autonomous core loop's four stitches: a clear unit of work is recognized,
 opened as a planned dependency-ordered project, worked to completion by a bounded
 executor, and delivered with proof. Plus the token-economy tier that makes
 long-horizon work affordable, and the Tiny-AI organs.
+
+#### Added — E3 repo map + file-summary cache
+- **Read it once, remember the map.** When the agent reads a file, a hook caches a
+  compact summary beside it — `path → {purpose, top-level symbols, content hash}`
+  in `workspace/REPO_MAP.json` — and a "## Repo Map" prompt layer injects that map
+  so the agent is oriented without re-reading; it re-reads only for detail or when
+  a file may have changed. Extraction is cheap and deterministic (`ast` for
+  Python, a first-line fallback otherwise — no model call); the content hash is
+  the staleness gate. Cache-safe like E2/C6 (the map file is kept out of the
+  volatile prompt fingerprint, so an update doesn't force a per-turn recompose),
+  workspace-relative and injection-safe (every rendered field flattened; deleted
+  files omitted), bounded to the newest N files, and off by default
+  (`repo_map.enabled`).
 
 #### Added — C7 need-driven tool loading
 - **Capabilities arrive on demand.** An Operating Rule (shown only when
