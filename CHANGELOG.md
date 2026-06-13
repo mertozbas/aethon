@@ -7,12 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Phase 10 — The Core Loop (C1-C4 stitches; C5-C7 Tiny organs; E2/E3/E4 token economy)
+### Phase 10 — The Core Loop (C1-C4 stitches; C5-C7 Tiny organs; E2/E3/E4 token economy; E5 memory)
 
 The autonomous core loop's four stitches: a clear unit of work is recognized,
 opened as a planned dependency-ordered project, worked to completion by a bounded
 executor, and delivered with proof. Plus the token-economy tier that makes
-long-horizon work affordable, and the Tiny-AI organs.
+long-horizon work affordable, the Tiny-AI organs, and a more robust long-term
+memory that recalls itself.
+
+#### Added — E5 memory: embedding robustness + automatic recall
+- **No more silent dimension corruption (E5.1).** Vector memory could mix
+  embeddings of different dimensions (e.g. after an embedding-model change) and
+  cosine similarity would silently `zip`-truncate to the shorter vector,
+  returning a meaningless score with no signal. Now every row records the model
+  and dimension that produced it (migration-safe — added to existing DBs; legacy
+  rows fall back to the vector's own length); `search` skips rows whose dimension
+  differs from the query and warns once per dimension (the condition is
+  persistent until re-embedded); and `_cosine_similarity` refuses unequal-length
+  vectors outright. Re-embeddable, never silently wrong.
+- **Memories that recall themselves (E5.2).** With `memory.auto_recall` on
+  (opt-in, default OFF), each turn embeds the incoming message and injects the
+  top matching long-term memories as a "## Recalled Memories" prompt layer — so
+  relevant memories surface without the agent having to call the memory tool.
+  Cache-aware and race-free: the block is threaded into the prompt as an argument
+  (not a shared attribute, so concurrent sessions can't cross-inject), lives in
+  the volatile suffix, and only recomposes when the recalled set changes (tracked
+  per-agent), so an unchanged turn keeps the provider cache warm. Each memory is
+  flattened to one line (injection-safe) and framed as untrusted reference data —
+  never as instructions — so saved content can't act as a system command.
+  Fail-soft: a recall failure leaves the turn untouched. Tunable via
+  `recall_top_k`, `recall_min_score`, `recall_max_chars`.
+- **Deferred — E5.3 RAG (retrieval over ingested documents).** Retrieval-augmented
+  generation over external documents (ingestion, chunking, a separate document
+  store, retrieval with citation) is a distinct capability subsystem rather than a
+  hardening/recall change, and belongs with the other capability work (web search,
+  vision, voice). It is deliberately deferred to a future capability phase, not
+  silently skipped — E5 ships the robustness + recall foundation it would build on.
 
 #### Added — E3 repo map + file-summary cache
 - **Read it once, remember the map.** When the agent reads a file, a hook caches a
