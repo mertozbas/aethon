@@ -244,3 +244,25 @@ def test_need_driven_tooling_rule_only_when_runtime_tools_enabled(tmp_path):
     assert "Need-driven tooling" in on
     assert "manage_tools" in on
     assert "approval-gated" in on
+
+
+def test_repo_map_layer_only_when_wired(tmp_path):
+    """E3: the repo-map layer appears only when a RepoMap is wired onto the
+    composer (i.e. repo_map is enabled), and shows the cached files."""
+    from aethon.agent.repo_map import RepoMap
+
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    (ws / "a.py").write_text('"""A modülü."""\ndef run(): pass\n', encoding="utf-8")
+    rm = RepoMap(str(ws))
+    rm.observe(str(ws / "a.py"))
+
+    # Not wired → no layer.
+    assert "## Repo Map" not in SystemPromptComposer(str(ws)).compose()
+
+    # Wired → layer with the cached file.
+    composer = SystemPromptComposer(str(ws))
+    composer.repo_map = rm
+    prompt = composer.compose()
+    assert "## Repo Map" in prompt
+    assert "a.py" in prompt and "A modülü." in prompt

@@ -186,6 +186,24 @@ class SystemPromptComposer:
                         "complete tasks with verification evidence):\n" + snapshot
                     )
 
+        # Repo map (E3) — a compact path → purpose/symbols map of files already
+        # read, so the agent is oriented without re-reading. Wired by the runtime
+        # only when repo_map is enabled. Read fresh on each compose, but the map
+        # file is deliberately NOT in the volatile fingerprint, so a map change
+        # alone doesn't force a per-turn recompose (cache stays warm).
+        repo_map = getattr(self, "repo_map", None)
+        if repo_map is not None:
+            try:
+                rm_snap = repo_map.snapshot()
+            except Exception:
+                rm_snap = ""
+            if rm_snap:
+                volatile.append(
+                    "## Repo Map\n"
+                    "Files you've already read (path — purpose [symbols]); re-read "
+                    "only if you need detail or the file may have changed:\n" + rm_snap
+                )
+
         # HANDOFF.md — checkpoint written on session resets.
         if self._flag("include_handoff", True):
             handoff_path = self.workspace / "HANDOFF.md"

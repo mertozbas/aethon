@@ -102,3 +102,44 @@ def test_corrupt_map_quarantined(tmp_path):
 
 def test_snapshot_empty_when_no_map(tmp_path):
     assert RepoMap(str(tmp_path)).snapshot() == ""
+
+
+# --- capture hook ---
+
+
+class _Ev:
+    def __init__(self, name, input_):
+        self.tool_use = {"name": name, "input": input_}
+        self.result = {"content": []}
+
+
+def test_hook_captures_file_read(tmp_path):
+    from aethon.agent.hooks.repo_map_hook import RepoMapHookProvider
+
+    _write(tmp_path, "a.py", '"""A."""\ndef run(): pass\n')
+    rm = RepoMap(str(tmp_path))
+    RepoMapHookProvider(rm)._capture(
+        _Ev("file_read", {"path": str(tmp_path / "a.py")})
+    )
+    assert "a.py" in rm.snapshot() and "run" in rm.snapshot()
+
+
+def test_hook_ignores_non_file_read_tools(tmp_path):
+    from aethon.agent.hooks.repo_map_hook import RepoMapHookProvider
+
+    rm = RepoMap(str(tmp_path))
+    RepoMapHookProvider(rm)._capture(_Ev("shell", {"command": "ls"}))  # no crash
+    assert rm.snapshot() == ""
+
+
+def test_hook_handles_comma_separated_paths(tmp_path):
+    from aethon.agent.hooks.repo_map_hook import RepoMapHookProvider
+
+    _write(tmp_path, "a.py", "x = 1")
+    _write(tmp_path, "b.py", "y = 2")
+    rm = RepoMap(str(tmp_path))
+    RepoMapHookProvider(rm)._capture(
+        _Ev("file_read", {"path": f"{tmp_path / 'a.py'}, {tmp_path / 'b.py'}"})
+    )
+    snap = rm.snapshot()
+    assert "a.py" in snap and "b.py" in snap

@@ -60,6 +60,19 @@ class AethonRuntime:
                 getattr(config, "runtime_tools", None), "enabled", False
             ),
         )
+        # E3 repo map — file-summary cache (opt-in). When on, a capture hook fills
+        # it and the prompt composer injects its snapshot.
+        self._repo_map = None
+        rmap_cfg = getattr(config, "repo_map", None)
+        if rmap_cfg is not None and rmap_cfg.enabled:
+            from aethon.agent.repo_map import RepoMap
+
+            self._repo_map = RepoMap(
+                config.paths.workspace,
+                max_files=rmap_cfg.max_files,
+                max_file_bytes=rmap_cfg.max_file_bytes,
+            )
+            self.prompt_composer.repo_map = self._repo_map
         self._session_cache_size = config.performance.session_cache_size
         self.agents: OrderedDict[str, Agent] = OrderedDict()
         self.memory = None
@@ -619,6 +632,17 @@ class AethonRuntime:
             except Exception as e:
                 degraded_hooks.append("Compaction")
                 logger.warning(f"Compaction startup error: {e}")
+
+        # E3 repo-map capture (Phase 10) — record files read so the prompt's repo
+        # map layer can orient the agent without re-reading (opt-in).
+        if getattr(self, "_repo_map", None) is not None:
+            try:
+                from aethon.agent.hooks.repo_map_hook import RepoMapHookProvider
+
+                hooks.append(RepoMapHookProvider(self._repo_map))
+            except Exception as e:
+                degraded_hooks.append("RepoMap")
+                logger.warning(f"RepoMap hook startup error: {e}")
 
         # Advisory by default; reliability.strict flips them to hard gates.
         rel_cfg = getattr(self.config, "reliability", None)
