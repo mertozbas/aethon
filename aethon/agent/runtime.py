@@ -634,7 +634,9 @@ class AethonRuntime:
                 logger.warning(f"Compaction startup error: {e}")
 
         # E3 repo-map capture (Phase 10) — record files read so the prompt's repo
-        # map layer can orient the agent without re-reading (opt-in).
+        # map layer can orient the agent without re-reading (opt-in). Main-agent
+        # only by design: the map is the MAIN agent's orientation, and a scout
+        # reading many files shouldn't flood it.
         if getattr(self, "_repo_map", None) is not None:
             try:
                 from aethon.agent.hooks.repo_map_hook import RepoMapHookProvider

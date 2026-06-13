@@ -47,7 +47,8 @@ def extract_summary(path: Path, text: str) -> dict:
 
 
 class RepoMap:
-    """Durable ``path → summary`` cache for files the agent has read."""
+    """Durable ``path → summary`` cache for files the agent has read (bounded to
+    the most-recently-seen ``max_files``; older entries are discarded)."""
 
     def __init__(self, workspace_dir: str, max_files: int = 100, max_file_bytes: int = 200_000):
         self.workspace = Path(workspace_dir).expanduser().resolve()
@@ -126,20 +127,28 @@ class RepoMap:
 
     def snapshot(self, max_files: int = 50, max_chars: int = 2000) -> str:
         """A compact markdown map of the most-recently-seen files (newest last),
-        for the system-prompt layer. Empty string when the map is empty."""
+        for the system-prompt layer. Empty string when the map is empty.
+
+        Files that no longer exist on disk are omitted (so a deleted file doesn't
+        masquerade as current), and every rendered field is flattened — a
+        hand-edited / externally-written REPO_MAP.json must not be able to inject
+        a prompt layer through a symbol or purpose string."""
         entries = self._load()
         if not entries:
             return ""
         items = list(entries.items())[-max_files:]
         lines = []
         for rel, info in items:
-            line = f"- {rel}"
+            if not isinstance(info, dict) or not (self.workspace / rel).exists():
+                continue  # gone from disk → don't show it as current
+            line = f"- {_flatten(rel)}"
             purpose = _flatten(str(info.get("purpose", "")))
             if purpose:
                 line += f" — {purpose}"
             symbols = info.get("symbols") or []
-            if symbols:
-                line += f"  [{', '.join(str(s) for s in symbols[:12])}]"
+            if isinstance(symbols, list) and symbols:
+                rendered = ", ".join(_flatten(str(s)) for s in symbols[:12])
+                line += f"  [{rendered}]"
             lines.append(line)
         out = "\n".join(lines)
         return out[:max_chars]
