@@ -135,12 +135,11 @@ aethon/                  # the package
   memory/vector.py       # VectorMemory: SQLite + embeddings + cosine search
   sops/runner.py         # SOPRunner: loads + executes SOPs
   ui/                    # dashboard.py, event_bus.py, log_handler.py, static/ (SPA)
+SECURITY.md              # security policy + threat model
 docs/
   README.md              # documentation index
+  CAPABILITIES.md        # opt-in capability tools reference
   product/               # PRODUCT, GETTING-STARTED, CONFIGURATION, API-REFERENCE, ARCHITECTURE
-  development/           # PHASE-* design docs, ROADMAP.md, SECURITY.md (threat model)
-  checklists/            # per-phase completion checklists
-  references/            # strands-agents-reference.md
 docker/                  # config.docker.yaml (seeded container config)
 tests/                   # pytest suite
 Dockerfile, docker-compose.yml, pyproject.toml, README.md, LICENSE

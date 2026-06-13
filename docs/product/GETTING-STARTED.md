@@ -123,13 +123,25 @@ dashboard:
 
 ### 3.2 Workspace Files
 
-3 essential files in the `~/.aethon/workspace/` directory:
+The `~/.aethon/workspace/` directory holds three files you edit by hand:
 
 | File | Purpose |
 |------|---------|
 | `SOUL.md` | Agent's personality and behavior rules |
 | `TOOLS.md` | User preferences and coding standards |
 | `CONTEXT.md` | Current project/context information (automatically updated) |
+
+Alongside them, AETHON manages several artifacts for you — you normally won't
+edit these directly:
+
+| File | Managed by |
+|------|------------|
+| `LEARNINGS.md` | Persistent learnings (`record_learning`) |
+| `HANDOFF.md` | Session checkpoints, written on resets |
+| `REPO_MAP.json` | Cached `path → purpose/symbols` map of files read |
+| `TASKS.json` | Durable task ledger (`manage_tasks`) |
+| `SCHEDULE.json` | Persisted scheduled jobs |
+| `specialists/` | Dynamically created specialist definitions |
 
 ---
 
@@ -237,4 +249,7 @@ What you will see:
 - Set up webhook integration → see `docs/product/API-REFERENCE.md`
 - Create automated tasks with the scheduler
 - Write custom SOPs
-- Connect MCP servers
+- Connect MCP servers, or expose AETHON as one with `aethon mcp`
+- Keep your install healthy: `aethon doctor` reports config/permissions/disk,
+  `aethon backup` archives `~/.aethon`, and `aethon service install` writes a
+  launchd/systemd unit so AETHON runs as a background service

@@ -34,7 +34,7 @@ Under the hood, AETHON is built on the **Strands Agents SDK**. A main orchestrat
 
 - **Author:** Mert Özbaş
 - **Repository:** https://github.com/mertozbas/aethon
-- **Version:** 0.2.0
+- **Version:** 0.3.0
 - **License:** PolyForm Noncommercial 1.0.0 (source-available; free for noncommercial use)
 
 ---
@@ -54,8 +54,9 @@ Under the hood, AETHON is built on the **Strands Agents SDK**. A main orchestrat
 - **WhatsApp** — experimental, via the optional `whatsapp` extra.
 
 **Assistant intelligence**
-- **Long-term vector memory** — SQLite-backed embeddings with cosine-similarity search.
-- **Multi-agent specialists** — Coder, Researcher, Analyst, Planner, reachable from the main agent via `ask_*` delegation tools. (Swarm/Graph team & pipeline orchestration exists internally but isn't yet wired into the runtime — see [Roadmap](#roadmap).)
+- **Long-term vector memory** — SQLite-backed embeddings with cosine-similarity search, plus opt-in **automatic recall** (`memory.auto_recall`) that surfaces relevant memories each turn without an explicit tool call.
+- **Multi-agent specialists** — Coder, Researcher, Analyst, Planner, Scout, reachable from the main agent via `ask_*` delegation tools, plus opt-in **dynamic specialists** the agent can define and persist at runtime (`manage_specialists` / `ask_specialist`). (Swarm/Graph team & pipeline orchestration exists internally but isn't yet wired into the runtime — see [Roadmap](#roadmap).)
+- **Autonomous core loop (opt-in)** — recognise a clear unit of work, open it as a dependency-ordered project in the durable task ledger, work it to completion with a bounded executor (iteration / attempt / budget caps), and deliver a proof-of-work receipt to the originating channel. Off by default via the `core_loop` config (`intake_enabled`, `executor_enabled`, `pulse_enabled`, `receipt_enabled`).
 - **SOPs** — built-in `/code-assist`, `/pdd`, `/codebase-summary`, plus your own custom `*.sop.md` workflows.
 - **Workspace persona files** — `SOUL.md`, `TOOLS.md`, `CONTEXT.md` define identity, preferences, and live state.
 - **Core tools** — file read/write/edit, shell, scheduling, context updates, messaging, and MCP tools.
@@ -77,6 +78,7 @@ Under the hood, AETHON is built on the **Strands Agents SDK**. A main orchestrat
 - **Scheduler** — cron jobs that run SOPs and deliver results to a channel.
 - **Webhooks** — `POST /webhook/trigger` and `POST /webhook/{channel}` with optional HMAC-SHA256 verification.
 - **Telemetry** — event history with summaries surfaced in the dashboard.
+- **Token economy** — every turn is metered and costed against a configurable pricing table, with an optional daily USD ceiling that blocks turns once breached (`budget.daily_usd`). Long sessions stay affordable via opt-in history compaction (`session.compact_*`, replaces old tool-output bulk with a marker), a read-many/return-little `scout` specialist (`ask_scout`), and a persistent **repo map** (`repo_map.enabled`) so files are summarised once and not re-read.
 - **Context safety** — oversized tool output is auto-capped so a single huge command can't overflow the model context.
 
 **Deployment**
@@ -89,7 +91,7 @@ Under the hood, AETHON is built on the **Strands Agents SDK**. A main orchestrat
 - **Workspace boundary** + **blocked-command** filtering + **approval** hooks.
 - **Dashboard auth token**, **secret masking** in API config dumps, and a **memory guard** that keeps secrets out of long-term memory.
 
-> **New in 0.2.0** — capability tools (web/GitHub/JSON-RPC/notify), macOS native tools, LSP, sandboxed dynamic tools, ambient mode, session recording/replay, and an MCP server. Full reference: [`docs/CAPABILITIES.md`](docs/CAPABILITIES.md).
+> **New in 0.3.0** — reliability hardening (verification hooks + a durable task ledger), deny-by-default network security (Docker shell sandbox, untrusted-content marking), a token economy (daily spend ceiling, history compaction, repo map, scout specialist), and an opt-in autonomous core loop (intake → plan → bounded executor → proof-of-work receipt) with dynamic specialists and automatic memory recall. (0.2.0 added the capability tools, macOS native tools, LSP, sandboxed dynamic tools, ambient mode, session recording/replay, and the MCP server.) Full reference: [`docs/CAPABILITIES.md`](docs/CAPABILITIES.md).
 
 ---
 
@@ -170,7 +172,7 @@ pip install -e ".[all]"
 #   lean alternative — core only, add extras later:  pip install -e .
 
 # 4. Verify
-aethon --version                       # → aethon, version 0.2.0
+aethon --version                       # → aethon, version 0.3.0
 ```
 
 > **Want `aethon` available everywhere (the dev setup)?** Use **pipx** instead of a venv:
@@ -563,8 +565,13 @@ channels:
 | `enabled` | bool | `true` | Enable vector memory. |
 | `embedding_provider` | str | `"ollama"` | Embedding provider (ollama, openai). |
 | `embedding_model` | str | `"nomic-embed-text"` | Embedding model name. |
+| `embedding_host` | str | `"http://localhost:11434"` | Endpoint for the `ollama` embedding provider — independent of `model.host`, so memory keeps working when the chat model points elsewhere. |
 | `embedding_api_key` | str | `""` | API key for the embedding provider. |
 | `db_path` | str | `"~/.aethon/memory.sqlite"` | SQLite path for the vector store. |
+| `auto_recall` | bool | `false` | **Opt-in.** Embed each incoming message and inject the top matches as a `## Recalled Memories` prompt layer (no explicit tool call needed). |
+| `recall_top_k` | int | `3` | How many recalled memories to inject when `auto_recall` is on. |
+| `recall_min_score` | float | `0.0` | Only inject matches at/above this cosine similarity. |
+| `recall_max_chars` | int | `1500` | Size cap for the recalled-memories prompt layer. |
 
 #### `multi_agent`
 
@@ -732,6 +739,39 @@ prompt:                            # system-prompt awareness layers
 performance:
   max_tool_output_chars: 12000     # cap a single tool result so it can't overflow the context (0 = off)
 
+core_loop:                         # autonomous intake → plan → executor → receipt (Phase 10)
+  intake_enabled: false            # classify a clear unit of work and open it as a project
+  executor_enabled: false          # work an opened project to completion (bounded autonomy)
+  executor_max_iterations: 20      # hard cap on task turns per project run
+  executor_max_task_attempts: 3    # give up on a task after N no-progress turns
+  executor_stop_on_budget: true    # halt between tasks once the budget ceiling is breached
+  pulse_enabled: true              # send progress pulses while executing
+  pulse_every_n_tasks: 3           # one pulse every N newly-completed tasks
+  receipt_enabled: true            # deliver a proof-of-work receipt when a run ends
+  plan_approval: false             # wait for the user to approve a freshly-planned project
+  capability_diet: false           # load heavy/domain tool schemas only when a session needs them
+  dynamic_specialists: false       # expose manage_specialists (create custom specialists)
+  allow_powerful_specialists: false  # may a custom specialist hold shell/python_repl/file_write/editor/http_request?
+
+repo_map:                          # persistent file-summary cache → ## Repo Map prompt layer
+  enabled: false
+  max_files: 100                   # cap the map to the newest N files
+  max_file_bytes: 200000           # skip files larger than this
+  max_snapshot_chars: 2000         # prompt-layer size cap
+
+memory:
+  auto_recall: false               # inject top-matching memories as a ## Recalled Memories layer each turn
+  recall_top_k: 3
+  recall_min_score: 0.0
+  recall_max_chars: 1500
+  embedding_host: "http://localhost:11434"  # Ollama embedding endpoint, independent of model.host
+
+session:
+  compact_enabled: false           # replace old, large tool outputs with a compact marker (token economy)
+  compact_keep_last_n_turns: 4     # never touch the most recent N turns
+  compact_min_chars: 800           # only compact a result bigger than this
+  compact_trigger_chars: 16000     # run a pass once this much old bulk piles up
+
 paths:
   recordings: "~/.aethon/recordings"
 ```
@@ -757,7 +797,7 @@ you > exit
 Open **http://127.0.0.1:18790** in your browser. It's a minimal dark chat UI (header, message list, input + Send) that connects over a WebSocket (`/ws/chat`) and renders bot replies as Markdown. You send plain text; you get one reply per message.
 
 Useful endpoints on the same app/port:
-- `GET /api/status` → `{"status": "running", "version": "0.1.0"}` (gated when `dashboard.auth_token` is set — deny by default).
+- `GET /api/status` → `{"status": "running", "version": "<package version>"}` (the live package version; gated when `dashboard.auth_token` is set — deny by default).
 - `GET /health` → `{"status": "ok"}` (always public, for container/load-balancer probes — use this, not `/api/status`, for uptime monitors).
 
 To expose WebChat on your network, set `channels.webchat.host: 0.0.0.0` — `dashboard.auth_token` is then **required**: AETHON refuses to start without it (see [Security](#security)).
@@ -772,7 +812,9 @@ Open **http://127.0.0.1:18790/dashboard**. The dashboard is a single-page app (s
 | `#/company` | Live Company (pixel-agents) |
 | `#/monitor` | Live Monitor |
 | `#/sessions` | Sessions |
+| `#/recordings` | Recordings (session replay) |
 | `#/memory` | Memory |
+| `#/features` | Features (capability status) |
 | `#/config` | Config (secrets masked to `***`) |
 | `#/logs` | Logs |
 | `#/agents` | Agents |
@@ -903,14 +945,18 @@ It also creates `<workspace>/sops`, the sessions directory, the logs directory, 
 
 Long-term memory is a **SQLite vector store** with **provider embeddings** and **cosine-similarity** search (a brute-force full scan; no ANN index). Storage lives at `~/.aethon/memory.sqlite` by default.
 
-- **Ollama embeddings (default):** uses `config.model.host` (default `http://localhost:11434`) and model `nomic-embed-text`. Requires Ollama running with that model pulled.
+- **Ollama embeddings (default):** uses `memory.embedding_host` (default `http://localhost:11434`, independent of the chat model's host — so memory keeps working when the model points at a non-Ollama endpoint) and model `nomic-embed-text`. Requires Ollama running with that model pulled.
 - **OpenAI embeddings:** set `memory.embedding_provider: openai` and `memory.embedding_api_key`.
+
+Each stored embedding records its model and dimension, so changing the embedding model can no longer silently corrupt cosine scores — rows embedded at a different dimension are detected and skipped at query time rather than returning garbage matches.
+
+With `memory.auto_recall` on (opt-in, default off), each turn embeds the incoming message and injects the top-matching long-term memories as a volatile **`## Recalled Memories`** prompt layer, so relevant memories surface without an explicit tool call. Tune it with `recall_top_k`, `recall_min_score`, and `recall_max_chars`.
 
 The assistant manages memory with the `manage_memory` tool — actions `store`, `search`, `list`, and `forget`, with categories like `preferences`, `projects`, `decisions`, `learnings`. The **memory guard** hook keeps secrets out of long-term memory.
 
 ### Multi-agent specialists + delegation (`ask_*`)
 
-A main orchestrator agent can delegate complex work to four specialists (all share the runtime's model):
+A main orchestrator agent can delegate complex work to five built-in specialists (all share the runtime's model):
 
 | id | name | focus | tools |
 |----|------|-------|-------|
@@ -918,8 +964,11 @@ A main orchestrator agent can delegate complex work to four specialists (all sha
 | `researcher` | Researcher | web research, reading docs, gathering info (cites sources) | `http_request, file_read, think, current_time` |
 | `analyst` | Analyst | data analysis, calculations, charts, reports | `python_repl, calculator, file_read, file_write, think` |
 | `planner` | Planner | breaking complex tasks into concrete steps, prioritization | `file_read, file_write, think` |
+| `scout` | Scout | "read many, return little" investigation — reads/searches sources and returns only a concise conclusion, keeping the bulk out of your context | `file_read, shell, think` |
 
-Delegation tools: `ask_coder(task)`, `ask_researcher(query)`, `ask_analyst(data_task)`, `ask_planner(planning_task)`. The orchestrator is instructed to handle simple tasks itself and delegate complex ones.
+Delegation tools: `ask_coder(task)`, `ask_researcher(query)`, `ask_analyst(data_task)`, `ask_planner(planning_task)`, `ask_scout(query)`, and `ask_specialist(specialist_name, task)`. The orchestrator is instructed to handle simple tasks itself and delegate complex ones.
+
+**Dynamic specialists (opt-in).** Beyond the built-ins, the agent can define and persist custom specialists at runtime via `manage_specialists` (enabled by `core_loop.dynamic_specialists`; persisted under `workspace/specialists/`), then reach them by name through `ask_specialist`. Each custom specialist is gated by a tool allowlist, and powerful tools (shell / python_repl / file_write / editor / http_request) are only grantable when `core_loop.allow_powerful_specialists` is set.
 
 Beyond `ask_*`, two team modes exist internally: a **collaborative** mode (a Strands `Swarm` with handoffs, governed by `multi_agent.max_handoffs / max_iterations / execution_timeout / node_timeout`) and a **pipeline** mode (a deterministic `GraphBuilder` sequence; default pipeline `["planner", "researcher", "coder"]`).
 
@@ -960,7 +1009,9 @@ You can also create/edit/delete custom SOPs from the dashboard's SOPs panel (bui
 The main agent always has: `file_read, file_write, editor, shell, think, current_time`, plus `update_context` (maintains `CONTEXT.md`), `send_message` (pushes to any enabled channel), and `manage_messages` (turn-aware introspection of its own conversation). Conditionally added:
 
 - **memory** — `manage_memory(action, content, query, category, memory_id)` when vector memory is active.
-- **delegate** — `ask_coder / ask_researcher / ask_analyst / ask_planner` when the multi-agent system is on.
+- **delegate** — `ask_coder / ask_researcher / ask_analyst / ask_planner / ask_scout / ask_specialist` when the multi-agent system is on.
+- **dynamic specialists** — `manage_specialists` when `core_loop.dynamic_specialists` (create/list/remove custom specialists; tool-allowlist gated).
+- **task ledger** — `manage_tasks(action, ...)` (create / update / complete / list, with `parent_id` / `depends_on` / `priority` / `due`) when the durable task ledger is active.
 - **scheduler** — `schedule_task`, `list_scheduled_jobs`, `remove_scheduled_job` when the scheduler is running.
 - **capabilities** — `scraper`, `use_github`, `jsonrpc`, `notify` (config-gated under `capabilities`, default on).
 - **learning** — `record_learning(category, content)` when `prompt.include_learnings` (persists to `LEARNINGS.md`).
@@ -987,9 +1038,11 @@ aethon [--version] <command> [options]
 |---|---|---|
 | `aethon init` | Set up AETHON (provider menu openai/anthropic/ollama, model, memory, messaging bots) and write the config file. | `--config, -c <path>` (default `~/.aethon/config.yaml`); `--force` (overwrite an existing config without asking). |
 | `aethon doctor` | Diagnose the current configuration and provider availability (provider/model, provider check, memory). | `--config, -c <path>` (default `~/.aethon/config.yaml`). |
-| `aethon start` | Start AETHON (runs the setup wizard first if no config exists; launches the gateway and all enabled channels). | `--config, -c <path>` (default `~/.aethon/config.yaml`). |
+| `aethon start` | Start AETHON (runs the setup wizard first if no config exists; launches the gateway and all enabled channels). | `--config, -c <path>` (default `~/.aethon/config.yaml`); `--insecure-bind` (allow a non-loopback bind without `dashboard.auth_token` — only behind your own authenticating proxy). |
 | `aethon mcp` | Serve AETHON's whole toolset to MCP clients (e.g. Claude Desktop) over stdio. Informational output goes to stderr. | `--config, -c <path>` (default `~/.aethon/config.yaml`). |
-| `aethon --version` | Print `aethon, version 0.2.0` and exit. | — |
+| `aethon backup` | Archive `~/.aethon` to a `.tar.gz` (SQLite copied live-safe; logs skipped). | `--output, -o <path>` (default `~/.aethon-backup-<timestamp>.tar.gz`). |
+| `aethon service install` | Install a run-at-boot service (macOS launchd / Linux systemd user unit). | — |
+| `aethon --version` | Print `aethon, version 0.3.0` and exit. | — |
 
 Also installed with the `launcher-macos` extra: **`aethon-menubar`** — a macOS menu-bar launcher (Start/Stop server, open WebChat, settings).
 
@@ -1111,7 +1164,7 @@ Contributions follow the same noncommercial terms; see [CONTRIBUTING.md](CONTRIB
 
 **v1 (0.1.0) shipped:** the full provider-agnostic assistant — CLI + WebChat + dashboard, Telegram/Discord/Slack channels, SQLite vector memory, multi-agent specialists with `ask_*` delegation, built-in and custom SOPs, scheduler, webhooks, telemetry, bring-your-own model provider (OpenAI default, plus Anthropic / Ollama / Bedrock / Gemini / LiteLLM / Mistral), and Docker + CI infrastructure.
 
-**0.2.0 — capability expansion (this release):**
+**0.2.0 — capability expansion:**
 - **Capability tools** — `scraper`, `use_github`, `jsonrpc`, `notify`, `manage_messages`.
 - **macOS native** — `use_mac` + `apple_notes` (Darwin-gated; Messages/Keychain off by default).
 - **Code intelligence** — `lsp` tool + auto-diagnostics hook.
@@ -1122,6 +1175,12 @@ Contributions follow the same noncommercial terms; see [CONTRIBUTING.md](CONTRIB
 - **MCP server** — `aethon mcp` exposes the toolset to MCP clients.
 - **System-prompt awareness** — environment / learnings / recent-logs / shell-history layers + `record_learning`.
 - **Dashboard** — Features panel + identity-correct Live Company + context-overflow protection.
+
+**0.3.0 — reliability, security & the core loop (this release):**
+- **Reliability hardening** — advisory-by-default verification hooks (post-edit verify / completion gate / input validator), a durable **task ledger** (`manage_tasks`), per-session locking, scheduler persistence, and config-safety checks.
+- **Network security** — deny-by-default WebSocket/chat auth, Origin checks, fail-closed webhook HMAC, default-deny sender allowlists, a Docker **execution sandbox** for `shell` (`security.sandbox: docker`), and **untrusted-content marking** (`security.mark_untrusted_content`).
+- **Token economy** — per-turn metering with an optional daily USD ceiling (`budget.daily_usd`), opt-in history compaction (`session.compact_*`), prompt-cache-aware layer ordering, a `scout` specialist (`ask_scout`), and a persistent repo map (`repo_map.enabled`).
+- **Autonomous core loop (opt-in)** — intake → plan-into-ledger → bounded executor → proof-of-work receipt (`core_loop.*`), plus dynamic specialists (`manage_specialists` / `ask_specialist`), a capability diet, and automatic memory recall (`memory.auto_recall`).
 
 **Still deferred:**
 - Response **streaming**.

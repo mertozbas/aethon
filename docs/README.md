@@ -29,4 +29,6 @@
 
 **Technical details:** The [Architecture Document](product/ARCHITECTURE.md) describes the layered architecture, data flows, and component relationships.
 
-**What's new:** See the [CHANGELOG](../CHANGELOG.md).
+**Security:** The threat model, deny-by-default network model, non-goals, and the hardening checklist live in [SECURITY.md](https://github.com/mertozbas/aethon/blob/main/SECURITY.md).
+
+**What's new:** The Phase 8 reliability backstop, Phase 9A network security, Phase 9B robustness / token economy, and the Phase 10 autonomous core loop are described across the [product docs](product/PRODUCT.md) and recorded per-feature in the [CHANGELOG](../CHANGELOG.md).
