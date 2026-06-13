@@ -330,6 +330,20 @@ class RuntimeToolsConfig(BaseModel):
     cache_dir: str = "~/.aethon/runtime_tools_cache"
 
 
+class RepoMapConfig(BaseModel):
+    """Repo map + file-summary cache (Phase 10 E3).
+
+    When on, files the agent reads are summarised (path → purpose/symbols/hash) in
+    ``workspace/REPO_MAP.json`` and a compact map is injected into the prompt, so
+    the next session is oriented without re-reading. Off by default (opt-in).
+    """
+
+    enabled: bool = False
+    max_files: int = Field(default=100, ge=1)        # cap the map to the newest N files
+    max_file_bytes: int = Field(default=200_000, ge=1)  # skip files larger than this
+    max_snapshot_chars: int = Field(default=2000, ge=1)  # prompt-layer size cap
+
+
 class AmbientConfig(BaseModel):
     """Ambient / autonomous mode.
 
@@ -600,6 +614,7 @@ class AethonConfig(BaseModel):
     mcp: MCPConfig = MCPConfig()
     macos: MacOSConfig = MacOSConfig()
     runtime_tools: RuntimeToolsConfig = RuntimeToolsConfig()
+    repo_map: RepoMapConfig = RepoMapConfig()
     session_recorder: SessionRecorderConfig = SessionRecorderConfig()
     ambient: AmbientConfig = AmbientConfig()
     lsp: LSPConfig = LSPConfig()
