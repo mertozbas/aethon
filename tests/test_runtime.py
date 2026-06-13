@@ -1,5 +1,7 @@
 """Tests for AethonRuntime."""
 
+import time
+
 import pytest
 
 from aethon.config import (
@@ -8,6 +10,21 @@ from aethon.config import (
 )
 from aethon.agent.runtime import AethonRuntime
 from aethon.channels.base import InboundMessage
+
+
+def _wait_until_running(loop, timeout=5.0):
+    """Block until a background event loop has actually started.
+
+    Without this, a test that starts ``loop.run_forever`` on a thread and
+    immediately calls code which checks ``loop.is_running()`` can race: the loop
+    may not have started yet, so the check sees False. That race made the
+    approval tests flake on loaded CI runners (denying as "unanswerable" instead
+    of reaching the await/timeout path)."""
+    deadline = time.monotonic() + timeout
+    while not loop.is_running():
+        if time.monotonic() >= deadline:
+            raise AssertionError("event loop did not start within the timeout")
+        time.sleep(0.001)
 
 
 @pytest.fixture
@@ -631,6 +648,7 @@ def test_resolve_approval_uses_channel_responder(runtime_config, monkeypatch):
     loop = asyncio.new_event_loop()
     t = threading.Thread(target=loop.run_forever, daemon=True)
     t.start()
+    _wait_until_running(loop)
 
     class _Adapter:
         async def ask_approval(self, request):
@@ -664,6 +682,7 @@ def test_resolve_approval_times_out_to_deny(runtime_config, monkeypatch):
     loop = asyncio.new_event_loop()
     t = threading.Thread(target=loop.run_forever, daemon=True)
     t.start()
+    _wait_until_running(loop)
 
     class _Adapter:
         async def ask_approval(self, request):
