@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-06-13
+
+This release ships everything merged on `main` since 0.2.0: the Phase 8
+reliability backstop (R1-R18), Phase 9A network security (S1-S10), Phase 9B
+robustness / liveness / token economy (H1-H11, E0-E1), and the Phase 10
+autonomous core loop (C1-C7, E2-E5). All new behaviour is advisory or opt-in
+unless noted **BREAKING**.
+
 ### Phase 10 — The Core Loop (C1-C4 stitches; C5-C7 Tiny organs; E2/E3/E4 token economy; E5 memory)
 
 The autonomous core loop's four stitches: a clear unit of work is recognized,
@@ -669,5 +677,8 @@ multi-agent personal AI assistant built on the Strands Agents SDK.
 - **PolyForm Noncommercial 1.0.0** license (source-available; non-commercial use
   free, commercial use forbidden).
 
-[Unreleased]: https://github.com/mertozbas/aethon/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/mertozbas/aethon/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/mertozbas/aethon/compare/v0.2.0...v0.3.0
+[0.2.0]: https://github.com/mertozbas/aethon/compare/v0.1.1...v0.2.0
+[0.1.1]: https://github.com/mertozbas/aethon/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/mertozbas/aethon/releases/tag/v0.1.0
