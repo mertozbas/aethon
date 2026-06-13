@@ -12,7 +12,8 @@ shares one host/port. A **gateway** instantiates the enabled **channel adapters*
 routes inbound messages to the **agent runtime**, which composes a system prompt from
 the workspace files, holds the **vector memory**, wires up the **specialist factory**
 and **SOP runner**, and exposes the **tools**. Cross-cutting **hooks** provide
-telemetry, approval, and the memory guard. Optional **MCP** servers extend the toolset.
+the command/security guard, approval gating, the memory guard, telemetry, and the
+opt-in reliability and token-economy hooks. Optional **MCP** servers extend the toolset.
 
 ```
             ┌──────────────────────────────────────────────┐
@@ -30,8 +31,8 @@ telemetry, approval, and the memory guard. Optional **MCP** servers extend the t
             │  │ Specialist │  │  Vector  │  │   SOP     │  │
             │  │  factory   │  │  memory  │  │  runner   │  │
             │  └────────────┘  └──────────┘  └───────────┘  │
-            │         tools  ·  hooks (telemetry/approval/   │
-            │                    memory guard)  ·  MCP       │
+            │   tools · hooks (security/approval/memory/     │
+            │   telemetry + reliability + token economy)·MCP │
             └──────────────────────────────────────────────┘
 ```
 
@@ -39,10 +40,10 @@ telemetry, approval, and the memory guard. Optional **MCP** servers extend the t
 
 - **Channels** — adapters for each entry point (CLI, WebChat, Telegram, Discord, Slack, WhatsApp). The gateway starts only the enabled ones and keeps running if one fails to start.
 - **Runtime** — composes the system prompt from the workspace persona files (plus optional environment/learnings/logs layers), owns the orchestrator agent, and exposes the tool set.
-- **Specialists** — Coder / Researcher / Analyst / Planner sub-agents reached via `ask_*` delegation tools.
+- **Specialists** — Coder / Researcher / Analyst / Planner / Scout sub-agents reached via `ask_*` delegation tools, plus user-defined specialists created at runtime (`manage_specialists`, reached via `ask_specialist`). Both Scout (read-many/return-little) and dynamic specialists are opt-in (`core_loop.dynamic_specialists`).
 - **Memory** — a SQLite vector store with provider embeddings and cosine-similarity search.
 - **SOPs** — built-in and custom slash-invoked workflows.
-- **Hooks** — telemetry, approval gating, and the memory guard wrap tool calls.
+- **Hooks** — the command/security guard, approval gating, the memory guard, and telemetry wrap tool calls, alongside the Phase 8 reliability hooks (verify-on-edit, completion gate, input validation, anglicization guard) and the untrusted-content marker. All reliability gates are advisory-by-default unless `reliability.strict` is set.
 - **MCP** — optional external MCP servers extend the toolset; `aethon mcp` exposes AETHON's own tools to MCP clients.
 
 ## Deeper reference
@@ -53,5 +54,5 @@ The repository carries full design documents under
 - [`docs/product/ARCHITECTURE.md`](https://github.com/mertozbas/aethon/blob/main/docs/product/ARCHITECTURE.md) — system architecture, data flows, component relationships.
 - [`docs/product/PRODUCT.md`](https://github.com/mertozbas/aethon/blob/main/docs/product/PRODUCT.md) — product overview.
 - [`docs/product/API-REFERENCE.md`](https://github.com/mertozbas/aethon/blob/main/docs/product/API-REFERENCE.md) — HTTP/WebSocket API reference.
-- [`docs/development/SECURITY.md`](https://github.com/mertozbas/aethon/blob/main/docs/development/SECURITY.md) — security model & threat analysis.
-- [`docs/development/ROADMAP.md`](https://github.com/mertozbas/aethon/blob/main/docs/development/ROADMAP.md) — roadmap.
+- [`SECURITY.md`](https://github.com/mertozbas/aethon/blob/main/SECURITY.md) — security model & threat analysis.
+- [Roadmap](../project/roadmap.md) — shipped phases and what's still deferred.

@@ -37,6 +37,8 @@ const sidebars = {
         'concepts/multi-agent',
         'concepts/sops',
         'concepts/tools',
+        'concepts/core-loop',
+        'concepts/token-economy',
         'concepts/capabilities',
       ],
     },
@@ -55,6 +57,7 @@ const sidebars = {
       label: 'Operations',
       items: [
         'operations/security',
+        'operations/backup-and-service',
         'operations/troubleshooting',
         'operations/faq',
       ],

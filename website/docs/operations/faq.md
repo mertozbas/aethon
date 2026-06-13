@@ -45,7 +45,20 @@ all ship in the core install.
 Drop a `*.sop.md` file in `~/.aethon/workspace/sops/` (with an `## Overview` section)
 and invoke it as `/<name>`. See **[SOPs](../concepts/sops.md)**.
 
+### Will an API provider run up a huge bill?
+
+Set `budget.daily_usd` to cap daily spend. Every turn's token usage is measured and
+costed (override the built-in rate table with `budget.pricing`); turns are warned once
+spend crosses `budget.warn_ratio` (default `0.8`) of the ceiling and **blocked** once it
+is breached — which also halts ambient and scheduler turns. The default `0.0` means
+unlimited (measure only). To avoid cloud spend entirely, run fully local with Ollama.
+
 ### Does the assistant remember things between sessions?
 
 Yes, when memory is enabled. It stores embeddings in SQLite and retrieves them by
-similarity. The memory guard prevents secrets from being saved.
+similarity. The memory guard prevents secrets from being saved. With
+`memory.auto_recall` on (opt-in, off by default), each turn embeds the incoming message
+and injects the top-matching long-term memories as a prompt layer, so relevant memories
+surface without the agent calling the memory tool. Vector memory also records each row's
+embedding model and dimension and refuses to mix dimensions, so changing the embedding
+model can't silently corrupt similarity search.

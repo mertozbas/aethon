@@ -57,7 +57,7 @@ pip install -e ".[all]"
 #   lean alternative — core only, add extras later:  pip install -e .
 
 # 4. Verify
-aethon --version                       # → aethon, version 0.2.0
+aethon --version                       # → aethon, version 0.3.0
 ```
 
 :::tip Want `aethon` available everywhere (the dev setup)?
@@ -163,5 +163,8 @@ rm -rf ~/.aethon
 
 :::note Running in a container?
 See the **[Docker guide](./docker.md)** for the headless image, Compose, and the
-local-Ollama profile.
+local-Ollama profile. The container binds `0.0.0.0`, so it **requires**
+`AETHON_DASHBOARD_TOKEN` (or `aethon start --insecure-bind` behind an authenticating
+reverse proxy), and webhooks fail closed — `/webhook/*` is not registered until you set
+`AETHON_WEBHOOK_SECRET`.
 :::

@@ -1,12 +1,12 @@
 ---
 id: capabilities
-title: Capabilities (0.2.0)
+title: Capabilities
 sidebar_label: Capabilities
 ---
 
-# Capabilities (0.2.0)
+# Capabilities
 
-A reference for the capabilities added in 0.2.0. Everything here is **config-gated**;
+A reference for AETHON's optional capabilities. Everything here is **config-gated**;
 powerful/host-affecting features default **off** and route through the security &
 approval hooks. Browse live status in the dashboard's **Features** panel.
 
@@ -58,6 +58,12 @@ before loading. Off by default. Three gating layers:
 2. The security hook blocks `create`/`fetch` unless `allow_create`, and `add`/`reload` unless `allow_install`.
 3. An in-tool check (reading the injected config) refuses dangerous actions when disabled. Read-only actions (`list`/`discover`/`sandbox`) are always allowed; the approval hook prompts only for the code-loading actions.
 
+When need-driven tooling is active (`runtime_tools.enabled`), an Operating Rule in the
+system prompt tells the agent that if a task needs a capability no current tool
+provides, it should load an existing runtime tool — or, when permitted, create a new
+one — via `manage_tools` and continue, instead of giving up or faking the result.
+New-tool creation stays approval-gated.
+
 ## Ambient / autonomous mode (`ambient` block)
 
 A background loop that does proactive (idle-triggered) or autonomous (continuous) work.
@@ -66,6 +72,12 @@ runs. `start_ambient_mode` / `stop_ambient_mode` / `get_ambient_status` are the 
 switch. Iterations run on a dedicated session (no collision with live chats), offloaded
 to a thread executor (no message starvation), and a server-side completion signal stops
 autonomous runs. `auto_start` is off by default.
+
+When `core_loop.executor_enabled` is on and a project is active in the task ledger, an
+ambient tick drives the autonomous core loop: it works the planned project toward
+completion via the bounded `ProjectExecutor` (iteration / budget / attempt caps), then
+delivers a proof-of-work receipt. Off by default — see
+**[The autonomous core loop](./core-loop.md)**.
 
 ## Session recording & replay (`session_recorder` block)
 
@@ -96,6 +108,16 @@ Optional, individually-gated layers folded into the system prompt:
 A tool that dumps thousands of lines (ruff, mypy, big greps) would otherwise overflow
 the model's context. Oversized tool output is capped (default ~12000 chars, head + tail
 + a truncation marker) before it reaches the model. Set to `0` to disable.
+
+## Capability diet (`core_loop.capability_diet`)
+
+Every turn carries the full schema of every loaded tool, and a few tools have large
+schemas. With `core_loop.capability_diet` on (default **off**), an always-on core
+toolset is kept and the heavy, domain-specific tools (`use_mac`, `use_computer`,
+`use_github`, `apple_notes`, `scraper`, `jsonrpc`) are pulled into a session only when
+its building message matches their keywords. The decision is made once per session (not
+per turn) so the prompt/tool cache stays warm. See
+**[Token economy](./token-economy.md)** for the rest of the token-economy subsystem.
 
 ## macOS menu-bar launcher (`launcher-macos` extra)
 

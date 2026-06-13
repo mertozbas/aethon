@@ -15,8 +15,10 @@ Open **http://127.0.0.1:18790/dashboard**. The dashboard is a single-page app
 | `#/company` | Live Company (pixel-agents) |
 | `#/monitor` | Live Monitor |
 | `#/sessions` | Sessions |
+| `#/recordings` | Recordings (session replay) |
 | `#/memory` | Memory |
 | `#/config` | Config (secrets masked to `***`) |
+| `#/features` | Features (live capability status) |
 | `#/logs` | Logs |
 | `#/agents` | Agents |
 | `#/sops` | SOPs |

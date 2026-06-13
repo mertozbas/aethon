@@ -1,3 +1,9 @@
+---
+id: backup-and-service
+title: Backup, Restore & Run-at-Boot
+sidebar_label: Backup & Service
+---
+
 # Backup, Restore & Run-at-Boot
 
 AETHON keeps all of its state under `~/.aethon` (config, sessions, memory,

@@ -94,7 +94,8 @@ model:
 ```
 
 :::note
-`temperature` is intentionally omitted for `claude-opus-4-8` requests.
+`temperature` is intentionally omitted for Opus 4.7+ models (e.g. `claude-opus-4-8`),
+which reject sampling params with a 400.
 :::
 
 ## Ollama (fully local)

@@ -46,7 +46,7 @@ Anthropic API, a fully-local Ollama model, Bedrock, Gemini, LiteLLM, or Mistral.
 |---|---|
 | **Author** | Mert Özbaş |
 | **Repository** | [github.com/mertozbas/aethon](https://github.com/mertozbas/aethon) |
-| **Version** | 0.2.0 |
+| **Version** | 0.3.0 |
 | **License** | PolyForm Noncommercial 1.0.0 (source-available; free for noncommercial use) |
 
 ---
@@ -96,10 +96,14 @@ Anthropic API, a fully-local Ollama model, Bedrock, Gemini, LiteLLM, or Mistral.
 - **Workspace boundary** + **blocked-command** filtering + **approval** hooks.
 - **Dashboard auth token**, **secret masking** in API config dumps, and a **memory guard** that keeps secrets out of long-term memory.
 
-:::info New in 0.2.0
-Capability tools (web/GitHub/JSON-RPC/notify), macOS native tools, LSP, sandboxed
-dynamic tools, ambient mode, session recording/replay, and an MCP server. Full
-reference: **[Capabilities](./concepts/capabilities.md)**.
+:::info New in 0.3.0
+The reliability backstop (durable task ledger, verify-before-claim), network
+security (deny-by-default exposure, docker shell sandbox, untrusted-content
+marking), the token economy (a daily spend ceiling, history compaction, repo
+map, scout), and the **[autonomous core loop](./concepts/core-loop.md)**
+(intake → plan → bounded executor → proof-of-work receipt). All opt-in. Earlier
+0.2.0 additions (capability tools, macOS tools, LSP, dynamic tools, ambient
+mode, recording, MCP server) are catalogued under **[Capabilities](./concepts/capabilities.md)**.
 :::
 
 ---

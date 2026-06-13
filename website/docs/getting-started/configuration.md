@@ -124,3 +124,37 @@ paths:
 ```
 
 See **[Capabilities](../concepts/capabilities.md)** for what each of these unlocks.
+
+## Security & exposure
+
+A few defaults fail closed — worth knowing before you expose a surface:
+
+- **Network bots deny every sender by default.** Telegram, Discord, Slack, and
+  WhatsApp reject all senders (including you) unless their id is listed under
+  `security.allowed_senders.<channel>`; an enabled bot with an empty allowlist also
+  triggers a loud startup warning. See **[Messaging Bots](../guides/messaging-bots.md)**.
+- **A non-loopback WebChat bind requires a dashboard token.** If
+  `channels.webchat.host` is anything other than loopback, `dashboard.auth_token` must
+  be set — the server **refuses to start** otherwise (or pass `aethon start --insecure-bind`
+  behind your own authenticating reverse proxy).
+- **Webhooks fail closed beyond loopback.** With `webhook.secret` empty on a
+  non-loopback bind the `/webhook/*` routes are not registered; set the secret to enable
+  HMAC-SHA256 verified webhooks.
+- **Optional shell sandbox.** Set `security.sandbox: docker` to run the `shell` tool in a
+  per-session container (AETHON refuses to start if Docker is unavailable rather than
+  silently falling back to host execution).
+
+```yaml
+security:
+  allowed_senders:
+    telegram: ["123456789"]   # per-channel allowlist; empty = deny all on network bots
+  sandbox: none               # set to "docker" to sandbox the shell tool
+
+dashboard:
+  auth_token: ${AETHON_DASHBOARD_TOKEN}   # required for any non-loopback bind
+
+webhook:
+  secret: ${AETHON_WEBHOOK_SECRET}        # required for webhooks beyond loopback
+```
+
+See **[Security](../operations/security.md)** for the full exposure model.

@@ -12,11 +12,22 @@ config or environment — by default the config uses `provider: openai` with
 `OPENAI_API_KEY` (or point `model.host` at an OpenAI-compatible base URL reachable
 from the container).
 
+:::warning A dashboard token is REQUIRED in the container
+The container always binds WebChat to `0.0.0.0` (so the port mapping reaches it), and
+AETHON **refuses to start on a non-loopback bind without an auth token**. Always pass
+`AETHON_DASHBOARD_TOKEN` (any sufficiently long secret — e.g. `$(openssl rand -hex 16)`).
+Behind your own authenticating reverse proxy you may instead override the command with
+`aethon start --insecure-bind`.
+:::
+
 ## Docker Compose (recommended)
 
 ```bash
-OPENAI_API_KEY=sk-... docker compose up --build
-# open http://127.0.0.1:18790
+AETHON_DASHBOARD_TOKEN=$(openssl rand -hex 16) \
+OPENAI_API_KEY=sk-... \
+docker compose up --build
+# then open http://127.0.0.1:18790/dashboard?token=YOUR_TOKEN
+# (plain WebChat at /ws/chat also needs the token + an allowed Origin)
 ```
 
 ## Plain `docker run`
@@ -24,6 +35,7 @@ OPENAI_API_KEY=sk-... docker compose up --build
 ```bash
 docker build -t aethon .
 docker run -p 18790:18790 \
+  -e AETHON_DASHBOARD_TOKEN=$(openssl rand -hex 16) \
   -e OPENAI_API_KEY=sk-... \
   aethon
 ```
@@ -57,7 +69,9 @@ docker compose --profile local up --build
 - **Provider:** the seeded config defaults to `provider: openai` reading `OPENAI_API_KEY` from the environment; pass it with `-e OPENAI_API_KEY=…` (or `environment:` in Compose), or set `model.host` to an OpenAI-compatible base URL.
 - **Memory is disabled by default in the image** (it needs an Ollama embedding backend).
 - **Healthcheck** probes `http://127.0.0.1:18790/health` inside the container.
-- **Other providers:** switch `provider` in the config and supply the matching credentials (e.g. `ANTHROPIC_API_KEY` for `anthropic`). Set `AETHON_DASHBOARD_TOKEN` to enable dashboard auth when exposing beyond localhost.
+- **Other providers:** switch `provider` in the config and supply the matching credentials (e.g. `ANTHROPIC_API_KEY` for `anthropic`).
+- **`AETHON_DASHBOARD_TOKEN` is REQUIRED for the image** — the container always binds `0.0.0.0`, and AETHON refuses to start on a non-loopback bind without it. Behind your own authenticating reverse proxy you can override the command with `aethon start --insecure-bind` instead of setting a token.
+- **Webhooks fail closed in the container:** with `AETHON_WEBHOOK_SECRET` unset the `/webhook/*` routes are simply **not registered** (the rest keeps running). Set it to enable them — callers then sign the request body with HMAC-SHA256 in the `X-Aethon-Signature` header.
 
 :::warning Docker can't reach your provider?
 If `model.host` points at a service on the host (e.g. a local OpenAI-compatible server
