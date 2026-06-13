@@ -5,6 +5,7 @@ from Ollama or OpenAI, with SQLite storage and cosine similarity search.
 """
 
 import json
+import logging
 import math
 import sqlite3
 import threading
@@ -13,6 +14,8 @@ from functools import lru_cache
 from pathlib import Path
 
 import requests
+
+logger = logging.getLogger("aethon.memory")
 
 
 class VectorMemory:
@@ -56,7 +59,18 @@ class VectorMemory:
                 created_at TEXT NOT NULL
             )
         """)
+        # E5 step 1: per-row embedding provenance (model + dimension), so a row
+        # embedded by a different model/dim can be DETECTED at query time instead
+        # of silently corrupting cosine scores. Migration-safe — added if missing,
+        # NULL on old rows (their dim is then read from the vector itself).
+        self._add_column("embedding_model", "TEXT")
+        self._add_column("embedding_dim", "INTEGER")
         self.db.commit()
+
+    def _add_column(self, name: str, type_: str) -> None:
+        cols = {r[1] for r in self.db.execute("PRAGMA table_info(memories)")}
+        if name not in cols:
+            self.db.execute(f"ALTER TABLE memories ADD COLUMN {name} {type_}")
 
     def store(self, content: str, category: str = "general",
               metadata: dict | None = None) -> int:
@@ -68,10 +82,12 @@ class VectorMemory:
         embedding = self._get_embedding(content)
         with self._lock:
             cursor = self.db.execute(
-                "INSERT INTO memories (content, category, embedding, metadata, created_at) "
-                "VALUES (?, ?, ?, ?, ?)",
+                "INSERT INTO memories "
+                "(content, category, embedding, metadata, created_at, "
+                "embedding_model, embedding_dim) VALUES (?, ?, ?, ?, ?, ?, ?)",
                 (content, category, json.dumps(embedding),
-                 json.dumps(metadata or {}), datetime.now().isoformat()),
+                 json.dumps(metadata or {}), datetime.now().isoformat(),
+                 self.model_id, len(embedding)),
             )
             self.db.commit()
             return cursor.lastrowid
@@ -80,8 +96,10 @@ class VectorMemory:
                category: str | None = None) -> list[dict]:
         """Semantic search using cosine similarity."""
         query_embedding = self._get_embedding(query)
+        query_dim = len(query_embedding)
 
-        sql = "SELECT id, content, category, embedding, metadata, created_at FROM memories"
+        sql = ("SELECT id, content, category, embedding, metadata, created_at, "
+               "embedding_dim FROM memories")
         params = []
         if category:
             sql += " WHERE category = ?"
@@ -91,17 +109,32 @@ class VectorMemory:
             rows = self.db.execute(sql, params).fetchall()
 
         scored = []
-        for row_id, content, cat, emb_json, meta_json, created in rows:
+        mismatched = 0
+        for row_id, content, cat, emb_json, meta_json, created, stored_dim in rows:
             emb = json.loads(emb_json)
-            score = self._cosine_similarity(query_embedding, emb)
+            # Read the row's dimension from its column, or (for pre-E5 rows) from
+            # the vector itself. A row embedded at a DIFFERENT dimension is skipped
+            # loudly — never silently zip-truncated into a corrupt score (E5 fix).
+            dim = stored_dim if stored_dim else len(emb)
+            if dim != query_dim:
+                mismatched += 1
+                continue
             scored.append({
                 "id": row_id,
                 "content": content,
                 "category": cat,
-                "score": score,
+                "score": self._cosine_similarity(query_embedding, emb),
                 "metadata": json.loads(meta_json),
                 "created_at": created,
             })
+
+        if mismatched:
+            logger.warning(
+                f"Memory search skipped {mismatched} row(s) embedded at a "
+                f"different dimension than the current model (dim {query_dim}). "
+                f"They were embedded by another model — re-embed them to make "
+                f"them searchable again."
+            )
 
         scored.sort(key=lambda x: x["score"], reverse=True)
         return scored[:top_k]
@@ -180,7 +213,14 @@ class VectorMemory:
 
     @staticmethod
     def _cosine_similarity(a: list[float], b: list[float]) -> float:
-        """Compute cosine similarity between two vectors."""
+        """Compute cosine similarity between two vectors.
+
+        Vectors of unequal length are NOT comparable — ``zip`` would silently
+        truncate to the shorter one and return a meaningless score, so we refuse
+        (0.0) instead. ``search`` already filters mismatched rows; this is the
+        last-line guard for any other caller (E5 fix)."""
+        if len(a) != len(b):
+            return 0.0
         dot = sum(x * y for x, y in zip(a, b))
         norm_a = math.sqrt(sum(x * x for x in a))
         norm_b = math.sqrt(sum(x * x for x in b))
