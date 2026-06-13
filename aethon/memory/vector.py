@@ -62,6 +62,10 @@ class VectorMemory:
         self.embedding_provider = embedding_provider.lower()
         self.embedding_api_key = embedding_api_key
         self._embedding_cache_size = embedding_cache_size
+        # Query dimensions we've already warned about (E5 review fix): a
+        # persistent dim mismatch must be reported ONCE, not on every search —
+        # with auto_recall on, search runs every turn and would otherwise spam.
+        self._dim_mismatch_warned: set = set()
         self._create_tables()
 
         # Create cached embedding function
@@ -151,12 +155,17 @@ class VectorMemory:
                 "created_at": created,
             })
 
-        if mismatched:
+        if mismatched and query_dim not in self._dim_mismatch_warned:
+            # Once per query dimension — the condition is persistent (those rows
+            # stay mismatched until re-embedded), so a per-search warning would
+            # spam the log every turn under auto_recall.
+            self._dim_mismatch_warned.add(query_dim)
             logger.warning(
                 f"Memory search skipped {mismatched} row(s) embedded at a "
                 f"different dimension than the current model (dim {query_dim}). "
                 f"They were embedded by another model — re-embed them to make "
-                f"them searchable again."
+                f"them searchable again. (Further mismatches at this dimension "
+                f"will be silent.)"
             )
 
         scored.sort(key=lambda x: x["score"], reverse=True)

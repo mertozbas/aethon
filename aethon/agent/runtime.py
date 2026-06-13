@@ -1319,11 +1319,15 @@ class AethonRuntime:
         rendered = render_recall(results, max_chars=cfg.recall_max_chars)
         if getattr(agent, "__aethon_recall__", "") == rendered:
             return  # same recall as last turn — leave the prompt (and cache) alone
-        agent.__aethon_recall__ = rendered
         try:
             agent.system_prompt = self.prompt_composer.compose(
                 session_id, recalled=rendered
             )
+            # Commit the cache key only AFTER a successful compose — a failed
+            # compose must leave __aethon_recall__ at its old value so the next
+            # turn retries, instead of caching the failure as if it succeeded
+            # (review fix: stale-prompt desync).
+            agent.__aethon_recall__ = rendered
             agent.__aethon_prompt_fp__ = self._volatile_fingerprint()
         except Exception as e:
             logger.warning(f"Recall prompt refresh failed ({session_id}): {e}")

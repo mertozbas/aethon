@@ -172,6 +172,24 @@ def test_search_skips_dim_mismatch_loudly(tmp_path, caplog):
     mem.close()
 
 
+def test_dim_mismatch_warning_throttled_to_once(tmp_path, caplog):
+    """Review fix: the dim-mismatch warning fires once per query dimension, not
+    on every search — under auto_recall, search runs every turn and the mismatch
+    is persistent, so a per-search warning would spam the log."""
+    import logging
+
+    mem = _offline_memory(tmp_path, [0.1, 0.2])      # a 2-dim row
+    mem.store("eski kayıt")
+    mem._get_embedding = lambda text: [0.1, 0.2, 0.3]  # query now 3-dim
+    with caplog.at_level(logging.WARNING, logger="aethon.memory"):
+        mem.search("a", top_k=5)
+        mem.search("b", top_k=5)
+        mem.search("c", top_k=5)
+    warnings = [r for r in caplog.records if "different dimension" in r.message]
+    assert len(warnings) == 1                         # only the first search warns
+    mem.close()
+
+
 def test_search_returns_matching_dim_rows(tmp_path):
     """Same-dimension rows are still searched normally."""
     mem = _offline_memory(tmp_path, [1.0, 0.0])

@@ -328,6 +328,10 @@ def test_recall_injects_when_enabled(runtime_config):
     assert "## Recalled Memories" in agent.system_prompt
     assert "Mert asyncio tercih eder" in agent.system_prompt
     assert agent.__aethon_recall__                # recorded on the agent
+    # S9 hardening: recalled memories are framed as untrusted reference data,
+    # not instructions — so saved attacker text can't act as system commands.
+    assert "untrusted" in agent.system_prompt.lower()
+    assert "not as instructions" in agent.system_prompt
 
 
 def test_recall_unchanged_set_skips_recompose(runtime_config):
@@ -376,6 +380,40 @@ def test_recall_is_fail_soft(runtime_config):
     agent = types.SimpleNamespace()
     runtime._apply_recall(agent, "s", "q")        # must not raise
     assert not hasattr(agent, "system_prompt")    # turn untouched
+
+
+def test_recall_compose_failure_self_heals(runtime_config):
+    """Review fix: a compose() failure must NOT cache the recall key as success.
+
+    Otherwise the next turn with the same recalled set short-circuits and the
+    agent runs forever on a prompt missing its recall. The cache key is only
+    committed after a successful compose, so the next turn retries."""
+    import types
+
+    runtime_config.memory.auto_recall = True
+    runtime = AethonRuntime(runtime_config)
+    runtime.memory = _FakeMem([{"content": "hatirlanan", "score": 0.9}])
+    agent = types.SimpleNamespace()
+
+    # Turn N: compose blows up (e.g. a transient workspace read error).
+    calls = {"n": 0}
+    real_compose = runtime.prompt_composer.compose
+
+    def _flaky_compose(session_id="", recalled=""):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise OSError("transient read error")
+        return real_compose(session_id, recalled=recalled)
+
+    runtime.prompt_composer.compose = _flaky_compose
+    runtime._apply_recall(agent, "s", "soru")          # must not raise
+    assert not hasattr(agent, "system_prompt")          # recall not applied
+    assert getattr(agent, "__aethon_recall__", None) is None  # key NOT cached
+
+    # Turn N+1: SAME recalled set — must retry compose (not short-circuit).
+    runtime._apply_recall(agent, "s", "soru")
+    assert "## Recalled Memories" in agent.system_prompt  # healed on retry
+    assert "hatirlanan" in agent.system_prompt
 
 
 def test_hooks_list(runtime_config):
