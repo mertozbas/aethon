@@ -149,6 +149,16 @@ class MemoryConfig(BaseModel):
     embedding_api_key: str = ""
     db_path: str = "~/.aethon/memory.sqlite"
 
+    # E5.2 automatic recall (opt-in, default OFF). When on, each turn embeds the
+    # incoming message and injects the top matching long-term memories as a
+    # volatile prompt layer — so relevant memories surface without the agent
+    # having to call the memory tool. The layer lives in the volatile suffix, so
+    # only the recalled set changing re-sends the tail; the cached prefix stays warm.
+    auto_recall: bool = False
+    recall_top_k: int = Field(default=3, ge=1)
+    recall_min_score: float = 0.0      # only inject matches at/above this similarity
+    recall_max_chars: int = Field(default=1500, ge=1)
+
 
 class MultiAgentConfig(BaseModel):
     """Multi-agent system configuration."""

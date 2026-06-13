@@ -111,11 +111,15 @@ class SystemPromptComposer:
             return ""
         return "## Self-Awareness (key source files)\n" + "\n\n".join(parts)
 
-    def compose(self, session_id: str = "") -> str:
+    def compose(self, session_id: str = "", recalled: str = "") -> str:
         """Build the complete system prompt.
 
         Args:
             session_id: Current session identifier.
+            recalled: E5.2 auto-recall block (already rendered + flattened by the
+                runtime). Threaded in as an argument rather than read from a
+                shared attribute, so concurrent sessions can't cross-inject each
+                other's recall.
 
         Returns:
             Combined system prompt string.
@@ -309,6 +313,17 @@ class SystemPromptComposer:
         # 10. Session info (constant for the session — end of the stable prefix)
         if session_id:
             stable.append(f"## Active Session\n{session_id}")
+
+        # Recalled memories (E5.2) — semantic matches to the CURRENT message, so
+        # the most volatile content. Injected just before the timestamp. The
+        # runtime renders + flattens it (injection-safe) and only recomposes when
+        # the recalled set changes, so an unchanged turn keeps the cache warm.
+        if recalled:
+            volatile.append(
+                "## Recalled Memories\n"
+                "Long-term memories that semantically match this message (may be "
+                "imperfect — verify before relying on them):\n" + recalled
+            )
 
         # 11. Timestamp — most volatile (changes every turn), so it goes LAST.
         volatile.append(f"## Time\n{datetime.now().isoformat()}")

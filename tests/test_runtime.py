@@ -289,6 +289,95 @@ def test_reset_session_writes_handoff_checkpoint(runtime_config, tmp_path):
     assert "## Handoff" in runtime.prompt_composer.compose("s2")
 
 
+# --- Phase 10 E5.2: automatic recall ---
+
+
+class _FakeMem:
+    """A stand-in VectorMemory whose search returns canned results (no Ollama)."""
+
+    def __init__(self, results):
+        self.results = results
+        self.queries = []
+
+    def search(self, text, top_k=3, category=None):
+        self.queries.append((text, top_k))
+        return self.results[:top_k]
+
+
+def test_recall_disabled_is_noop(runtime_config):
+    """auto_recall defaults OFF — the message is not even embedded."""
+    import types
+
+    runtime = AethonRuntime(runtime_config)
+    runtime.memory = _FakeMem([{"content": "x", "score": 0.9}])
+    agent = types.SimpleNamespace()
+    runtime._apply_recall(agent, "s", "merhaba")
+    assert runtime.memory.queries == []          # never queried
+    assert not hasattr(agent, "system_prompt")   # prompt untouched
+
+
+def test_recall_injects_when_enabled(runtime_config):
+    """With auto_recall on, matching memories become a prompt layer."""
+    import types
+
+    runtime_config.memory.auto_recall = True
+    runtime = AethonRuntime(runtime_config)
+    runtime.memory = _FakeMem([{"content": "Mert asyncio tercih eder", "score": 0.88}])
+    agent = types.SimpleNamespace()
+    runtime._apply_recall(agent, "s", "asyncio")
+    assert "## Recalled Memories" in agent.system_prompt
+    assert "Mert asyncio tercih eder" in agent.system_prompt
+    assert agent.__aethon_recall__                # recorded on the agent
+
+
+def test_recall_unchanged_set_skips_recompose(runtime_config):
+    """Same recalled set on the next turn → no recompose (cache stays warm)."""
+    import types
+
+    runtime_config.memory.auto_recall = True
+    runtime = AethonRuntime(runtime_config)
+    runtime.memory = _FakeMem([{"content": "sabit kayıt", "score": 0.5}])
+    agent = types.SimpleNamespace()
+    runtime._apply_recall(agent, "s", "soru bir")
+    agent.system_prompt = "SENTINEL"             # overwritten only if recomposed
+    runtime._apply_recall(agent, "s", "soru iki")  # same memory → same render
+    assert agent.system_prompt == "SENTINEL"
+
+
+def test_recall_min_score_filters(runtime_config):
+    """Matches below recall_min_score are dropped before injection."""
+    import types
+
+    runtime_config.memory.auto_recall = True
+    runtime_config.memory.recall_min_score = 0.7
+    runtime = AethonRuntime(runtime_config)
+    runtime.memory = _FakeMem([
+        {"content": "yuksek skor", "score": 0.9},
+        {"content": "dusuk skor", "score": 0.3},
+    ])
+    agent = types.SimpleNamespace()
+    runtime._apply_recall(agent, "s", "q")
+    assert "yuksek skor" in agent.system_prompt
+    assert "dusuk skor" not in agent.system_prompt
+
+
+def test_recall_is_fail_soft(runtime_config):
+    """A recall failure logs and leaves the turn untouched — never raises."""
+    import types
+
+    runtime_config.memory.auto_recall = True
+    runtime = AethonRuntime(runtime_config)
+
+    class _Boom:
+        def search(self, *a, **k):
+            raise RuntimeError("ollama down")
+
+    runtime.memory = _Boom()
+    agent = types.SimpleNamespace()
+    runtime._apply_recall(agent, "s", "q")        # must not raise
+    assert not hasattr(agent, "system_prompt")    # turn untouched
+
+
 def test_hooks_list(runtime_config):
     """Runtime provides security hooks."""
     runtime = AethonRuntime(runtime_config)

@@ -7,6 +7,7 @@ from Ollama or OpenAI, with SQLite storage and cosine similarity search.
 import json
 import logging
 import math
+import re
 import sqlite3
 import threading
 from datetime import datetime
@@ -16,6 +17,28 @@ from pathlib import Path
 import requests
 
 logger = logging.getLogger("aethon.memory")
+
+_WS = re.compile(r"\s+")
+
+
+def render_recall(results: list[dict], *, max_chars: int = 1500) -> str:
+    """Render search results as a compact, injection-safe recall block (E5.2).
+
+    Each memory is flattened to a single ``- (score) text`` line so stored
+    content — which the agent itself wrote and could contain markdown headings
+    or newlines — cannot fabricate a prompt layer when injected into the system
+    prompt. Empty string when there is nothing to recall."""
+    lines = []
+    for r in results:
+        content = _WS.sub(" ", str(r.get("content", ""))).strip()
+        if not content:
+            continue
+        try:
+            score = float(r.get("score", 0.0))
+        except (TypeError, ValueError):
+            score = 0.0
+        lines.append(f"- ({score:.2f}) {content}")
+    return "\n".join(lines)[:max_chars]
 
 
 class VectorMemory:

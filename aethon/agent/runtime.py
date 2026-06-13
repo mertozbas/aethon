@@ -1017,6 +1017,9 @@ class AethonRuntime:
             # Normal message processing
             agent = self.get_or_create_agent(session_id, hint=message.text)
             self._discard_stale_gate_note(session_id)
+            # E5.2 auto-recall (opt-in): inject memories matching this message
+            # before refreshing the rest of the volatile prompt.
+            self._apply_recall(agent, session_id, message.text)
             self._refresh_volatile_prompt(agent, session_id)
             result = self._run_with_interrupts(agent, message, session_id, message.text)
             self._capture_usage(agent, result, session_id)
@@ -1278,10 +1281,52 @@ class AethonRuntime:
         if getattr(agent, "__aethon_prompt_fp__", None) == fingerprint:
             return
         try:
-            agent.system_prompt = self.prompt_composer.compose(session_id)
+            # Preserve this agent's recall block (E5.2) across a file-driven
+            # recompose — it's threaded as an argument, not a shared attribute.
+            recalled = getattr(agent, "__aethon_recall__", "")
+            agent.system_prompt = self.prompt_composer.compose(
+                session_id, recalled=recalled
+            )
             agent.__aethon_prompt_fp__ = fingerprint
         except Exception as e:
             logger.warning(f"Prompt refresh error: {e}")
+
+    def _apply_recall(self, agent, session_id: str, text: str) -> None:
+        """E5.2: embed the incoming message, recall the top long-term memories,
+        and inject them as a volatile prompt layer — so relevant memories surface
+        without the agent having to call the memory tool.
+
+        Opt-in (``memory.auto_recall``); a no-op when off or when memory is
+        unavailable. Fail-soft: a recall failure logs and leaves the turn
+        untouched — it must never break message processing. Only recomposes when
+        the recalled set actually changed (per-agent), so an unchanged turn keeps
+        the provider prompt cache warm."""
+        cfg = getattr(self.config, "memory", None)
+        if not (cfg and getattr(cfg, "auto_recall", False) and self.memory):
+            return
+        try:
+            results = self.memory.search(text, top_k=cfg.recall_top_k)
+        except Exception as e:
+            logger.warning(f"Recall search failed ({session_id}): {e}")
+            return
+        if cfg.recall_min_score:
+            results = [
+                r for r in results
+                if r.get("score", 0.0) >= cfg.recall_min_score
+            ]
+        from aethon.memory.vector import render_recall
+
+        rendered = render_recall(results, max_chars=cfg.recall_max_chars)
+        if getattr(agent, "__aethon_recall__", "") == rendered:
+            return  # same recall as last turn — leave the prompt (and cache) alone
+        agent.__aethon_recall__ = rendered
+        try:
+            agent.system_prompt = self.prompt_composer.compose(
+                session_id, recalled=rendered
+            )
+            agent.__aethon_prompt_fp__ = self._volatile_fingerprint()
+        except Exception as e:
+            logger.warning(f"Recall prompt refresh failed ({session_id}): {e}")
 
     @staticmethod
     def _extract_text(result) -> str:
