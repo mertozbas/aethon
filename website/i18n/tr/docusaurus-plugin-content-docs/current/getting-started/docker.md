@@ -12,11 +12,23 @@ yapılandırma ya da ortam üzerinden sağlayın — varsayılan olarak yapılan
 `OPENAI_API_KEY` ile `provider: openai` kullanır (ya da `model.host`'u konteynerden
 erişilebilir, OpenAI uyumlu bir base URL'ye yönlendirin).
 
+:::warning Konteynerde bir pano token'ı ZORUNLUDUR
+Konteyner, WebChat'i her zaman `0.0.0.0` adresine bağlar (port eşlemesinin ona
+ulaşabilmesi için) ve AETHON, **loopback dışı bir bağlamada bir kimlik doğrulama
+token'ı olmadan başlamayı reddeder**. Her zaman `AETHON_DASHBOARD_TOKEN` geçirin
+(yeterince uzun herhangi bir gizli değer — ör. `$(openssl rand -hex 16)`). Kendi
+kimlik doğrulayan ters proxy'nizin arkasında, bunun yerine komutu
+`aethon start --insecure-bind` ile geçersiz kılabilirsiniz.
+:::
+
 ## Docker Compose (önerilen)
 
 ```bash
-OPENAI_API_KEY=sk-... docker compose up --build
-# http://127.0.0.1:18790 adresini açın
+AETHON_DASHBOARD_TOKEN=$(openssl rand -hex 16) \
+OPENAI_API_KEY=sk-... \
+docker compose up --build
+# ardından http://127.0.0.1:18790/dashboard?token=YOUR_TOKEN adresini açın
+# (/ws/chat'teki düz WebChat de token + izin verilen bir Origin gerektirir)
 ```
 
 ## Düz `docker run`
@@ -24,6 +36,7 @@ OPENAI_API_KEY=sk-... docker compose up --build
 ```bash
 docker build -t aethon .
 docker run -p 18790:18790 \
+  -e AETHON_DASHBOARD_TOKEN=$(openssl rand -hex 16) \
   -e OPENAI_API_KEY=sk-... \
   aethon
 ```
@@ -57,7 +70,9 @@ docker compose --profile local up --build
 - **Sağlayıcı:** seedlenmiş yapılandırma varsayılan olarak ortamdan `OPENAI_API_KEY` okuyan `provider: openai`'dir; bunu `-e OPENAI_API_KEY=…` ile (ya da Compose'ta `environment:` ile) geçirin, ya da `model.host`'u OpenAI uyumlu bir base URL'ye ayarlayın.
 - **Bellek imajda varsayılan olarak devre dışıdır** (bir Ollama gömme arka ucuna ihtiyaç duyar).
 - **Healthcheck**, konteyner içinde `http://127.0.0.1:18790/health` adresini yoklar.
-- **Diğer sağlayıcılar:** yapılandırmada `provider`'ı değiştirin ve eşleşen kimlik bilgilerini sağlayın (ör. `anthropic` için `ANTHROPIC_API_KEY`). localhost'un ötesine açarken pano kimlik doğrulamasını etkinleştirmek için `AETHON_DASHBOARD_TOKEN` ayarlayın.
+- **Diğer sağlayıcılar:** yapılandırmada `provider`'ı değiştirin ve eşleşen kimlik bilgilerini sağlayın (ör. `anthropic` için `ANTHROPIC_API_KEY`).
+- **`AETHON_DASHBOARD_TOKEN` imaj için ZORUNLUDUR** — konteyner her zaman `0.0.0.0` adresine bağlanır ve AETHON, loopback dışı bir bağlamada bu olmadan başlamayı reddeder. Kendi kimlik doğrulayan ters proxy'nizin arkasında, bir token ayarlamak yerine komutu `aethon start --insecure-bind` ile geçersiz kılabilirsiniz.
+- **Webhook'lar konteynerde kapalı (fail-closed) davranır:** `AETHON_WEBHOOK_SECRET` ayarlanmamışsa `/webhook/*` yolları yalnızca **kaydedilmez** (geri kalanı çalışmaya devam eder). Onları etkinleştirmek için bunu ayarlayın — çağıranlar bunun ardından istek gövdesini `X-Aethon-Signature` başlığında HMAC-SHA256 ile imzalar.
 
 :::warning Docker sağlayıcınıza ulaşamıyor mu?
 `model.host`, ana makinedeki bir servise (ör. yerel bir OpenAI uyumlu sunucu ya da

@@ -45,7 +45,20 @@ birlikte gelir.
 `~/.aethon/workspace/sops/` dizinine bir `*.sop.md` dosyası bırakın (bir `## Overview` bölümüyle) ve
 onu `/<name>` olarak çağırın. **[SOP'lar](../concepts/sops.md)** bölümüne bakın.
 
+### Bir API sağlayıcısı büyük bir fatura çıkarabilir mi?
+
+Günlük harcamayı sınırlamak için `budget.daily_usd` ayarlayın. Her turun token kullanımı ölçülür ve
+fiyatlandırılır (yerleşik fiyat tablosunu `budget.pricing` ile geçersiz kılabilirsiniz); harcama,
+tavanın `budget.warn_ratio` (varsayılan `0.8`) oranını aştığında turlar bir kez **uyarılır** ve tavan
+aşıldığında **engellenir** — bu, ortam (ambient) ve zamanlayıcı turlarını da durdurur. Varsayılan `0.0`,
+sınırsız anlamına gelir (yalnızca ölç). Bulut harcamasından tamamen kaçınmak için Ollama ile tümüyle
+yerel çalışın.
+
 ### Asistan oturumlar arasında bir şeyler hatırlar mı?
 
 Evet, bellek etkinleştirildiğinde. Gömmeleri SQLite içinde saklar ve onları benzerliğe göre getirir.
-Bellek koruması, sırların kaydedilmesini engeller.
+Bellek koruması, sırların kaydedilmesini engeller. `memory.auto_recall` açıkken (tercihe bağlı,
+varsayılan olarak kapalı), her tur gelen mesajı gömer ve en iyi eşleşen uzun süreli bellekleri bir istem
+katmanı olarak enjekte eder; böylece ajan bellek aracını çağırmadan ilgili bellekler yüzeye çıkar. Vektör
+belleği ayrıca her satırın gömme modelini ve boyutunu kaydeder ve boyutları karıştırmayı reddeder;
+böylece gömme modelini değiştirmek, benzerlik aramasını sessizce bozamaz.

@@ -15,8 +15,10 @@ sayfalık bir uygulamadır (kendi barındırdığı fontlar/CSS, çevrimdışı 
 | `#/company` | Canlı Şirket (pixel-ajanlar) |
 | `#/monitor` | Canlı İzleme |
 | `#/sessions` | Oturumlar |
+| `#/recordings` | Kayıtlar (oturum tekrar oynatma) |
 | `#/memory` | Bellek |
 | `#/config` | Yapılandırma (sırlar `***` olarak maskelenir) |
+| `#/features` | Özellikler (canlı yetenek durumu) |
 | `#/logs` | Günlükler |
 | `#/agents` | Ajanlar |
 | `#/sops` | SOP'lar |

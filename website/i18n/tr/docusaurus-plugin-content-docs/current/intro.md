@@ -50,7 +50,7 @@ geçiş yapın.
 |---|---|
 | **Yazar** | Mert Özbaş |
 | **Depo** | [github.com/mertozbas/aethon](https://github.com/mertozbas/aethon) |
-| **Sürüm** | 0.2.0 |
+| **Sürüm** | 0.3.0 |
 | **Lisans** | PolyForm Noncommercial 1.0.0 (kaynak erişilebilir; ticari olmayan kullanım için ücretsiz) |
 
 ---
@@ -100,10 +100,15 @@ geçiş yapın.
 - **Çalışma alanı sınırı** + **engellenen komut** filtreleme + **onay** kancaları.
 - **Pano kimlik doğrulama jetonu**, API yapılandırma dökümlerinde **gizli maskeleme** ve gizli bilgileri uzun süreli bellekten uzak tutan bir **bellek koruyucusu**.
 
-:::info 0.2.0'da yeni
-Yetenek araçları (web/GitHub/JSON-RPC/notify), macOS yerel araçları, LSP,
-sandbox'lanmış dinamik araçlar, ortam modu, oturum kaydı/tekrarı ve bir MCP
-sunucusu. Tam başvuru: **[Yetenekler](./concepts/capabilities.md)**.
+:::info 0.3.0'da yeni
+Güvenilirlik dayanağı (kalıcı görev defteri, iddia-etmeden-doğrula), ağ güvenliği
+(varsayılan-reddet ifşa, docker shell yalıtım ortamı, güvenilmeyen-içerik
+işaretleme), token ekonomisi (günlük harcama tavanı, geçmiş sıkıştırma, depo
+haritası, scout) ve **[özerk çekirdek döngü](./concepts/core-loop.md)** (alım →
+plan → sınırlı yürütücü → iş-kanıtı makbuzu). Hepsi isteğe bağlı. Daha önceki
+0.2.0 eklemeleri (yetenek araçları, macOS araçları, LSP, dinamik araçlar, ortam
+modu, kayıt, MCP sunucusu) **[Yetenekler](./concepts/capabilities.md)** altında
+listelenir.
 :::
 
 ---

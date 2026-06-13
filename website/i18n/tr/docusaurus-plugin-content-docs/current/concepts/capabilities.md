@@ -1,12 +1,12 @@
 ---
 id: capabilities
-title: Yetenekler (0.2.0)
+title: Yetenekler
 sidebar_label: Yetenekler
 ---
 
-# Yetenekler (0.2.0)
+# Yetenekler
 
-0.2.0'da eklenen yetenekler için bir başvuru. Buradaki her şey **yapılandırmayla kapı
+AETHON'un isteğe bağlı yetenekleri için bir başvuru. Buradaki her şey **yapılandırmayla kapı
 tutulur**; güçlü/ana makineyi etkileyen özellikler varsayılan olarak **kapalıdır** ve
 güvenlik ile onay hook'ları üzerinden yönlendirilir. Canlı durumu panonun **Features**
 panelinde inceleyin.
@@ -70,6 +70,12 @@ olarak kapalı. Üç kapı katmanı:
    tehlikeli eylemleri reddeder. Salt okunur eylemler (`list`/`discover`/`sandbox`) her
    zaman izinlidir; onay hook'u yalnızca kod yükleyen eylemler için sorar.
 
+İhtiyaç güdümlü araçlandırma etkinken (`runtime_tools.enabled`), sistem istemindeki bir
+İşletim Kuralı ajana şunu söyler: bir görev, mevcut hiçbir aracın sağlamadığı bir yeteneğe
+ihtiyaç duyuyorsa, pes etmek ya da sonucu sahtelemek yerine `manage_tools` aracılığıyla
+mevcut bir çalışma zamanı aracını yüklemeli — ya da izin verildiğinde yenisini oluşturup —
+devam etmelidir. Yeni araç oluşturma onay kapılı kalır.
+
 ## Ortam / özerk mod (`ambient` bloğu)
 
 Proaktif (boşta tetiklenen) veya özerk (sürekli) iş yapan bir arka plan döngüsü.
@@ -79,6 +85,12 @@ hiçbir görev çalışmaz. Çalışma zamanı anahtarı `start_ambient_mode` / 
 çakışma yok), bir iş parçacığı yürütücüsüne aktarılır (mesaj açlığı yok) ve sunucu
 tarafındaki bir tamamlanma sinyali özerk çalıştırmaları durdurur. `auto_start` varsayılan
 olarak kapalıdır.
+
+`core_loop.executor_enabled` açıkken ve görev defterinde etkin bir proje varken, bir ortam
+adımı özerk çekirdek döngüyü sürer: planlanan projeyi, sınırlı `ProjectExecutor` (yineleme /
+bütçe / deneme üst sınırları) aracılığıyla tamamlanmaya doğru çalıştırır, ardından bir
+iş-kanıtı makbuzu teslim eder. Varsayılan olarak kapalı — bkz.
+**[Özerk çekirdek döngü](./core-loop.md)**.
 
 ## Oturum kaydı ve yeniden oynatma (`session_recorder` bloğu)
 
@@ -112,6 +124,16 @@ Binlerce satır döken bir araç (ruff, mypy, büyük grep'ler) aksi takdirde mo
 bağlamını taşırırdı. Aşırı büyük araç çıktısı, modele ulaşmadan önce üst sınıra çekilir
 (varsayılan ~12000 karakter, baş + son + bir kırpma işareti). Devre dışı bırakmak için
 `0` olarak ayarlayın.
+
+## Yetenek diyeti (`core_loop.capability_diet`)
+
+Her tur, yüklü her aracın tam şemasını taşır ve birkaç aracın büyük şemaları vardır.
+`core_loop.capability_diet` açıkken (varsayılan **kapalı**), her zaman açık olan bir
+çekirdek araç seti tutulur ve ağır, alana özgü araçlar (`use_mac`, `use_computer`,
+`use_github`, `apple_notes`, `scraper`, `jsonrpc`) bir oturuma yalnızca o oturumun kurucu
+mesajı bunların anahtar sözcükleriyle eşleştiğinde çekilir. Karar, oturum başına bir kez
+verilir (tur başına değil); böylece istem/araç önbelleği sıcak kalır. Token ekonomisi alt
+sisteminin geri kalanı için bkz. **[Token ekonomisi](./token-economy.md)**.
 
 ## macOS menü çubuğu başlatıcısı (`launcher-macos` eki)
 

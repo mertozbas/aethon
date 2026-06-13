@@ -51,3 +51,30 @@ Eksik kütüphaneler bir uyarı, eksik token'lar ise bir `ValueError` günlüğe
 devam eder. Kanalın `enabled: true` olduğunu, token ortam değişkeninin ayarlandığını ve
 (Discord) MESSAGE CONTENT intent'inin / (Slack) Socket Mode + olay aboneliklerinin yapılandırıldığını
 kontrol edin.
+
+## "AETHON is already running (pid N)"
+
+İkinci bir `aethon start` bu mesajla hemen çıkar. `~/.aethon/aethon.pid` üzerindeki tek-örnek (single-instance)
+`flock` kilidi, iki gateway'in aynı kanallar için yarışmasını önler (ör. ikinci bir poller'ı reddeden
+Telegram'ın uzun yoklayıcısı). Önce diğer örneği durdurun veya — kilidi serbest bırakmadan çöktüyse —
+kilidi tutan canlı bir işlem olmadığından emin olun.
+
+## Bir kanal çöktü ama geri kalanı çalışmaya devam etti
+
+Kanal adaptörleri bir gözetmen (supervisor) altında çalışır: çöken bir adaptör, traceback'iyle birlikte
+günlüğe kaydedilir ve **geri çekilmeyle (backoff) yeniden başlatılır**; bu sırada diğer kanallar hizmet
+vermeye devam eder; tüm gateway çökmez. Kalıcı olarak başarısız olan bir kanal yalnızca kendisini
+bozar. Yeniden başlatma izini günlükte kontrol edin.
+
+## Yeniden başlatmadan sonra zamanlanmış işler / hatırlatıcılar
+
+Çalışma zamanında eklenen zamanlamalar `workspace/SCHEDULE.json` dosyasına kalıcı olarak yazılır;
+böylece cron işleri ve tek seferlik `run_at` hatırlatıcıları ("yarın 15:30'da bana hatırlat") bir yeniden
+başlatmayı atlatır ve asistan zamanlanmış anda kapalı olsa bile tetiklenir.
+
+## Asistan bir hatada sessizleşti
+
+Bir model veya çalışma zamanı hatasında, her kanal artık sessizleşmek yerine `aethon doctor`'a işaret
+eden kısa, yerelleştirilmiş bir hata yanıtı gönderir. Bir oturum içindeki turlar, oturum başına bir kilit
+(per-session lock) ile sıraya konur; böylece yavaş veya başarısız bir tur, aynı oturumdaki bir sonraki
+mesajla araya giremez — ikinci mesaj, birincisi bitene kadar bekler.

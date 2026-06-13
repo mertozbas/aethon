@@ -57,7 +57,7 @@ pip install -e ".[all]"
 #   yalın alternatif — yalnızca çekirdek, ekstraları sonra ekleyin:  pip install -e .
 
 # 4. Doğrulayın
-aethon --version                       # → aethon, version 0.2.0
+aethon --version                       # → aethon, version 0.3.0
 ```
 
 :::tip `aethon`'un her yerde kullanılabilir olmasını mı istiyorsunuz (geliştirici kurulumu)?
@@ -163,5 +163,8 @@ rm -rf ~/.aethon
 
 :::note Bir konteynerde mi çalıştırıyorsunuz?
 Headless imaj, Compose ve yerel-Ollama profili için **[Docker rehberi](./docker.md)**
-sayfasına bakın.
+sayfasına bakın. Konteyner `0.0.0.0` adresine bağlanır; bu yüzden
+`AETHON_DASHBOARD_TOKEN`'ı **gerektirir** (ya da kimlik doğrulayan bir ters proxy
+arkasında `aethon start --insecure-bind`) ve webhook'lar kapalı (fail-closed) davranır —
+`AETHON_WEBHOOK_SECRET`'ı ayarlayana kadar `/webhook/*` kaydedilmez.
 :::

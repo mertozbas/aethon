@@ -74,4 +74,4 @@ Daha fazla örnek için **[Webhook'lar kılavuzu](../guides/webhooks.md)** böl�
 
 `aethon mcp`, tüm araç setini **stdio** üzerinden MCP istemcilerine (örn. Claude Desktop)
 sunar — HTTP üzerinden değil. Onay gerektiren araçlar stdio üzerinden reddedilir (etkileşimli
-kanal yoktur). Bkz. **[Yetenekler](../concepts/capabilities.md#mcp-server--aethon-mcp)**.
+kanal yoktur). Bkz. **[Yetenekler](../concepts/capabilities.md)** (MCP sunucusu bölümü).

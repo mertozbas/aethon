@@ -96,7 +96,8 @@ model:
 ```
 
 :::note
-`temperature`, `claude-opus-4-8` istekleri için kasıtlı olarak atlanmıştır.
+`temperature`, örnekleme parametrelerini 400 ile reddeden Opus 4.7+ modelleri (ör.
+`claude-opus-4-8`) için kasıtlı olarak atlanmıştır.
 :::
 
 ## Ollama (tamamen yerel)

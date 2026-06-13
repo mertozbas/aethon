@@ -126,3 +126,38 @@ paths:
 ```
 
 Bunların her birinin neyi açtığını öğrenmek için **[Yetenekler](../concepts/capabilities.md)** sayfasına bakın.
+
+## Güvenlik ve ifşa
+
+Birkaç varsayılan kapalı (fail-closed) davranır — bir yüzeyi ifşa etmeden önce
+bilmeye değer:
+
+- **Ağ botları varsayılan olarak her göndereni reddeder.** Telegram, Discord, Slack
+  ve WhatsApp, kimliği `security.allowed_senders.<channel>` altında listelenmedikçe tüm
+  gönderenleri (siz dâhil) reddeder; boş izin listesine sahip etkin bir bot ayrıca
+  başlangıçta gürültülü bir uyarı tetikler. Bkz. **[Mesajlaşma Botları](../guides/messaging-bots.md)**.
+- **Loopback dışı bir WebChat bağlaması bir pano token'ı gerektirir.** `channels.webchat.host`
+  loopback dışında herhangi bir şeyse, `dashboard.auth_token` ayarlanmalıdır — aksi halde
+  sunucu **başlamayı reddeder** (ya da kendi kimlik doğrulayan ters proxy'nizin arkasında
+  `aethon start --insecure-bind` geçin).
+- **Webhook'lar loopback ötesinde kapalı (fail-closed) davranır.** Loopback dışı bir
+  bağlamada `webhook.secret` boşken `/webhook/*` yolları kaydedilmez; HMAC-SHA256 ile
+  doğrulanan webhook'ları etkinleştirmek için bu gizli değeri ayarlayın.
+- **İsteğe bağlı shell sandbox'ı.** `shell` aracını oturum başına bir konteynerde çalıştırmak
+  için `security.sandbox: docker` ayarlayın (AETHON, Docker mevcut değilse sessizce ana
+  makine çalıştırmasına geri dönmek yerine başlamayı reddeder).
+
+```yaml
+security:
+  allowed_senders:
+    telegram: ["123456789"]   # kanal başına izin listesi; boş = ağ botlarında tümünü reddet
+  sandbox: none               # shell aracını sandbox'lamak için "docker" yapın
+
+dashboard:
+  auth_token: ${AETHON_DASHBOARD_TOKEN}   # loopback dışı her bağlama için gerekli
+
+webhook:
+  secret: ${AETHON_WEBHOOK_SECRET}        # loopback ötesindeki webhook'lar için gerekli
+```
+
+Tam ifşa modeli için bkz. **[Güvenlik](../operations/security.md)**.
