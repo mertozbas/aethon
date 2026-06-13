@@ -5,6 +5,7 @@ Uses global state pattern (same as delegate.py).
 """
 
 import asyncio
+import concurrent.futures
 import logging
 
 from strands import tool
@@ -115,9 +116,15 @@ def send_message(channel: str, text: str, recipient: str = "") -> str:
             )
             try:
                 future.result(timeout=_SEND_TIMEOUT_SECONDS)
-            except TimeoutError:
-                # A timed-out send must not deliver later — the agent was
-                # told it failed and may retry (duplicate deliveries).
+            except concurrent.futures.TimeoutError:
+                # `Future.result(timeout=...)` raises concurrent.futures.TimeoutError.
+                # On Python 3.10 that is a DISTINCT class from builtins.TimeoutError,
+                # so `except TimeoutError` silently missed it there — the send fell
+                # through to the generic handler and was never cancelled (the exact
+                # late-delivery bug this guards against). 3.11+ merged the two; catch
+                # the concurrent.futures one so cancellation fires on all versions.
+                # A timed-out send must not deliver later — the agent was told it
+                # failed and may retry (duplicate deliveries).
                 future.cancel()
                 return (
                     f"Error: send via {channel} timed out after "
