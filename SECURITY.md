@@ -4,10 +4,10 @@
 
 | Version | Supported          |
 |---------|--------------------|
-| 0.1.x   | :white_check_mark: |
+| 0.3.x   | :white_check_mark: |
 
 Older pre-release versions are not supported. Please upgrade to the latest
-0.1.x release before reporting an issue.
+0.3.x release before reporting an issue.
 
 ## Reporting a vulnerability
 
@@ -96,18 +96,54 @@ Tool execution is governed by the `security` configuration section:
   per-tool confirmation prompt — appropriate for an unattended assistant. Set it
   to `false` to require interactive consent for each tool invocation.
 - **`blocked_commands`** (default `["rm -rf /", "sudo", "mkfs"]`) blocks shell
-  commands containing any of the listed substrings. Extend this list to match
-  your environment.
-- **`require_approval`** (default `["shell", "file_write", "send_message"]`)
-  marks action types that require approval before they run.
+  commands containing any of the listed substrings. It is a **tripwire, not a
+  sandbox** — a determined command can evade substring matching. Extend this
+  list to match your environment, and use the execution sandbox below for a real
+  boundary.
+- **`sandbox`** (default `"none"`) selects where the `shell` tool runs. Set it to
+  `"docker"` to run each session's shell commands in a disposable per-session
+  container (the workspace is mounted; no host home, no host network by default
+  — `sandbox_network: "none"` — with memory/cpu/pids/timeout caps and a
+  read-only rootfs). The real boundary: when the blast radius is a throwaway
+  container, evading `blocked_commands` no longer matters. If `"docker"` is
+  selected but Docker is unavailable, AETHON **refuses to start** (fail closed).
+  File tools stay host-side in this version.
+- **`mark_untrusted_content`** (default `true`) wraps results from
+  external-content tools (scraper, `http_request`, `jsonrpc`, `use_github`) and
+  webhook payloads in `[UNTRUSTED EXTERNAL CONTENT]` markers so the model treats
+  them as data, not instructions. This is **honest marking, not an injection
+  detector** — it reduces, but does not eliminate, indirect prompt-injection risk.
 - **`allowed_senders`** provides a per-channel allowlist of sender identifiers
-  for messaging channels.
+  for messaging channels (deny-by-default for network bots — see Network
+  exposure above).
+- **`require_approval`** is a **reserved** list and is **not currently wired to a
+  hook**. Interactive approval is provided by the separate `approval`
+  configuration section (disabled by default; when enabled, a hook gates the
+  listed action types and can ask a human to approve or deny — Phase 9A / S6).
+
+### Non-goals and known limitations
+
+AETHON is a **single-user, self-hosted** assistant. The security model assumes
+the operator is the trusted user; it is not a multi-tenant or adversarial-user
+system. Specifically:
+
+- **No prompt-injection detection.** Untrusted content is *marked* (above), not
+  filtered or classified. There is no content-filtering layer.
+- **`blocked_commands` is a tripwire, not a sandbox.** For a real execution
+  boundary, enable `sandbox: docker`.
+- **Plain HTTP.** The built-in server speaks plain HTTP; put it behind a
+  TLS-terminating reverse proxy to expose it off-host.
+- **File tools are host-side** even under the docker sandbox (only `shell` is
+  containerized in this version).
 
 ### Hardening checklist before exposing AETHON
 
 - Set `dashboard.auth_token` (and `webhook.secret` if webhooks are enabled).
+- Set `security.allowed_senders.<channel>` for every enabled network bot
+  (empty = deny all).
 - Enable `security.workspace_only` to confine file/tool activity to the
   workspace, and review `blocked_commands`.
+- Enable `security.sandbox: docker` to containerize shell execution.
 - Store all tokens and API keys as `${ENV_VAR}` references, not literals.
 - Place AETHON behind a TLS-terminating reverse proxy if it must be reachable
   off-host; the built-in server speaks plain HTTP.
